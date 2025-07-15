@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:docs.anthropic.com)"
+      "WebFetch(domain:docs.anthropic.com)",
+      "Bash(curl:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npm start)",
+      "Bash(node:*)",
+      "Bash(npx expo:*)",
+      "Bash(npm install:*)",
+      "Bash(mv:*)"
     ],
     "deny": []
   }

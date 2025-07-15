@@ -3,20 +3,20 @@ import { StyleSheet } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 
-export default function EmotionSphereScreen() {
+export default function ProfileScreen() {
   return (
     <ThemedView style={styles.container}>
       <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Emotion Sphere</ThemedText>
+        <ThemedText type="title">Profile</ThemedText>
       </ThemedView>
-      <ThemedView style={styles.sphereContainer}>
-        <ThemedText>3D Emotion Sphere will be rendered here</ThemedText>
+      <ThemedView style={styles.profileContainer}>
+        <ThemedText>User profile and settings will be available here</ThemedText>
         <ThemedText type="default" style={styles.description}>
-          Interactive 3D sphere showing emotions as vectors across three axes:
+          Manage your therapy journey:
         </ThemedText>
-        <ThemedText type="default">• Masculine ↔ Feminine</ThemedText>
-        <ThemedText type="default">• Light ↔ Dark</ThemedText>
-        <ThemedText type="default">• Child ↔ Parent</ThemedText>
+        <ThemedText type="default">• View progress and insights</ThemedText>
+        <ThemedText type="default">• Adjust app preferences</ThemedText>
+        <ThemedText type="default">• Access premium features</ThemedText>
       </ThemedView>
     </ThemedView>
   );
@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 30,
   },
-  sphereContainer: {
+  profileContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
