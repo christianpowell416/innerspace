@@ -1,11 +1,13 @@
 import { StyleSheet, ScrollView } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 
 export default function AddEmotionScreen() {
   return (
-    <ThemedView style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      <ThemedView style={styles.container}>
       <ThemedView style={styles.titleContainer}>
         <ThemedText type="title">Add emotion</ThemedText>
       </ThemedView>
@@ -21,11 +23,15 @@ export default function AddEmotionScreen() {
           <ThemedText type="default">• Optional journal entry</ThemedText>
         </ThemedView>
       </ScrollView>
-    </ThemedView>
+      </ThemedView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     padding: 20,

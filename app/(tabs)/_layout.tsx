@@ -18,32 +18,33 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: TabBarBackground,
+        tabBarShowLabel: false,
         tabBarStyle: Platform.select({
           ios: {
             // Use a transparent background on iOS to show the blur effect
             position: 'absolute',
+            paddingTop: 10,
           },
-          default: {},
+          default: {
+            paddingTop: 10,
+          },
         }),
       }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Emotion Sphere',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="globe" color={color} />,
         }}
       />
       <Tabs.Screen
         name="add"
         options={{
-          title: 'Add emotion',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="plus.circle" color={color} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="person.circle" color={color} />,
         }}
       />

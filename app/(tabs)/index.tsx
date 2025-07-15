@@ -1,11 +1,13 @@
 import { StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 
 export default function EmotionSphereScreen() {
   return (
-    <ThemedView style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      <ThemedView style={styles.container}>
       <ThemedView style={styles.titleContainer}>
         <ThemedText type="title">Emotion Sphere</ThemedText>
       </ThemedView>
@@ -18,11 +20,15 @@ export default function EmotionSphereScreen() {
         <ThemedText type="default">• Light ↔ Dark</ThemedText>
         <ThemedText type="default">• Child ↔ Parent</ThemedText>
       </ThemedView>
-    </ThemedView>
+      </ThemedView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     padding: 20,
