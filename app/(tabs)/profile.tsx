@@ -6,13 +6,32 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { EmotionListItem } from '@/components/EmotionListItem';
 import { EmotionFilters, SortOption } from '@/components/EmotionFilters';
-import { sampleEmotions, Emotion } from '@/data/sampleEmotions';
+import { EmotionalPartModal } from '@/components/EmotionalPartModal';
+import { sampleEmotions, Emotion, calculateEmotionScore } from '@/data/sampleEmotions';
 
 export default function ProfileScreen() {
-  const [sortBy, setSortBy] = useState<SortOption>('newest');
+  const [sortBy, setSortBy] = useState<SortOption>('intensity');
+  const [selectedEmotion, setSelectedEmotion] = useState<Emotion | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
 
   const handleEmotionPress = (emotion: Emotion) => {
-    console.log('Emotion pressed:', emotion);
+    setSelectedEmotion(emotion);
+    setModalVisible(true);
+  };
+
+  const handleModalClose = () => {
+    setModalVisible(false);
+    setSelectedEmotion(null);
+  };
+
+  const handleEdit = (emotion: Emotion) => {
+    console.log('Edit emotion:', emotion);
+    // TODO: Navigate to edit screen
+  };
+
+  const handleDelete = (emotion: Emotion) => {
+    console.log('Delete emotion:', emotion);
+    // TODO: Implement delete functionality
   };
 
   const sortedEmotions = useMemo(() => {
@@ -29,6 +48,8 @@ export default function ProfileScreen() {
         );
       case 'frequency':
         return sorted.sort((a, b) => b.frequency - a.frequency);
+      case 'intensity':
+        return sorted.sort((a, b) => calculateEmotionScore(b) - calculateEmotionScore(a));
       default:
         return sorted;
     }
@@ -58,6 +79,14 @@ export default function ProfileScreen() {
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+        />
+        
+        <EmotionalPartModal
+          emotion={selectedEmotion}
+          visible={modalVisible}
+          onClose={handleModalClose}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
         />
       </ThemedView>
     </SafeAreaView>

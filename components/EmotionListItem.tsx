@@ -3,7 +3,7 @@ import { StyleSheet, View, Pressable } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import { EmotionSliders } from './EmotionSliders';
-import { Emotion, getFrequencyColor } from '@/data/sampleEmotions';
+import { Emotion, getFrequencyColor, calculateEmotionScore } from '@/data/sampleEmotions';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface EmotionListItemProps {
@@ -14,11 +14,8 @@ interface EmotionListItemProps {
 export function EmotionListItem({ emotion, onPress }: EmotionListItemProps) {
   const colorScheme = useColorScheme();
   const frequencyColor = getFrequencyColor(emotion.frequency);
+  const emotionScore = calculateEmotionScore(emotion);
   const formattedDate = emotion.timestamp.toLocaleDateString();
-  const formattedTime = emotion.timestamp.toLocaleTimeString([], { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
 
   const borderColor = colorScheme === 'dark' 
     ? 'rgba(255, 255, 255, 0.1)' 
@@ -34,19 +31,24 @@ export function EmotionListItem({ emotion, onPress }: EmotionListItemProps) {
     >
       <ThemedView style={[styles.content, { borderColor }]}>
         <View style={styles.header}>
-          <View style={styles.labelContainer}>
+          <View style={styles.leftSection}>
             <View 
               style={[
                 styles.frequencyIndicator, 
                 { backgroundColor: frequencyColor }
               ]} 
             />
-            <ThemedText type="defaultSemiBold" style={styles.label}>
+            <ThemedText type="defaultSemiBold" style={styles.score}>
+              {emotionScore}
+            </ThemedText>
+          </View>
+          <View style={styles.titleContainer}>
+            <ThemedText type="defaultSemiBold" style={styles.title}>
               {emotion.label || 'Unlabeled'}
             </ThemedText>
           </View>
           <ThemedText type="caption" style={styles.timestamp}>
-            {formattedDate} {formattedTime}
+            {formattedDate}
           </ThemedText>
         </View>
         
@@ -81,14 +83,21 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: 8,
+    position: 'relative',
   },
-  labelContainer: {
+  leftSection: {
     flexDirection: 'row',
     alignItems: 'center',
+    position: 'absolute',
+    left: 0,
+    zIndex: 1,
+  },
+  titleContainer: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   frequencyIndicator: {
     width: 12,
@@ -96,12 +105,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginRight: 8,
   },
-  label: {
-    flex: 1,
+  score: {
+    fontWeight: '600',
+  },
+  title: {
+    textAlign: 'center',
+    fontSize: 20,
   },
   timestamp: {
-    marginLeft: 8,
+    position: 'absolute',
+    right: 0,
     opacity: 0.7,
+    zIndex: 1,
   },
   slidersContainer: {
     marginTop: 8,

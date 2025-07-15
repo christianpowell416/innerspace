@@ -4,7 +4,7 @@ import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-export type SortOption = 'newest' | 'oldest' | 'frequency';
+export type SortOption = 'newest' | 'oldest' | 'frequency' | 'intensity';
 
 interface EmotionFiltersProps {
   sortBy: SortOption;
@@ -15,6 +15,7 @@ export function EmotionFilters({ sortBy, onSortChange }: EmotionFiltersProps) {
   const colorScheme = useColorScheme();
   
   const sortOptions: { key: SortOption; label: string }[] = [
+    { key: 'intensity', label: 'Intensity' },
     { key: 'newest', label: 'Newest' },
     { key: 'oldest', label: 'Oldest' },
     { key: 'frequency', label: 'Frequency' },

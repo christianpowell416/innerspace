@@ -7,6 +7,7 @@ export interface Emotion {
   frequency: number; // 1 to 10 scale for color coding
   label?: string;
   notes?: string;
+  aiConversationSummary?: string;
 }
 
 export const sampleEmotions: Emotion[] = [
@@ -18,7 +19,8 @@ export const sampleEmotions: Emotion[] = [
     child: -1,
     frequency: 7,
     label: "Confident",
-    notes: "Feeling ready to tackle the day ahead"
+    notes: "Feeling ready to tackle the day ahead",
+    aiConversationSummary: "You expressed feeling energized and prepared for upcoming challenges. We explored how your inner strength (masculine energy) and optimism (light) are balancing with some protective awareness (slight child energy). This confidence seems rooted in recent accomplishments and self-trust."
   },
   {
     id: "2",
@@ -28,7 +30,8 @@ export const sampleEmotions: Emotion[] = [
     child: 2,
     frequency: 4,
     label: "Overwhelmed",
-    notes: "Too many tasks at once"
+    notes: "Too many tasks at once",
+    aiConversationSummary: "We discussed how multiple demands are creating internal chaos. Your feminine energy is seeking flow and connection, while the darker emotions reflect feeling lost. The child part is trying to play and feel safe. We identified breaking tasks into smaller pieces as a path forward."
   },
   {
     id: "3",
@@ -38,7 +41,8 @@ export const sampleEmotions: Emotion[] = [
     child: 1,
     frequency: 9,
     label: "Peaceful",
-    notes: "Evening meditation session"
+    notes: "Evening meditation session",
+    aiConversationSummary: "Your meditation practice created a beautiful balance between all parts of yourself. The light energy is strong, indicating clarity and spiritual connection. The gentle child energy suggests openness and wonder. This state represents harmony between your inner masculine and feminine aspects."
   },
   {
     id: "4",
@@ -131,4 +135,10 @@ export const getFrequencyColor = (level: number): string => {
 // Helper function to format emotion vector as string
 export const formatEmotionVector = (emotion: Emotion): string => {
   return `(${emotion.masculine}, ${emotion.light}, ${emotion.child})`;
+};
+
+// Helper function to calculate average score of emotion coordinates
+export const calculateEmotionScore = (emotion: Emotion): number => {
+  const average = (Math.abs(emotion.masculine) + Math.abs(emotion.light) + Math.abs(emotion.child)) / 3;
+  return Math.round(average * 10) / 10; // Round to 1 decimal place
 };
