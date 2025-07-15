@@ -8,7 +8,12 @@
       "Bash(node:*)",
       "Bash(npx expo:*)",
       "Bash(npm install:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": []
   }

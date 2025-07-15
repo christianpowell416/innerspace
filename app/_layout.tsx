@@ -7,6 +7,15 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors } from '@/constants/Colors';
+import { AuthProvider } from '@/contexts/AuthContext';
+import { AuthGuard } from '@/components/AuthGuard';
+
+// Polyfill for structuredClone (for React Native/Expo compatibility)
+if (!global.structuredClone) {
+  global.structuredClone = (obj: any) => {
+    return JSON.parse(JSON.stringify(obj));
+  };
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -37,15 +46,21 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? customDarkTheme : customLightTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="+not-found" />
-        </Stack>
-        <StatusBar 
-          style={colorScheme === 'dark' ? 'light' : 'dark'} 
-        />
-      </ThemeProvider>
+      <AuthProvider>
+        <ThemeProvider value={colorScheme === 'dark' ? customDarkTheme : customLightTheme}>
+          <AuthGuard>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="auth/sign-in" options={{ headerShown: false }} />
+              <Stack.Screen name="auth/sign-up" options={{ headerShown: false }} />
+              <Stack.Screen name="+not-found" />
+            </Stack>
+          </AuthGuard>
+          <StatusBar 
+            style={colorScheme === 'dark' ? 'light' : 'dark'} 
+          />
+        </ThemeProvider>
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

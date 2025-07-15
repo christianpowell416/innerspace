@@ -31,7 +31,7 @@ function EmotionSlider({ value, leftLabel, rightLabel }: SliderProps) {
   return (
     <View style={styles.sliderContainer}>
       <View style={styles.sliderRow}>
-        <ThemedText type="caption" style={styles.leftLabel}>
+        <ThemedText type="default" style={styles.leftLabel}>
           {leftLabel}
         </ThemedText>
         <View style={styles.sliderTrack}>
@@ -56,7 +56,7 @@ function EmotionSlider({ value, leftLabel, rightLabel }: SliderProps) {
             ]} 
           />
         </View>
-        <ThemedText type="caption" style={styles.rightLabel}>
+        <ThemedText type="default" style={styles.rightLabel}>
           {rightLabel}
         </ThemedText>
       </View>
@@ -68,17 +68,17 @@ export function EmotionSliders({ emotion }: EmotionSlidersProps) {
   return (
     <View style={styles.container}>
       <EmotionSlider 
-        value={emotion.masculine} 
+        value={emotion['feminine-masculine']} 
         leftLabel="Feminine" 
         rightLabel="Masculine" 
       />
       <EmotionSlider 
-        value={emotion.light} 
+        value={emotion['dark-light']} 
         leftLabel="Dark" 
         rightLabel="Light" 
       />
       <EmotionSlider 
-        value={emotion.child} 
+        value={emotion['child-parent']} 
         leftLabel="Child" 
         rightLabel="Parent" 
       />

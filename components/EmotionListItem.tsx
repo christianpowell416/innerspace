@@ -47,13 +47,13 @@ export function EmotionListItem({ emotion, onPress }: EmotionListItemProps) {
               {emotion.label || 'Unlabeled'}
             </ThemedText>
           </View>
-          <ThemedText type="caption" style={styles.timestamp}>
+          <ThemedText type="default" style={styles.timestamp}>
             {formattedDate}
           </ThemedText>
         </View>
         
         {emotion.notes && (
-          <ThemedText type="caption" style={styles.notes} numberOfLines={2}>
+          <ThemedText type="default" style={styles.notes} numberOfLines={2}>
             {emotion.notes}
           </ThemedText>
         )}
