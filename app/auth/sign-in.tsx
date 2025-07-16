@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, TextInput, Alert, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -13,9 +13,16 @@ export default function SignInScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signIn } = useAuth();
+  const { signIn, signInWithGoogle, user, refreshProfile } = useAuth();
   const router = useRouter();
   const colorScheme = useColorScheme();
+
+  // Redirect to tabs when user is authenticated
+  useEffect(() => {
+    if (user) {
+      router.replace('/(tabs)');
+    }
+  }, [user, router]);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -36,6 +43,14 @@ export default function SignInScreen() {
 
   const handleSignUp = () => {
     router.push('/auth/sign-up');
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithGoogle();
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to sign in with Google');
+    }
   };
 
 
@@ -105,7 +120,41 @@ export default function SignInScreen() {
               </ThemedText>
             </TouchableOpacity>
 
+            {signInWithGoogle ? (
+              <>
+                <ThemedView style={styles.divider}>
+                  <ThemedView style={[styles.dividerLine, { backgroundColor: colorScheme === 'dark' ? '#444' : '#DDD' }]} />
+                  <ThemedText style={styles.dividerText}>or</ThemedText>
+                  <ThemedView style={[styles.dividerLine, { backgroundColor: colorScheme === 'dark' ? '#444' : '#DDD' }]} />
+                </ThemedView>
 
+                <TouchableOpacity
+                  style={[
+                    styles.googleButton,
+                    {
+                      backgroundColor: colorScheme === 'dark' ? '#2A2A2A' : '#FFF',
+                      borderColor: colorScheme === 'dark' ? '#444' : '#DDD',
+                    },
+                    loading && styles.buttonDisabled
+                  ]}
+                  onPress={handleGoogleSignIn}
+                  disabled={loading}
+                >
+                  <ThemedText style={[
+                    styles.googleButtonText,
+                    { color: colorScheme === 'dark' ? '#FFF' : '#000' }
+                  ]}>
+                    Continue with Google
+                  </ThemedText>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <ThemedView style={styles.debugContainer}>
+                <ThemedText style={styles.debugText}>
+                  Google sign-in not available - check console logs
+                </ThemedText>
+              </ThemedView>
+            )}
 
             <TouchableOpacity
               style={styles.linkButton}
@@ -180,5 +229,43 @@ const styles = StyleSheet.create({
   linkText: {
     fontSize: 16,
     opacity: 0.8,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    opacity: 0.6,
+  },
+  googleButton: {
+    height: 50,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  googleButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  debugContainer: {
+    padding: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 59, 48, 0.3)',
+    marginVertical: 10,
+  },
+  debugText: {
+    color: '#FF3B30',
+    fontSize: 12,
+    textAlign: 'center',
   },
 });
