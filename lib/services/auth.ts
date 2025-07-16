@@ -57,12 +57,15 @@ export const getCurrentUser = async () => {
 
 // Get user profile
 export const getUserProfile = async (): Promise<Profile | null> => {
+  console.log('🔍 Getting user profile...');
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   
   if (userError || !user) {
+    console.log('🔍 No user found for profile fetch');
     return null;
   }
 
+  console.log('🔍 Fetching profile for user:', user.id);
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
@@ -71,13 +74,100 @@ export const getUserProfile = async (): Promise<Profile | null> => {
 
   if (error) {
     if (error.code === 'PGRST116') {
-      return null; // Profile not found
+      console.log('🔍 Profile not found for user, creating new profile...');
+      
+      // Create profile for new OAuth users
+      try {
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
+          
+        if (createError) {
+          console.error('Error creating profile:', createError);
+          return null;
+        }
+        
+        console.log('🔍 Profile created successfully');
+        return newProfile;
+      } catch (createError) {
+        console.error('Error creating profile:', createError);
+        return null;
+      }
     }
     console.error('Error fetching user profile:', error);
     throw error;
   }
 
+  console.log('🔍 Profile fetched successfully');
   return data;
+};
+
+// Get user profile for a specific user (avoids additional getUser call)
+export const getUserProfileForUser = async (user: any): Promise<Profile | null> => {
+  console.log('🔍 Getting user profile for user:', user.id);
+
+  const startTime = Date.now();
+  
+  try {
+    console.log('🔍 Executing profile query at', new Date().toISOString());
+    
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', user.id)
+      .single();
+      
+    const queryTime = Date.now() - startTime;
+    console.log('🔍 Profile query completed in', queryTime, 'ms');
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        console.log('🔍 Profile not found for user, creating new profile...');
+        
+        // Create profile for new OAuth users
+        try {
+          console.log('🔍 Inserting new profile...');
+          const { data: newProfile, error: createError } = await supabase
+            .from('profiles')
+            .insert({
+              id: user.id,
+              email: user.email,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+            
+          if (createError) {
+            console.error('Error creating profile:', createError);
+            return null;
+          }
+          
+          console.log('🔍 Profile created successfully');
+          return newProfile;
+        } catch (createError) {
+          console.error('Error creating profile:', createError);
+          return null;
+        }
+      }
+      console.error('Error fetching user profile:', error);
+      throw error;
+    }
+
+    console.log('🔍 Profile fetched successfully');
+    return data;
+  } catch (error) {
+    const queryTime = Date.now() - startTime;
+    console.error('🔍 Error in getUserProfileForUser after', queryTime, 'ms:', error);
+    throw error;
+  }
 };
 
 // Update user profile

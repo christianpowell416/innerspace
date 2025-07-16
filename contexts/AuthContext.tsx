@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { Profile, getCurrentUser, getUserProfile } from '@/lib/services/auth';
+import { Profile, getCurrentUser, getUserProfile, getUserProfileForUser } from '@/lib/services/auth';
 import { signInWithGoogle } from '@/lib/services/oauth';
 
 interface AuthContextType {
@@ -67,21 +67,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state change:', event, 'User:', session?.user?.email || 'none');
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
+        console.log('🔄 Auth state change:', event, 'User:', session?.user?.email || 'none');
         
-        if (session?.user) {
-          try {
-            const userProfile = await getUserProfile();
-            setProfile(userProfile);
-          } catch (error) {
-            console.error('Error loading user profile:', error);
+        try {
+          setSession(session);
+          setUser(session?.user ?? null);
+          
+          if (session?.user) {
+            console.log('🔄 Loading user profile in background...');
+            
+            // Load profile in background without blocking login
+            getUserProfileForUser(session.user)
+              .then((userProfile) => {
+                if (userProfile) {
+                  console.log('🔄 User profile loaded successfully in background');
+                  setProfile(userProfile);
+                } else {
+                  console.log('🔄 Profile loading failed, continuing without profile');
+                  setProfile(null);
+                }
+              })
+              .catch((error) => {
+                console.error('🔄 Error loading user profile in background:', error);
+                setProfile(null);
+              });
+            
+            // Continue immediately without waiting
+            setProfile(null);
+          } else {
+            console.log('🔄 No user session, clearing profile');
             setProfile(null);
           }
-        } else {
+        } catch (error) {
+          console.error('Error in auth state change handler:', error);
           setProfile(null);
+        } finally {
+          // Always clear loading after processing the auth change
+          console.log('🔄 Clearing loading for event:', event);
+          setLoading(false);
+          console.log('🔄 Auth state change processing complete');
         }
       }
     );
@@ -154,23 +178,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setLoading(true);
     try {
       await signInWithGoogle();
+      // Don't clear loading here - let the auth state change handle it
     } catch (error) {
       console.error('Error signing in with Google:', error);
+      setLoading(false); // Only clear loading on error
       throw error;
     }
   };
 
   const signOut = async () => {
-    setLoading(true);
+    console.log('🚪 Starting sign-out...');
+    
     try {
+      console.log('🚪 Calling supabase.auth.signOut()...');
       const { error } = await supabase.auth.signOut();
-      if (error) throw error;
+      
+      if (error) {
+        console.error('🚪 Supabase signOut error:', error);
+        throw error;
+      }
+      
+      console.log('🚪 Supabase signOut completed successfully');
+      
     } catch (error) {
-      console.error('Error signing out:', error);
-      throw error;
-    } finally {
-      setLoading(false);
+      console.error('🚪 Sign-out error:', error);
+      // Continue with cleanup even if signOut failed
     }
+    
+    // The auth state change listener will handle the cleanup
+    console.log('🚪 Sign-out process complete');
   };
 
 

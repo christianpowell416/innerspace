@@ -88,6 +88,7 @@ export const signInWithGoogle = async (): Promise<void> => {
             }
             
             console.log('Session set successfully:', data.user?.email);
+            console.log('Session data:', { hasUser: !!data.user, hasSession: !!data.session });
           } else {
             console.warn('No tokens found in OAuth result URL');
           }

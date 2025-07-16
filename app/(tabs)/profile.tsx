@@ -156,6 +156,14 @@ export default function ProfileScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Clean up emotion subscription first to prevent conflicts
+              if (syncManager) {
+                console.log('🔌 Cleaning up sync subscription');
+                syncManager.unsubscribe();
+                setSyncManager(null);
+                clearGlobalSyncCallback();
+              }
+              
               await signOut();
             } catch (error) {
               console.error('Error signing out:', error);
