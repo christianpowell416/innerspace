@@ -54,6 +54,9 @@ export const signInWithGoogle = async (): Promise<void> => {
       );
       
       console.log('WebBrowser result:', result);
+      console.log('🔧 Debug - result.url exists:', !!result.url);
+      console.log('🔧 Debug - isExpoGo:', isExpoGo);
+      console.log('🔧 Debug - will process session:', !!(result.url && isExpoGo));
       
       if (result.type === 'cancel') {
         throw new Error('Google sign-in was cancelled');

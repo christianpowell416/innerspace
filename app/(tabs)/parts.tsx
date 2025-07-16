@@ -11,7 +11,7 @@ import { sampleEmotions, Emotion, calculateEmotionScore, convertToLegacyEmotion 
 import { getEmotionsSorted, deleteEmotion, EmotionWithScore, subscribeToEmotions, setGlobalSyncCallback, clearGlobalSyncCallback } from '@/lib/services/emotions';
 import { useAuth } from '@/contexts/AuthContext';
 
-export default function ProfileScreen() {
+export default function PartsScreen() {
   const { user, signOut } = useAuth();
   const [sortBy, setSortBy] = useState<SortOption>('intensity');
   const [selectedEmotion, setSelectedEmotion] = useState<Emotion | null>(null);
