@@ -10,7 +10,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { BeliefListItem } from '@/components/BeliefListItem';
 import { EmotionFilters, SortOption, SortDirection } from '@/components/EmotionFilters';
 import { BeliefModal } from '@/components/BeliefModal';
-import { Emotion, calculateEmotionScore } from '@/data/sampleEmotions';
+import { Emotion, calculateEmotionScore, convertToLegacyEmotion } from '@/lib/types/emotion';
 import { getReleasedEmotions } from '@/lib/services/emotions';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -31,11 +31,13 @@ export default function BeliefsHistoryScreen() {
         // For authenticated users, load from Supabase
         try {
           const releasedEmotions = await getReleasedEmotions();
-          const beliefsWithDates = releasedEmotions.map((emotion: any) => ({
-            ...emotion,
-            timestamp: new Date(emotion.created_at),
-            releasedAt: new Date(emotion.released_at || emotion.created_at)
-          }));
+          const beliefsWithDates = releasedEmotions.map((emotion: any) => {
+            const converted = convertToLegacyEmotion(emotion);
+            return {
+              ...converted,
+              releasedAt: new Date(emotion.released_at || emotion.created_at)
+            };
+          });
           setReleasedBeliefs(beliefsWithDates);
         } catch (error) {
           console.error('Error loading released beliefs from Supabase:', error);
@@ -62,44 +64,6 @@ export default function BeliefsHistoryScreen() {
     loadReleasedBeliefs();
   }, [user]);
 
-  // Reload when component becomes visible (simple approach)
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      if (user) {
-        // For authenticated users, reload from Supabase
-        try {
-          const releasedEmotions = await getReleasedEmotions();
-          const beliefsWithDates = releasedEmotions.map((emotion: any) => ({
-            ...emotion,
-            timestamp: new Date(emotion.created_at),
-            releasedAt: new Date(emotion.released_at || emotion.created_at)
-          }));
-          setReleasedBeliefs(beliefsWithDates);
-        } catch (error) {
-          console.error('Error reloading released beliefs from Supabase:', error);
-        }
-      } else {
-        // For non-authenticated users, reload from AsyncStorage
-        try {
-          const stored = await AsyncStorage.getItem('releasedBeliefs');
-          if (stored) {
-            const beliefs = JSON.parse(stored);
-            const beliefsWithDates = beliefs.map((belief: any) => ({
-              ...belief,
-              timestamp: new Date(belief.timestamp),
-              releasedAt: new Date(belief.releasedAt)
-            }));
-            setReleasedBeliefs(beliefsWithDates);
-          }
-        } catch (error) {
-          console.error('Error reloading released beliefs from AsyncStorage:', error);
-        }
-      }
-    }, 2000); // Check every 2 seconds
-
-    return () => clearInterval(interval);
-  }, [user]);
-
   const handleEmotionPress = (emotion: Emotion) => {
     setSelectedEmotion(emotion);
     setModalVisible(true);
@@ -121,6 +85,8 @@ export default function BeliefsHistoryScreen() {
   };
 
   const sortedBeliefs = useMemo(() => {
+    if (!releasedBeliefs.length) return [];
+    
     const sorted = [...releasedBeliefs];
     
     switch (sortBy) {

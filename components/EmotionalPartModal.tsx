@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import { EmotionSliders } from './EmotionSliders';
-import { Emotion, getFrequencyColor, calculateEmotionScore } from '@/data/sampleEmotions';
+import { Emotion, getFrequencyColor, calculateEmotionScore } from '@/lib/types/emotion';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface EmotionalPartModalProps {

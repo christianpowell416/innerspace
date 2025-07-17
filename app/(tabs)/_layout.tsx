@@ -52,14 +52,14 @@ export default function TabLayout() {
         name="home"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={22} name="house" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house" color={color} />,
         }}
       />
       <Tabs.Screen
         name="learn"
         options={{
           title: 'Learn',
-          tabBarIcon: ({ color }) => <IconSymbol size={22} name="book" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="book" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -76,7 +76,7 @@ export default function TabLayout() {
               }
             ]}>
               <IconSymbol 
-                size={24} 
+                size={30} 
                 name="globe" 
                 color={focused ? '#FFF' : color} 
               />
@@ -91,14 +91,14 @@ export default function TabLayout() {
         name="bodygraph"
         options={{
           title: 'Body',
-          tabBarIcon: ({ color }) => <IconSymbol size={22} name="figure.stand" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="figure.stand" color={color} />,
         }}
       />
       <Tabs.Screen
         name="beliefs"
         options={{
           title: 'Beliefs',
-          tabBarIcon: ({ color }) => <IconSymbol size={22} name="puzzlepiece" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="puzzlepiece.fill" color={color} />,
         }}
       />
     </Tabs>

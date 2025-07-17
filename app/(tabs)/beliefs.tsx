@@ -10,7 +10,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { BeliefListItem } from '@/components/BeliefListItem';
 import { EmotionFilters, SortOption, SortDirection } from '@/components/EmotionFilters';
 import { BeliefModal } from '@/components/BeliefModal';
-import { Emotion, calculateEmotionScore, convertToLegacyEmotion } from '@/data/sampleEmotions';
+import { Emotion, calculateEmotionScore, convertToLegacyEmotion } from '@/lib/types/emotion';
 import { getEmotionsSorted, deleteEmotion, releaseEmotion, EmotionWithScore, subscribeToEmotions, setGlobalSyncCallback, clearGlobalSyncCallback } from '@/lib/services/emotions';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -246,6 +246,26 @@ export default function BeliefsListScreen() {
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
+        
+        {loading && (
+          <ThemedView style={styles.loadingContainer}>
+            <ThemedText>Loading beliefs...</ThemedText>
+          </ThemedView>
+        )}
+        
+        {!loading && emotions.length === 0 && user && (
+          <ThemedView style={styles.emptyContainer}>
+            <ThemedText style={styles.emptyText}>No beliefs yet</ThemedText>
+            <ThemedText style={styles.emptySubtext}>Add your first belief to get started</ThemedText>
+          </ThemedView>
+        )}
+        
+        {!loading && emotions.length === 0 && !user && (
+          <ThemedView style={styles.emptyContainer}>
+            <ThemedText style={styles.emptyText}>Sign in to view your beliefs</ThemedText>
+            <ThemedText style={styles.emptySubtext}>Create an account to save and track your emotional journey</ThemedText>
+          </ThemedView>
+        )}
         
         <BeliefModal
           emotion={selectedEmotion}

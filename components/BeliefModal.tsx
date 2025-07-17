@@ -4,7 +4,7 @@ import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
 import { IconSymbol } from './ui/IconSymbol';
 import { EmotionSliders } from './EmotionSliders';
-import { Emotion, getFrequencyColor, calculateEmotionScore } from '@/data/sampleEmotions';
+import { Emotion, getFrequencyColor, calculateEmotionScore } from '@/lib/types/emotion';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface BeliefModalProps {

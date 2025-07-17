@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ThemedText } from './ThemedText';
-import { Emotion } from '@/data/sampleEmotions';
+import { Emotion } from '@/lib/types/emotion';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 interface EmotionSlidersProps {
