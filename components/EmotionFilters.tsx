@@ -2,23 +2,26 @@ import React from 'react';
 import { StyleSheet, View, Pressable, ScrollView } from 'react-native';
 import { ThemedText } from './ThemedText';
 import { ThemedView } from './ThemedView';
+import { IconSymbol } from './ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-export type SortOption = 'newest' | 'oldest' | 'frequency' | 'intensity';
+export type SortOption = 'recent' | 'frequency' | 'intensity';
+export type SortDirection = 'asc' | 'desc';
 
 interface EmotionFiltersProps {
   sortBy: SortOption;
+  sortDirection: SortDirection;
   onSortChange: (sort: SortOption) => void;
+  onSortDirectionChange: (direction: SortDirection) => void;
 }
 
-export function EmotionFilters({ sortBy, onSortChange }: EmotionFiltersProps) {
+export function EmotionFilters({ sortBy, sortDirection, onSortChange, onSortDirectionChange }: EmotionFiltersProps) {
   const colorScheme = useColorScheme();
   
   const sortOptions: { key: SortOption; label: string }[] = [
-    { key: 'intensity', label: 'Intensity' },
-    { key: 'newest', label: 'Newest' },
-    { key: 'oldest', label: 'Oldest' },
+    { key: 'recent', label: 'Recent' },
     { key: 'frequency', label: 'Frequency' },
+    { key: 'intensity', label: 'Intensity' },
   ];
 
   const borderColor = colorScheme === 'dark' 
@@ -35,9 +38,24 @@ export function EmotionFilters({ sortBy, onSortChange }: EmotionFiltersProps) {
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="defaultSemiBold" style={styles.title}>
-        Sort by:
-      </ThemedText>
+      <View style={styles.titleRow}>
+        <ThemedText type="defaultSemiBold" style={styles.title}>
+          Sort by:
+        </ThemedText>
+        <Pressable
+          style={styles.directionButton}
+          onPress={() => onSortDirectionChange(sortDirection === 'asc' ? 'desc' : 'asc')}
+        >
+          <IconSymbol 
+            size={18} 
+            name={sortDirection === 'asc' ? 'arrow.up' : 'arrow.down'} 
+            color={colorScheme === 'dark' ? '#fff' : '#000'} 
+          />
+          <ThemedText style={styles.directionText}>
+            {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
+          </ThemedText>
+        </Pressable>
+      </View>
       <ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
@@ -78,9 +96,26 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
-  title: {
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 8,
+  },
+  title: {
     fontSize: 14,
+  },
+  directionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  directionText: {
+    fontSize: 12,
+    opacity: 0.7,
   },
   scrollContent: {
     gap: 8,

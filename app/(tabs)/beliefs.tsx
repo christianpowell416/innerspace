@@ -1,19 +1,22 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { StyleSheet, FlatList, Alert, TouchableOpacity } from 'react-native';
+import { StyleSheet, FlatList, Alert, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { EmotionListItem } from '@/components/EmotionListItem';
-import { EmotionFilters, SortOption } from '@/components/EmotionFilters';
-import { EmotionalPartModal } from '@/components/EmotionalPartModal';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { BeliefListItem } from '@/components/BeliefListItem';
+import { EmotionFilters, SortOption, SortDirection } from '@/components/EmotionFilters';
+import { BeliefModal } from '@/components/BeliefModal';
 import { sampleEmotions, Emotion, calculateEmotionScore, convertToLegacyEmotion } from '@/data/sampleEmotions';
 import { getEmotionsSorted, deleteEmotion, EmotionWithScore, subscribeToEmotions, setGlobalSyncCallback, clearGlobalSyncCallback } from '@/lib/services/emotions';
 import { useAuth } from '@/contexts/AuthContext';
 
-export default function PartsScreen() {
+export default function BeliefsListScreen() {
   const { user, signOut } = useAuth();
-  const [sortBy, setSortBy] = useState<SortOption>('intensity');
+  const [sortBy, setSortBy] = useState<SortOption>('recent');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedEmotion, setSelectedEmotion] = useState<Emotion | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [emotions, setEmotions] = useState<Emotion[]>([]);
@@ -49,21 +52,23 @@ export default function PartsScreen() {
           // Apply current sorting
           let sortedEmotions = [...legacyEmotions];
           switch (sortBy) {
-            case 'newest':
-              sortedEmotions.sort((a, b) => 
-                new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-              );
-              break;
-            case 'oldest':
-              sortedEmotions.sort((a, b) => 
-                new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-              );
+            case 'recent':
+              sortedEmotions.sort((a, b) => {
+                const diff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+                return sortDirection === 'desc' ? diff : -diff;
+              });
               break;
             case 'frequency':
-              sortedEmotions.sort((a, b) => b.frequency - a.frequency);
+              sortedEmotions.sort((a, b) => {
+                const diff = b.frequency - a.frequency;
+                return sortDirection === 'desc' ? diff : -diff;
+              });
               break;
             case 'intensity':
-              sortedEmotions.sort((a, b) => calculateEmotionScore(b) - calculateEmotionScore(a));
+              sortedEmotions.sort((a, b) => {
+                const diff = calculateEmotionScore(b) - calculateEmotionScore(a);
+                return sortDirection === 'desc' ? diff : -diff;
+              });
               break;
           }
           
@@ -86,7 +91,7 @@ export default function PartsScreen() {
         const connected = status === 'REALTIME_ACTIVE' || status === 'SMART_POLLING_ACTIVE';
         setIsConnected(connected);
         
-        const statusMessages = {
+        const statusMessages: Record<string, string> = {
           'CONNECTING': 'Connecting...',
           'REALTIME_ACTIVE': '✅ Real-time sync active',
           'SMART_POLLING_ACTIVE': '🎯 Smart sync active',
@@ -110,7 +115,7 @@ export default function PartsScreen() {
       setSyncManager(null);
       clearGlobalSyncCallback();
     };
-  }, [user, sortBy]);
+  }, [user, sortBy, sortDirection]);
 
 
   const handleEmotionPress = (emotion: Emotion) => {
@@ -145,36 +150,6 @@ export default function PartsScreen() {
     }
   };
 
-  const handleSignOut = async () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Clean up emotion subscription first to prevent conflicts
-              if (syncManager) {
-                console.log('🔌 Cleaning up sync subscription');
-                syncManager.unsubscribe();
-                setSyncManager(null);
-                clearGlobalSyncCallback();
-              }
-              
-              await signOut();
-            } catch (error) {
-              console.error('Error signing out:', error);
-              Alert.alert('Error', 'Failed to sign out. Please try again.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
 
   const sortedEmotions = useMemo(() => {
     if (user) {
@@ -185,72 +160,62 @@ export default function PartsScreen() {
       const sorted = [...sampleEmotions];
       
       switch (sortBy) {
-        case 'newest':
-          return sorted.sort((a, b) => 
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
-        case 'oldest':
-          return sorted.sort((a, b) => 
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          );
+        case 'recent':
+          return sorted.sort((a, b) => {
+            const diff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+            return sortDirection === 'desc' ? diff : -diff;
+          });
         case 'frequency':
-          return sorted.sort((a, b) => b.frequency - a.frequency);
+          return sorted.sort((a, b) => {
+            const diff = b.frequency - a.frequency;
+            return sortDirection === 'desc' ? diff : -diff;
+          });
         case 'intensity':
-          return sorted.sort((a, b) => calculateEmotionScore(b) - calculateEmotionScore(a));
+          return sorted.sort((a, b) => {
+            const diff = calculateEmotionScore(b) - calculateEmotionScore(a);
+            return sortDirection === 'desc' ? diff : -diff;
+          });
         default:
           return sorted;
       }
     }
-  }, [emotions, sortBy, user]);
+  }, [emotions, sortBy, sortDirection, user]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ThemedView style={styles.container}>
         <ThemedView style={styles.titleContainer}>
-          <ThemedText type="title">Emotional Parts</ThemedText>
-          <ThemedText type="default" style={styles.subtitle}>
-            {sortedEmotions.length} emotional parts recorded
+          <ThemedText type="title" style={styles.centerTitle}>Limiting Beliefs</ThemedText>
+          <ThemedText type="default" style={styles.centerSubtitle}>
+            {sortedEmotions.length} limiting beliefs
           </ThemedText>
-          {user && (
-            <ThemedView style={styles.statusContainer}>
-              <ThemedView style={[
-                styles.statusIndicator, 
-                { backgroundColor: isConnected ? '#34C759' : '#FF3B30' }
-              ]} />
-              <ThemedText type="default" style={styles.statusText}>
-                {syncStatus === 'REALTIME_ACTIVE' && 'Live sync active'}
-                {syncStatus === 'SMART_POLLING_ACTIVE' && 'Smart sync active'}
-                {syncStatus === 'CONNECTING' && 'Connecting...'}
-                {syncStatus === 'DISCONNECTED' && 'Reconnecting...'}
-              </ThemedText>
-            </ThemedView>
-          )}
-          {user && (
-            <ThemedView style={styles.buttonContainer}>
-              <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-                <ThemedText style={styles.signOutText}>Sign Out</ThemedText>
-              </TouchableOpacity>
-            </ThemedView>
-          )}
+          <TouchableOpacity 
+            style={styles.historyButton}
+            onPress={() => router.push('/beliefs/history')}
+          >
+            <IconSymbol size={24} name="clock" color="#666" />
+          </TouchableOpacity>
         </ThemedView>
         
         <EmotionFilters 
-          sortBy={sortBy} 
+          sortBy={sortBy}
+          sortDirection={sortDirection}
           onSortChange={setSortBy}
+          onSortDirectionChange={setSortDirection}
         />
         
         <FlatList
           data={sortedEmotions}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <EmotionListItem emotion={item} onPress={handleEmotionPress} />
+            <BeliefListItem emotion={item} onPress={handleEmotionPress} />
           )}
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
         
-        <EmotionalPartModal
+        <BeliefModal
           emotion={selectedEmotion}
           visible={modalVisible}
           onClose={handleModalClose}
@@ -270,54 +235,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   titleContainer: {
-    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 10,
+    position: 'relative',
   },
-  subtitle: {
+  centerTitle: {
+    textAlign: 'center',
+    width: '100%',
+  },
+  centerSubtitle: {
     marginTop: 4,
     opacity: 0.7,
+    textAlign: 'center',
+    width: '100%',
+  },
+  historyButton: {
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    padding: 8,
+    borderRadius: 8,
   },
   list: {
     flex: 1,
   },
   listContent: {
     paddingBottom: 100, // Add padding to account for tab bar
-  },
-  signOutButton: {
-    marginTop: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 59, 48, 0.3)',
-  },
-  signOutText: {
-    color: '#FF3B30',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  buttonContainer: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 12,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 6,
-  },
-  statusIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 12,
-    opacity: 0.7,
   },
 });

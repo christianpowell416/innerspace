@@ -9,6 +9,7 @@ export interface Emotion {
   label?: string;
   notes?: string;
   aiConversationSummary?: string;
+  limitingBeliefs?: string;
 }
 
 // Convert Supabase emotion to legacy format
@@ -23,6 +24,7 @@ export const convertToLegacyEmotion = (emotion: any): Emotion => {
     label: emotion.label,
     notes: emotion.notes,
     aiConversationSummary: emotion.ai_conversation_summary,
+    limitingBeliefs: emotion.limiting_beliefs,
   };
 };
 
@@ -36,7 +38,8 @@ export const sampleEmotions: Emotion[] = [
     frequency: 7,
     label: "Confident",
     notes: "Feeling ready to tackle the day ahead",
-    aiConversationSummary: "You expressed feeling energized and prepared for upcoming challenges. We explored how your inner strength (masculine energy) and optimism (light) are balancing with some protective awareness (slight child energy). This confidence seems rooted in recent accomplishments and self-trust."
+    aiConversationSummary: "You expressed feeling energized and prepared for upcoming challenges. We explored how your inner strength (masculine energy) and optimism (light) are balancing with some protective awareness (slight child energy). This confidence seems rooted in recent accomplishments and self-trust.",
+    limitingBeliefs: "I need to prove my worth through achievements to be valuable"
   },
   {
     id: "2",
@@ -47,7 +50,8 @@ export const sampleEmotions: Emotion[] = [
     frequency: 4,
     label: "Overwhelmed",
     notes: "Too many tasks at once",
-    aiConversationSummary: "We discussed how multiple demands are creating internal chaos. Your feminine energy is seeking flow and connection, while the darker emotions reflect feeling lost. The child part is trying to play and feel safe. We identified breaking tasks into smaller pieces as a path forward."
+    aiConversationSummary: "We discussed how multiple demands are creating internal chaos. Your feminine energy is seeking flow and connection, while the darker emotions reflect feeling lost. The child part is trying to play and feel safe. We identified breaking tasks into smaller pieces as a path forward.",
+    limitingBeliefs: "I must handle everything perfectly or I'll disappoint everyone"
   },
   {
     id: "3",
@@ -58,7 +62,8 @@ export const sampleEmotions: Emotion[] = [
     frequency: 9,
     label: "Peaceful",
     notes: "Evening meditation session",
-    aiConversationSummary: "Your meditation practice created a beautiful balance between all parts of yourself. The light energy is strong, indicating clarity and spiritual connection. The gentle child energy suggests openness and wonder. This state represents harmony between your inner masculine and feminine aspects."
+    aiConversationSummary: "Your meditation practice created a beautiful balance between all parts of yourself. The light energy is strong, indicating clarity and spiritual connection. The gentle child energy suggests openness and wonder. This state represents harmony between your inner masculine and feminine aspects.",
+    limitingBeliefs: "I must constantly seek inner peace or I'll lose myself to chaos"
   },
   {
     id: "4",
@@ -68,7 +73,8 @@ export const sampleEmotions: Emotion[] = [
     'child-parent': -2,
     frequency: 6,
     label: "Frustrated",
-    notes: "Meeting didn't go as planned"
+    notes: "Meeting didn't go as planned",
+    limitingBeliefs: "When things don't go as planned, it means I'm not good enough"
   },
   {
     id: "5",
@@ -78,7 +84,8 @@ export const sampleEmotions: Emotion[] = [
     'child-parent': 3,
     frequency: 8,
     label: "Joyful",
-    notes: "Spending time with friends"
+    notes: "Spending time with friends",
+    limitingBeliefs: "I need others' approval and company to feel truly happy"
   },
   {
     id: "6",
@@ -88,7 +95,8 @@ export const sampleEmotions: Emotion[] = [
     'child-parent': 0,
     frequency: 5,
     label: "Neutral",
-    notes: "Just woke up, feeling balanced"
+    notes: "Just woke up, feeling balanced",
+    limitingBeliefs: "Being emotionally neutral means I'm not living life fully"
   },
   {
     id: "7",
@@ -98,7 +106,8 @@ export const sampleEmotions: Emotion[] = [
     'child-parent': -3,
     frequency: 3,
     label: "Angry",
-    notes: "Traffic jam made me late"
+    notes: "Traffic jam made me late",
+    limitingBeliefs: "External circumstances have complete control over my emotional state"
   },
   {
     id: "8",
@@ -108,7 +117,8 @@ export const sampleEmotions: Emotion[] = [
     'child-parent': 2,
     frequency: 7,
     label: "Curious",
-    notes: "Learning something new"
+    notes: "Learning something new",
+    limitingBeliefs: "I must understand everything immediately or I'm not smart enough"
   },
   {
     id: "9",
@@ -118,7 +128,8 @@ export const sampleEmotions: Emotion[] = [
     'child-parent': 1,
     frequency: 6,
     label: "Melancholy",
-    notes: "Reflecting on the past"
+    notes: "Reflecting on the past",
+    limitingBeliefs: "My past defines who I am and limits what I can become"
   },
   {
     id: "10",
@@ -128,7 +139,8 @@ export const sampleEmotions: Emotion[] = [
     'child-parent': -1,
     frequency: 8,
     label: "Determined",
-    notes: "Working on an important project"
+    notes: "Working on an important project",
+    limitingBeliefs: "I must achieve success at all costs or I'm a failure"
   }
 ];
 
