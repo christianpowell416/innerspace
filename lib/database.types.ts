@@ -21,43 +21,52 @@ export interface Database {
           updated_at?: string;
         };
       };
-      emotions: {
+      beliefs: {
         Row: {
           id: string;
           user_id: string;
-          label: string | null;
+          emotion: string | null;
           notes: string | null;
           'feminine-masculine': number;
           'dark-light': number;
           'child-parent': number;
           frequency: number;
           ai_conversation_summary: string | null;
+          belief: string | null;
+          released: boolean;
+          released_at: string | null;
           created_at: string;
           updated_at: string;
         };
         Insert: {
           id?: string;
           user_id: string;
-          label?: string | null;
+          emotion?: string | null;
           notes?: string | null;
           'feminine-masculine': number;
           'dark-light': number;
           'child-parent': number;
           frequency: number;
           ai_conversation_summary?: string | null;
+          belief?: string | null;
+          released?: boolean;
+          released_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };
         Update: {
           id?: string;
           user_id?: string;
-          label?: string | null;
+          emotion?: string | null;
           notes?: string | null;
           'feminine-masculine'?: number;
           'dark-light'?: number;
           'child-parent'?: number;
           frequency?: number;
           ai_conversation_summary?: string | null;
+          belief?: string | null;
+          released?: boolean;
+          released_at?: string | null;
           created_at?: string;
           updated_at?: string;
         };

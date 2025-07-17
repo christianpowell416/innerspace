@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { StyleSheet, FlatList, Alert, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -9,8 +10,8 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { BeliefListItem } from '@/components/BeliefListItem';
 import { EmotionFilters, SortOption, SortDirection } from '@/components/EmotionFilters';
 import { BeliefModal } from '@/components/BeliefModal';
-import { sampleEmotions, Emotion, calculateEmotionScore, convertToLegacyEmotion } from '@/data/sampleEmotions';
-import { getEmotionsSorted, deleteEmotion, EmotionWithScore, subscribeToEmotions, setGlobalSyncCallback, clearGlobalSyncCallback } from '@/lib/services/emotions';
+import { Emotion, calculateEmotionScore, convertToLegacyEmotion } from '@/data/sampleEmotions';
+import { getEmotionsSorted, deleteEmotion, releaseEmotion, EmotionWithScore, subscribeToEmotions, setGlobalSyncCallback, clearGlobalSyncCallback } from '@/lib/services/emotions';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function BeliefsListScreen() {
@@ -25,11 +26,11 @@ export default function BeliefsListScreen() {
   const [syncStatus, setSyncStatus] = useState<'CONNECTING' | 'REALTIME_ACTIVE' | 'SMART_POLLING_ACTIVE' | 'DISCONNECTED'>('CONNECTING');
   const [syncManager, setSyncManager] = useState<{ unsubscribe: () => void; syncAfterAction: () => void } | null>(null);
 
-  // Load emotions from Supabase (for non-authenticated users only)
+  // Load emotions from Supabase for all users
   useEffect(() => {
     if (!user) {
-      // Use sample data when not authenticated
-      setEmotions(sampleEmotions);
+      // For non-authenticated users, show empty state
+      setEmotions([]);
       setLoading(false);
     }
   }, [user]);
@@ -150,44 +151,75 @@ export default function BeliefsListScreen() {
     }
   };
 
+  const clearReleasedBeliefs = async () => {
+    try {
+      await AsyncStorage.removeItem('releasedBeliefs');
+      Alert.alert('Success', 'Released beliefs cleared!');
+    } catch (error) {
+      console.error('Error clearing released beliefs:', error);
+    }
+  };
+
+  const handleRelease = async (emotion: Emotion) => {
+    if (!user) {
+      // For non-authenticated users, still use AsyncStorage
+      const storeReleasedBelief = async () => {
+        try {
+          console.log('🔧 Releasing emotion (no auth):', emotion);
+          
+          const existingReleased = await AsyncStorage.getItem('releasedBeliefs');
+          const releasedBeliefs = existingReleased ? JSON.parse(existingReleased) : [];
+          
+          const releasedBelief = {
+            ...emotion,
+            releasedAt: new Date().toISOString()
+          };
+          
+          releasedBeliefs.push(releasedBelief);
+          await AsyncStorage.setItem('releasedBeliefs', JSON.stringify(releasedBeliefs));
+          
+          // Remove from active emotions list
+          setEmotions(prevEmotions => prevEmotions.filter(e => e.id !== emotion.id));
+          
+          Alert.alert('Success', 'Emotion released successfully!');
+        } catch (error) {
+          console.error('Error storing released belief:', error);
+          Alert.alert('Error', 'Failed to release emotion. Please try again.');
+        }
+      };
+      
+      storeReleasedBelief();
+      return;
+    }
+
+    // For authenticated users, use Supabase sync
+    try {
+      console.log('🔧 Releasing emotion with Supabase sync:', emotion);
+      await releaseEmotion(emotion.id);
+      
+      // Trigger sync after release
+      syncManager?.syncAfterAction();
+      
+      Alert.alert('Success', 'Emotion released successfully!');
+    } catch (error) {
+      console.error('Error releasing emotion:', error);
+      Alert.alert('Error', 'Failed to release emotion. Please try again.');
+    }
+  };
+
 
   const sortedEmotions = useMemo(() => {
-    if (user) {
-      // Data is already sorted from Supabase
-      return emotions;
-    } else {
-      // Sort sample data manually
-      const sorted = [...sampleEmotions];
-      
-      switch (sortBy) {
-        case 'recent':
-          return sorted.sort((a, b) => {
-            const diff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-            return sortDirection === 'desc' ? diff : -diff;
-          });
-        case 'frequency':
-          return sorted.sort((a, b) => {
-            const diff = b.frequency - a.frequency;
-            return sortDirection === 'desc' ? diff : -diff;
-          });
-        case 'intensity':
-          return sorted.sort((a, b) => {
-            const diff = calculateEmotionScore(b) - calculateEmotionScore(a);
-            return sortDirection === 'desc' ? diff : -diff;
-          });
-        default:
-          return sorted;
-      }
-    }
-  }, [emotions, sortBy, sortDirection, user]);
+    // All data comes from Supabase, already sorted
+    return emotions;
+  }, [emotions]);
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ThemedView style={styles.container}>
         <ThemedView style={styles.titleContainer}>
-          <ThemedText type="title" style={styles.centerTitle}>Limiting Beliefs</ThemedText>
+          <ThemedText type="title" style={styles.centerTitle}>Beliefs</ThemedText>
           <ThemedText type="default" style={styles.centerSubtitle}>
-            {sortedEmotions.length} limiting beliefs
+            {sortedEmotions.length} total
           </ThemedText>
           <TouchableOpacity 
             style={styles.historyButton}
@@ -221,6 +253,7 @@ export default function BeliefsListScreen() {
           onClose={handleModalClose}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          onRelease={handleRelease}
         />
       </ThemedView>
     </SafeAreaView>

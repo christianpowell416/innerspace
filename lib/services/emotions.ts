@@ -1,9 +1,9 @@
 import { supabase } from '../supabase';
 import { Database } from '../database.types';
 
-export type EmotionRow = Database['public']['Tables']['emotions']['Row'];
-export type EmotionInsert = Database['public']['Tables']['emotions']['Insert'];
-export type EmotionUpdate = Database['public']['Tables']['emotions']['Update'];
+export type EmotionRow = Database['public']['Tables']['beliefs']['Row'];
+export type EmotionInsert = Database['public']['Tables']['beliefs']['Insert'];
+export type EmotionUpdate = Database['public']['Tables']['beliefs']['Update'];
 
 export interface EmotionWithScore extends EmotionRow {
   score: number;
@@ -15,11 +15,12 @@ export const calculateEmotionScore = (emotion: EmotionRow): number => {
   return Math.round(average * 10) / 10;
 };
 
-// Get all emotions for the current user
+// Get all emotions for the current user (only non-released ones)
 export const getEmotions = async (): Promise<EmotionWithScore[]> => {
   const { data, error } = await supabase
-    .from('emotions')
+    .from('beliefs')
     .select('*')
+    .eq('released', false)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -34,10 +35,30 @@ export const getEmotions = async (): Promise<EmotionWithScore[]> => {
   }));
 };
 
+// Get all released emotions for the current user
+export const getReleasedEmotions = async (): Promise<EmotionWithScore[]> => {
+  const { data, error } = await supabase
+    .from('beliefs')
+    .select('*')
+    .eq('released', true)
+    .order('released_at', { ascending: false });
+
+  if (error) {
+    console.error('Error fetching released emotions:', error);
+    throw error;
+  }
+
+  // Add calculated score to each emotion
+  return data.map(emotion => ({
+    ...emotion,
+    score: calculateEmotionScore(emotion)
+  }));
+};
+
 // Get a single emotion by ID
 export const getEmotion = async (id: string): Promise<EmotionWithScore | null> => {
   const { data, error } = await supabase
-    .from('emotions')
+    .from('beliefs')
     .select('*')
     .eq('id', id)
     .single();
@@ -76,7 +97,7 @@ export const createEmotion = async (emotion: Omit<EmotionInsert, 'user_id'>): Pr
   }
 
   const { data, error } = await supabase
-    .from('emotions')
+    .from('beliefs')
     .insert({
       ...emotion,
       user_id: user.id
@@ -101,7 +122,7 @@ export const createEmotion = async (emotion: Omit<EmotionInsert, 'user_id'>): Pr
 // Update an emotion
 export const updateEmotion = async (id: string, updates: EmotionUpdate): Promise<EmotionWithScore> => {
   const { data, error } = await supabase
-    .from('emotions')
+    .from('beliefs')
     .update(updates)
     .eq('id', id)
     .select()
@@ -124,7 +145,7 @@ export const updateEmotion = async (id: string, updates: EmotionUpdate): Promise
 // Delete an emotion
 export const deleteEmotion = async (id: string): Promise<void> => {
   const { error } = await supabase
-    .from('emotions')
+    .from('beliefs')
     .delete()
     .eq('id', id);
 
@@ -137,9 +158,30 @@ export const deleteEmotion = async (id: string): Promise<void> => {
   setTimeout(() => globalSyncCallback?.(), 500);
 };
 
-// Get emotions sorted by different criteria
+// Release an emotion (mark as released in Supabase)
+export const releaseEmotion = async (emotionId: string): Promise<void> => {
+  const { error } = await supabase
+    .from('beliefs')
+    .update({ 
+      released: true, 
+      released_at: new Date().toISOString() 
+    })
+    .eq('id', emotionId);
+
+  if (error) {
+    console.error('Error releasing emotion:', error);
+    throw error;
+  }
+
+  // Trigger sync after release
+  setTimeout(() => globalSyncCallback?.(), 500);
+  
+  console.log('🔧 Emotion released and synced with Supabase');
+};
+
+// Get emotions sorted by different criteria (only non-released ones)
 export const getEmotionsSorted = async (sortBy: 'newest' | 'oldest' | 'frequency' | 'intensity'): Promise<EmotionWithScore[]> => {
-  let query = supabase.from('emotions').select('*');
+  let query = supabase.from('beliefs').select('*').eq('released', false);
 
   switch (sortBy) {
     case 'newest':
@@ -188,20 +230,43 @@ export const subscribeToEmotions = (
   let lastDataHash = '';
   let pendingCheck = false;
   let realtimeDisabled = false; // Track if real-time is explicitly disabled
-  
-  // Try real-time subscription first
-  const channel = supabase.channel('emotions-realtime-' + Date.now());
   let realtimeWorking = false;
+  let channel: any = null;
+  let pollingInterval: NodeJS.Timeout | null = null;
+  let reconnectInterval: NodeJS.Timeout | null = null;
+  
+  // Function to set up real-time subscription
+  const setupRealtimeSubscription = () => {
+    if (channel) {
+      channel.unsubscribe();
+    }
+    
+    channel = supabase.channel('beliefs-realtime-' + Date.now());
+    realtimeWorking = false;
   
   // Set up real-time subscription
   channel
     .on('postgres_changes', 
-      { event: '*', schema: 'public', table: 'emotions' }, 
+      { event: '*', schema: 'public', table: 'beliefs' }, 
       async (payload) => {
         if (!isSubscribed) return;
         
         console.log('📡 Real-time change detected:', payload.eventType);
         realtimeWorking = true;
+        
+        // If we were in smart polling mode, switch back to real-time
+        if (realtimeDisabled) {
+          console.log('🔄 Real-time is working again! Switching back from smart polling');
+          realtimeDisabled = false;
+          if (pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+          }
+          if (reconnectInterval) {
+            clearInterval(reconnectInterval);
+            reconnectInterval = null;
+          }
+        }
         
         try {
           const emotions = await getEmotions();
@@ -225,12 +290,40 @@ export const subscribeToEmotions = (
         console.log('⚠️ Real-time is not enabled for this table, using smart polling');
         realtimeDisabled = true;
         onStatusChange?.('SMART_POLLING_ACTIVE');
+        startSmartPolling();
+        startReconnectAttempts();
       } else if (payload.status === 'error') {
         console.log('⚠️ Real-time error detected, switching to smart polling mode');
         realtimeDisabled = true;
         onStatusChange?.('SMART_POLLING_ACTIVE');
+        startSmartPolling();
+        startReconnectAttempts();
       }
     });
+  };
+
+  // Function to start smart polling
+  const startSmartPolling = () => {
+    if (pollingInterval) return; // Already running
+    
+    console.log('🔄 Starting smart polling...');
+    pollingInterval = setInterval(() => {
+      checkForUpdates();
+    }, 3000); // Poll every 3 seconds
+  };
+
+  // Function to start reconnect attempts
+  const startReconnectAttempts = () => {
+    if (reconnectInterval) return; // Already running
+    
+    console.log('🔄 Starting reconnect attempts...');
+    reconnectInterval = setInterval(() => {
+      if (!isSubscribed) return;
+      
+      console.log('🔄 Attempting to reconnect to real-time...');
+      setupRealtimeSubscription();
+    }, 30000); // Try to reconnect every 30 seconds
+  };
 
   // Smart polling - only check when explicitly triggered
   const checkForUpdates = async () => {
@@ -257,6 +350,9 @@ export const subscribeToEmotions = (
       pendingCheck = false;
     }
   };
+
+  // Initialize the subscription
+  setupRealtimeSubscription();
 
   // Subscribe to real-time, fallback to smart polling if it fails
   const subscription = channel.subscribe((status) => {
@@ -287,8 +383,18 @@ export const subscribeToEmotions = (
   return {
     unsubscribe: () => {
       isSubscribed = false;
-      channel.unsubscribe();
-      console.log('🔌 Unsubscribed from emotions sync');
+      if (channel) {
+        channel.unsubscribe();
+      }
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+      }
+      if (reconnectInterval) {
+        clearInterval(reconnectInterval);
+        reconnectInterval = null;
+      }
+      console.log('🔌 Unsubscribed from emotions sync and cleaned up intervals');
     },
     // Method to trigger manual sync after user actions
     syncAfterAction: () => {

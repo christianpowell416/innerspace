@@ -38,12 +38,38 @@ export function EmotionFilters({ sortBy, sortDirection, onSortChange, onSortDire
 
   return (
     <ThemedView style={styles.container}>
-      <View style={styles.titleRow}>
-        <ThemedText type="defaultSemiBold" style={styles.title}>
-          Sort by:
-        </ThemedText>
+      <View style={styles.filtersRow}>
+        <View style={styles.sortOptionsContainer}>
+          {sortOptions.map((option) => (
+            <Pressable
+              key={option.key}
+              style={[
+                styles.filterButton,
+                { borderColor },
+                sortBy === option.key && {
+                  backgroundColor: activeBackgroundColor,
+                  borderColor: activeBorderColor,
+                }
+              ]}
+              onPress={() => onSortChange(option.key)}
+            >
+              <ThemedText 
+                style={[
+                  styles.filterText,
+                  sortBy === option.key && styles.activeFilterText
+                ]}
+              >
+                {option.label}
+              </ThemedText>
+            </Pressable>
+          ))}
+        </View>
         <Pressable
-          style={styles.directionButton}
+          style={[
+            styles.filterButton,
+            styles.directionButton,
+            { borderColor }
+          ]}
           onPress={() => onSortDirectionChange(sortDirection === 'asc' ? 'desc' : 'asc')}
         >
           <IconSymbol 
@@ -51,40 +77,8 @@ export function EmotionFilters({ sortBy, sortDirection, onSortChange, onSortDire
             name={sortDirection === 'asc' ? 'arrow.up' : 'arrow.down'} 
             color={colorScheme === 'dark' ? '#fff' : '#000'} 
           />
-          <ThemedText style={styles.directionText}>
-            {sortDirection === 'asc' ? 'Ascending' : 'Descending'}
-          </ThemedText>
         </Pressable>
       </View>
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {sortOptions.map((option) => (
-          <Pressable
-            key={option.key}
-            style={[
-              styles.filterButton,
-              { borderColor },
-              sortBy === option.key && {
-                backgroundColor: activeBackgroundColor,
-                borderColor: activeBorderColor,
-              }
-            ]}
-            onPress={() => onSortChange(option.key)}
-          >
-            <ThemedText 
-              style={[
-                styles.filterText,
-                sortBy === option.key && styles.activeFilterText
-              ]}
-            >
-              {option.label}
-            </ThemedText>
-          </Pressable>
-        ))}
-      </ScrollView>
     </ThemedView>
   );
 }
@@ -96,28 +90,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 255, 255, 0.1)',
   },
-  titleRow: {
+  filtersRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  title: {
-    fontSize: 14,
-  },
-  directionButton: {
+  sortOptionsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  directionText: {
-    fontSize: 12,
-    opacity: 0.7,
-  },
-  scrollContent: {
     gap: 8,
   },
   filterButton: {
@@ -125,6 +104,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
+  },
+  directionButton: {
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   filterText: {
     fontSize: 14,

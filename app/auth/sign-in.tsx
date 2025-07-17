@@ -32,9 +32,12 @@ export default function SignInScreen() {
 
     setLoading(true);
     try {
+      console.log('🔧 Attempting sign in with email:', email);
       await signIn(email, password);
+      console.log('🔧 Sign in successful');
       router.replace('/(tabs)');
     } catch (error: any) {
+      console.error('🔧 Sign in error:', error);
       Alert.alert('Error', error.message || 'Failed to sign in');
     } finally {
       setLoading(false);
@@ -63,7 +66,7 @@ export default function SignInScreen() {
       >
         <ThemedView style={styles.content}>
           <ThemedView style={styles.header}>
-            <ThemedText type="title" style={styles.title}>Welcome Back</ThemedText>
+            <ThemedText type="title" style={styles.title}>Welcome</ThemedText>
             <ThemedText type="default" style={styles.subtitle}>
               Sign in to continue your emotional journey
             </ThemedText>
@@ -104,6 +107,8 @@ export default function SignInScreen() {
               secureTextEntry
               autoCapitalize="none"
               autoCorrect={false}
+              onSubmitEditing={handleSignIn}
+              returnKeyType="go"
             />
 
             <TouchableOpacity
@@ -115,7 +120,7 @@ export default function SignInScreen() {
               onPress={handleSignIn}
               disabled={loading}
             >
-              <ThemedText style={styles.buttonText}>
+              <ThemedText style={[styles.buttonText, { color: colorScheme === 'dark' ? '#000000' : '#FFFFFF' }]}>
                 {loading ? 'Signing In...' : 'Sign In'}
               </ThemedText>
             </TouchableOpacity>

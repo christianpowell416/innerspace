@@ -31,9 +31,22 @@ export function BeliefListItem({ emotion, onPress }: BeliefListItemProps) {
     >
       <ThemedView style={[styles.content, { borderColor }]}>
         {emotion.limitingBeliefs && (
-          <ThemedText type="defaultSemiBold" style={styles.limitingBeliefs} numberOfLines={2}>
-            {emotion.limitingBeliefs}
-          </ThemedText>
+          <View style={styles.topRow}>
+            <ThemedText type="defaultSemiBold" style={styles.limitingBeliefs} numberOfLines={2}>
+              {emotion.limitingBeliefs}
+            </ThemedText>
+            <View style={[
+              styles.scoreCircle,
+              { 
+                backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+                borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.2)'
+              }
+            ]}>
+              <ThemedText type="defaultSemiBold" style={styles.score}>
+                {emotionScore}
+              </ThemedText>
+            </View>
+          </View>
         )}
         
         <View style={styles.header}>
@@ -46,11 +59,6 @@ export function BeliefListItem({ emotion, onPress }: BeliefListItemProps) {
             />
             <ThemedText type="default" style={styles.title}>
               {emotion.label || 'Unlabeled'}
-            </ThemedText>
-          </View>
-          <View style={styles.titleContainer}>
-            <ThemedText type="defaultSemiBold" style={styles.score}>
-              {emotionScore}
             </ThemedText>
           </View>
           <ThemedText type="default" style={styles.timestamp}>
@@ -81,11 +89,28 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  scoreCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    marginLeft: 12,
+    marginTop: -8,
+    marginBottom: 8,
+    flexShrink: 0,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 8,
-    marginTop: 8,
     position: 'relative',
   },
   leftSection: {
@@ -95,11 +120,6 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 1,
   },
-  titleContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   frequencyIndicator: {
     width: 12,
     height: 12,
@@ -108,6 +128,7 @@ const styles = StyleSheet.create({
   },
   score: {
     fontWeight: '600',
+    fontSize: 14,
   },
   title: {
     textAlign: 'center',
@@ -128,7 +149,8 @@ const styles = StyleSheet.create({
   },
   limitingBeliefs: {
     textAlign: 'left',
-    marginBottom: 4,
     fontSize: 20,
+    flex: 1,
+    marginTop: -2,
   },
 });

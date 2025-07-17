@@ -117,16 +117,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signIn = async (email: string, password: string) => {
     setLoading(true);
     try {
+      console.log('🔧 AuthContext: Attempting Supabase sign in');
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
+      console.log('🔧 AuthContext: Supabase response data:', !!data);
+      console.log('🔧 AuthContext: Supabase response error:', error);
+
       if (error) throw error;
       
       // The auth state change listener will handle setting user and profile
     } catch (error) {
-      console.error('Error signing in:', error);
+      console.error('🔧 AuthContext: Error signing in:', error);
       throw error;
     } finally {
       setLoading(false);

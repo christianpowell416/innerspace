@@ -1,7 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { StyleSheet, FlatList, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -9,18 +10,95 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { BeliefListItem } from '@/components/BeliefListItem';
 import { EmotionFilters, SortOption, SortDirection } from '@/components/EmotionFilters';
 import { BeliefModal } from '@/components/BeliefModal';
-import { sampleEmotions, Emotion, calculateEmotionScore } from '@/data/sampleEmotions';
+import { Emotion, calculateEmotionScore } from '@/data/sampleEmotions';
+import { getReleasedEmotions } from '@/lib/services/emotions';
+import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
 export default function BeliefsHistoryScreen() {
   const colorScheme = useColorScheme();
+  const { user } = useAuth();
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedEmotion, setSelectedEmotion] = useState<Emotion | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [releasedBeliefs, setReleasedBeliefs] = useState<Emotion[]>([]);
 
-  // Filter to show only released beliefs (for demonstration, we'll use a subset)
-  const releasedBeliefs = sampleEmotions.filter((emotion, index) => index % 3 === 0);
+  // Load released beliefs
+  useEffect(() => {
+    const loadReleasedBeliefs = async () => {
+      if (user) {
+        // For authenticated users, load from Supabase
+        try {
+          const releasedEmotions = await getReleasedEmotions();
+          const beliefsWithDates = releasedEmotions.map((emotion: any) => ({
+            ...emotion,
+            timestamp: new Date(emotion.created_at),
+            releasedAt: new Date(emotion.released_at || emotion.created_at)
+          }));
+          setReleasedBeliefs(beliefsWithDates);
+        } catch (error) {
+          console.error('Error loading released beliefs from Supabase:', error);
+        }
+      } else {
+        // For non-authenticated users, load from AsyncStorage
+        try {
+          const stored = await AsyncStorage.getItem('releasedBeliefs');
+          if (stored) {
+            const beliefs = JSON.parse(stored);
+            const beliefsWithDates = beliefs.map((belief: any) => ({
+              ...belief,
+              timestamp: new Date(belief.timestamp),
+              releasedAt: new Date(belief.releasedAt)
+            }));
+            setReleasedBeliefs(beliefsWithDates);
+          }
+        } catch (error) {
+          console.error('Error loading released beliefs from AsyncStorage:', error);
+        }
+      }
+    };
+
+    loadReleasedBeliefs();
+  }, [user]);
+
+  // Reload when component becomes visible (simple approach)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (user) {
+        // For authenticated users, reload from Supabase
+        try {
+          const releasedEmotions = await getReleasedEmotions();
+          const beliefsWithDates = releasedEmotions.map((emotion: any) => ({
+            ...emotion,
+            timestamp: new Date(emotion.created_at),
+            releasedAt: new Date(emotion.released_at || emotion.created_at)
+          }));
+          setReleasedBeliefs(beliefsWithDates);
+        } catch (error) {
+          console.error('Error reloading released beliefs from Supabase:', error);
+        }
+      } else {
+        // For non-authenticated users, reload from AsyncStorage
+        try {
+          const stored = await AsyncStorage.getItem('releasedBeliefs');
+          if (stored) {
+            const beliefs = JSON.parse(stored);
+            const beliefsWithDates = beliefs.map((belief: any) => ({
+              ...belief,
+              timestamp: new Date(belief.timestamp),
+              releasedAt: new Date(belief.releasedAt)
+            }));
+            setReleasedBeliefs(beliefsWithDates);
+          }
+        } catch (error) {
+          console.error('Error reloading released beliefs from AsyncStorage:', error);
+        }
+      }
+    }, 2000); // Check every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [user]);
 
   const handleEmotionPress = (emotion: Emotion) => {
     setSelectedEmotion(emotion);
@@ -48,7 +126,10 @@ export default function BeliefsHistoryScreen() {
     switch (sortBy) {
       case 'recent':
         return sorted.sort((a, b) => {
-          const diff = new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+          // Sort by release date instead of original timestamp
+          const aDate = (a as any).releasedAt || a.timestamp;
+          const bDate = (b as any).releasedAt || b.timestamp;
+          const diff = new Date(bDate).getTime() - new Date(aDate).getTime();
           return sortDirection === 'desc' ? diff : -diff;
         });
       case 'frequency':
@@ -79,9 +160,10 @@ export default function BeliefsHistoryScreen() {
           <View style={styles.titleContainer}>
             <ThemedText type="title" style={styles.title}>Released Beliefs</ThemedText>
             <ThemedText type="default" style={styles.subtitle}>
-              {sortedBeliefs.length} released beliefs
+              {sortedBeliefs.length} total
             </ThemedText>
           </View>
+          <View style={styles.rightSpacer} />
         </ThemedView>
         
         <EmotionFilters 
@@ -136,6 +218,9 @@ const styles = StyleSheet.create({
   titleContainer: {
     flex: 1,
     alignItems: 'center',
+  },
+  rightSpacer: {
+    width: 48, // Same width as back button (24px icon + 8px padding each side + 12px margin)
   },
   title: {
     textAlign: 'center',
