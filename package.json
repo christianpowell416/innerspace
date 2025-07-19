@@ -5,6 +5,8 @@
   "scripts": {
     "start": "npx expo start",
     "reset-project": "node ./scripts/reset-project.js",
+    "sync-requirements": "node ./scripts/sync-requirements.js",
+    "clear-flowcharts": "node ./scripts/clear-flowcharts.js",
     "android": "npx expo start --android",
     "ios": "npx expo start --ios",
     "web": "npx expo start --web",
@@ -40,12 +42,14 @@
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
+    "react-native-svg": "^15.12.0",
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@types/react": "~19.0.10",
+    "dotenv": "^17.2.0",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~9.2.0",
     "typescript": "~5.8.3"

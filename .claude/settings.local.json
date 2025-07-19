@@ -16,7 +16,9 @@
       "Bash(git push:*)",
       "Bash(rm:*)",
       "Bash(npm run lint)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(find:*)",
+      "Bash(npm run sync-requirements:*)"
     ],
     "deny": []
   }

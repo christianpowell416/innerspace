@@ -1,3 +1,5 @@
+import { FlowchartRow, FlowchartInsert, FlowchartUpdate } from './types/flowchart';
+
 export interface Database {
   public: {
     Tables: {
@@ -70,6 +72,11 @@ export interface Database {
           created_at?: string;
           updated_at?: string;
         };
+      };
+      flowcharts: {
+        Row: FlowchartRow;
+        Insert: FlowchartInsert;
+        Update: FlowchartUpdate;
       };
     };
   };

@@ -1,0 +1,32 @@
+=== OpenAI Flowchart Generation Debug Output ===
+Timestamp: 2025-07-19T06:31:48.028Z
+
+This file will contain the actual AI responses when the app generates flowcharts.
+The app saves debug files to: FileSystem.documentDirectory/ai_output_[timestamp].txt
+
+Requirements sent to AI:
+# Flowchart Requirements
+
+## Overview
+This flowchart represents the internal family system of emotional parts based on IFS (Internal Family Systems) therapy and Jungian psychology principles.
+
+## Structure
+
+- Copy theory_flowchart_1.jpg to generate the flowchart
+
+## Visual Design
+- **Nodes**: Circular, color-coded by part type
+- **Edges**: Lines showing relationships with different styles for different relationship types
+- **Selection**: Highlighted border and label when tapped
+- **Layout**: Organic positioning reflecting psychological space rather than rigid hierarchy
+
+=== AI Raw Response ===
+[This section will contain the actual OpenAI response when generated]
+
+=== Instructions ===
+To see actual AI outputs:
+1. Run the app and press the "🤖 Generate with AI" button
+2. Check the console logs for the file path where the debug output is saved
+3. The files are saved in the app's document directory with names like: ai_output_[timestamp].txt
+
+=== End of Response ===
