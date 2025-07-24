@@ -192,6 +192,8 @@ export const updateFlowchart = async (
   id: string, 
   updates: Partial<FlowchartUpdate>
 ): Promise<FlowchartRow> => {
+  console.log('🔧 updateFlowchart called with:', { id, updates: Object.keys(updates) });
+  
   const { data, error } = await supabase
     .from('flowcharts')
     .update({
@@ -203,10 +205,11 @@ export const updateFlowchart = async (
     .single();
 
   if (error) {
-    console.error('Error updating flowchart:', error);
+    console.error('❌ Error updating flowchart in Supabase:', error);
     throw error;
   }
 
+  console.log('✅ Supabase update successful:', { id: data.id, last_updated: data.last_updated });
   return data;
 };
 
@@ -216,15 +219,31 @@ export const updateFlowchartWithDescription = async (
   newStructure: FlowchartStructure,
   changeDescription: string
 ): Promise<FlowchartRow> => {
-  // Update the flowchart in Supabase
-  const updatedFlowchart = await updateFlowchart(id, { 
-    structure: newStructure 
+  console.log('🔧 updateFlowchartWithDescription called with:', {
+    id,
+    nodeCount: newStructure.nodes.length,
+    edgeCount: newStructure.edges.length,
+    changeDescription
   });
 
-  // Append change description to markdown file
-  await appendToFlowchartRequirements(changeDescription);
+  try {
+    // Update the flowchart in Supabase
+    console.log('🔧 Calling updateFlowchart...');
+    const updatedFlowchart = await updateFlowchart(id, { 
+      structure: newStructure 
+    });
+    console.log('✅ updateFlowchart successful:', updatedFlowchart.id);
 
-  return updatedFlowchart;
+    // Append change description to markdown file
+    console.log('🔧 Calling appendToFlowchartRequirements...');
+    await appendToFlowchartRequirements(changeDescription);
+    console.log('✅ appendToFlowchartRequirements successful');
+
+    return updatedFlowchart;
+  } catch (error) {
+    console.error('❌ Error in updateFlowchartWithDescription:', error);
+    throw error;
+  }
 };
 
 // Get all flowcharts for the current user

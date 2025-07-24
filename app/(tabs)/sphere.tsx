@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, Dimensions, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -36,11 +36,23 @@ export default function SphereScreen() {
   const [nodeToEdit, setNodeToEdit] = useState<FlowchartNode | null>(null);
   const [isConnectMode, setIsConnectMode] = useState(false);
   const [connectingFromNode, setConnectingFromNode] = useState<FlowchartNode | null>(null);
+  
+  // Debounced position update
+  const positionUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load flowchart on component mount
   useEffect(() => {
     loadFlowchart();
   }, [user]);
+
+  // Clean up position update timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (positionUpdateTimeoutRef.current) {
+        clearTimeout(positionUpdateTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Subscribe to real-time flowchart changes
   useEffect(() => {
@@ -196,7 +208,18 @@ export default function SphereScreen() {
   };
 
   const updateNodeProperties = async (nodeId: string, updates: { label: string; type: string; description: string }) => {
-    if (!flowchart || !currentFlowchartId) return;
+    console.log('🔧 updateNodeProperties called with:', { nodeId, updates });
+    console.log('🔧 Current state:', { 
+      hasFlowchart: !!flowchart, 
+      currentFlowchartId, 
+      user: !!user 
+    });
+
+    if (!flowchart || !currentFlowchartId) {
+      console.error('❌ Missing flowchart or flowchart ID');
+      Alert.alert('Error', 'Unable to update node. Missing flowchart data.');
+      return;
+    }
 
     try {
       // Update the local flowchart structure
@@ -217,22 +240,64 @@ export default function SphereScreen() {
       if (node?.description !== updates.description) changes.push(`updated description`);
       
       const changeDescription = `Updated node "${node?.label}": ${changes.join(', ')}`;
+      
+      console.log('🔧 About to call updateFlowchartWithDescription with:', {
+        flowchartId: currentFlowchartId,
+        changeDescription,
+        nodeCount: updatedStructure.nodes.length
+      });
 
       // Update in Supabase and append to markdown
-      await updateFlowchartWithDescription(
+      const result = await updateFlowchartWithDescription(
         currentFlowchartId,
         updatedStructure,
         changeDescription
       );
 
+      console.log('✅ Successfully updated flowchart in Supabase:', result);
+
       // Update local state
       setFlowchart(updatedStructure);
 
-      console.log('✅ Updated node properties');
+      console.log('✅ Updated node properties successfully');
     } catch (err) {
       console.error('❌ Error updating node:', err);
-      Alert.alert('Error', 'Failed to update node');
+      Alert.alert('Error', `Failed to update node: ${err.message}`);
     }
+  };
+
+  // Debounced function to save position changes to database
+  const debouncedPositionUpdate = (
+    nodeId: string, 
+    x: number, 
+    y: number, 
+    updatedStructure: FlowchartStructure
+  ) => {
+    // Clear any existing timeout
+    if (positionUpdateTimeoutRef.current) {
+      clearTimeout(positionUpdateTimeoutRef.current);
+    }
+
+    // Set a new timeout to save after 1 second of no movement
+    positionUpdateTimeoutRef.current = setTimeout(async () => {
+      try {
+        const node = updatedStructure.nodes.find(n => n.id === nodeId);
+        const changeDescription = `Moved node "${node?.label}" to position (${Math.round(x)}, ${Math.round(y)})`;
+
+        console.log('💾 Saving node position to database:', { nodeId, x: Math.round(x), y: Math.round(y) });
+
+        await updateFlowchartWithDescription(
+          currentFlowchartId!,
+          updatedStructure,
+          changeDescription
+        );
+
+        console.log('✅ Node position saved successfully');
+      } catch (err) {
+        console.error('❌ Error saving node position:', err);
+        // Don't show alert for position save errors as it's not critical UX
+      }
+    }, 1000); // Wait 1 second after last movement
   };
 
   const handleNodeMove = async (nodeId: string, x: number, y: number) => {
@@ -252,21 +317,9 @@ export default function SphereScreen() {
       // Update local state immediately
       setFlowchart(updatedStructure);
 
-      // Skip database updates during dragging to prevent issues
-      // TODO: Add debounced database update later
-      
-      /* Temporarily disabled database updates during drag
-      // Create change description for markdown
-      const node = flowchart.nodes.find(n => n.id === nodeId);
-      const changeDescription = `Moved node "${node?.label}" to position (${Math.round(x)}, ${Math.round(y)})`;
+      // Debounced database update (saves after 1 second of no movement)
+      debouncedPositionUpdate(nodeId, x, y, updatedStructure);
 
-      // Update in Supabase and append to markdown
-      await updateFlowchartWithDescription(
-        currentFlowchartId,
-        updatedStructure,
-        changeDescription
-      );
-      */
     } catch (err) {
       console.error('❌ Error moving node:', err);
       Alert.alert('Error', 'Failed to move node');
