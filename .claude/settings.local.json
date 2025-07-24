@@ -18,7 +18,9 @@
       "Bash(npm run lint)",
       "Bash(npx tsc:*)",
       "Bash(find:*)",
-      "Bash(npm run sync-requirements:*)"
+      "Bash(npm run sync-requirements:*)",
+      "Bash(wc:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }

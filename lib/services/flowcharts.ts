@@ -8,6 +8,76 @@ export type FlowchartRow = Database['public']['Tables']['flowcharts']['Row'];
 export type FlowchartInsert = Database['public']['Tables']['flowcharts']['Insert'];
 export type FlowchartUpdate = Database['public']['Tables']['flowcharts']['Update'];
 
+// Get user's default flowchart with ID
+export const getUserFlowchartWithId = async (): Promise<{ structure: FlowchartStructure; id: string | null }> => {
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    // For non-authenticated users, generate AI flowchart instead of hardcoded default
+    console.log('🤖 No user authenticated, generating AI flowchart...');
+    try {
+      const structure = await generateFlowchartFromRequirements();
+      return { structure, id: null };
+    } catch (error) {
+      console.log('❌ AI generation failed, using minimal fallback');
+      // Return minimal structure instead of the 8-node default
+      const structure = {
+        nodes: [
+          { id: 'self', label: 'Self', x: 200, y: 200, type: 'self', description: 'Your centered, authentic self' }
+        ],
+        edges: [],
+        metadata: {
+          version: '1.0',
+          lastModified: new Date().toISOString(),
+          notes: 'Minimal flowchart - AI generation failed'
+        }
+      };
+      return { structure, id: null };
+    }
+  }
+
+  // Try to get user's default flowchart from Supabase
+  const { data, error } = await supabase
+    .from('flowcharts')
+    .select('*')
+    .eq('user_id', user.id)
+    .eq('is_default', true)
+    .single();
+
+  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+    console.error('Error fetching user flowchart:', error);
+    throw error;
+  }
+
+  if (data) {
+    return { structure: data.structure, id: data.id };
+  }
+
+  // No default flowchart exists, generate one with AI instead of hardcoded default
+  console.log('🤖 No saved flowchart found, generating AI flowchart for user...');
+  try {
+    const aiStructure = await generateFlowchartFromRequirements();
+    const newFlowchart = await createFlowchart('My Flowchart', aiStructure, true);
+    return { structure: aiStructure, id: newFlowchart.id };
+  } catch (error) {
+    console.log('❌ AI generation failed, using minimal fallback');
+    // Use minimal structure instead of the 8-node default
+    const minimalStructure = {
+      nodes: [
+        { id: 'self', label: 'Self', x: 200, y: 200, type: 'self', description: 'Your centered, authentic self' }
+      ],
+      edges: [],
+      metadata: {
+        version: '1.0',
+        lastModified: new Date().toISOString(),
+        notes: 'Minimal flowchart - AI generation failed'
+      }
+    };
+    const newFlowchart = await createFlowchart('My Flowchart', minimalStructure, true);
+    return { structure: minimalStructure, id: newFlowchart.id };
+  }
+};
+
 // Get user's default flowchart
 export const getUserFlowchart = async (): Promise<FlowchartStructure> => {
   const { data: { user } } = await supabase.auth.getUser();

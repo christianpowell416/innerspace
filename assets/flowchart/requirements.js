@@ -7,10 +7,10 @@ This flowchart represents the internal family system of emotional parts based on
 
 ## Structure
 
-- Copy theory_flowchart_1.jpg to generate the flowchart
+- Copy theory_flowchart_1.jpg to generate the flowchart. Be sure to copy the basic layout principles of this flowchart, with its organic shape and even spacing.
+sample text - ignore
 
 ## Visual Design
-- **Nodes**: circular, color-coded by part type
 - **Edges**: Lines showing relationships with different styles for different relationship types       
 - **Selection**: Highlighted border and label when tapped`;
 

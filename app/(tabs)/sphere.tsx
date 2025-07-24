@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Dimensions, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FlowchartViewer } from '@/components/FlowchartViewer';
-import { FlowchartStructure, FlowchartNode, FlowchartEdge } from '@/lib/types/flowchart';
+import { TextInputModal } from '@/components/TextInputModal';
+import { NodeEditModal } from '@/components/NodeEditModal';
+import { FlowchartStructure, FlowchartNode, FlowchartEdge, PartType } from '@/lib/types/flowchart';
 import { 
-  getUserFlowchart, 
+  getUserFlowchart,
+  getUserFlowchartWithId, 
   updateFlowchartWithDescription,
   subscribeToFlowchartChanges,
   FlowchartRow,
@@ -25,6 +29,13 @@ export default function SphereScreen() {
   const [currentFlowchartId, setCurrentFlowchartId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [renameModalVisible, setRenameModalVisible] = useState(false);
+  const [nodeToRename, setNodeToRename] = useState<FlowchartNode | null>(null);
+  const [nodeEditModalVisible, setNodeEditModalVisible] = useState(false);
+  const [nodeToEdit, setNodeToEdit] = useState<FlowchartNode | null>(null);
+  const [isConnectMode, setIsConnectMode] = useState(false);
+  const [connectingFromNode, setConnectingFromNode] = useState<FlowchartNode | null>(null);
 
   // Load flowchart on component mount
   useEffect(() => {
@@ -51,14 +62,15 @@ export default function SphereScreen() {
       setLoading(true);
       setError(null);
       
-      const structure = await getUserFlowchart();
+      const { structure, id } = await getUserFlowchartWithId();
       setFlowchart(structure);
       
-      // If user is authenticated, get the flowchart ID for updates
-      if (user) {
-        // This is a simplified approach - in real implementation,
-        // getUserFlowchart should return both structure and ID
-        console.log('✅ Loaded flowchart structure');
+      // Set the flowchart ID for updates
+      if (id) {
+        setCurrentFlowchartId(id);
+        console.log('✅ Loaded flowchart with ID:', id);
+      } else {
+        console.log('ℹ️ Loaded flowchart without ID (non-authenticated)');
       }
     } catch (err) {
       console.error('❌ Error loading flowchart:', err);
@@ -70,6 +82,11 @@ export default function SphereScreen() {
 
   const handleNodeSelect = (node: FlowchartNode) => {
     console.log('📍 Selected node:', node.label, '(', node.type, ')');
+    
+    // If in connect mode, create a relationship
+    if (isConnectMode && connectingFromNode && node.id !== connectingFromNode.id) {
+      createRelationship(connectingFromNode, node);
+    }
   };
 
   const handleNodeEdit = (node: FlowchartNode) => {
@@ -78,40 +95,182 @@ export default function SphereScreen() {
       return;
     }
 
-    // Show simple edit dialog (in real implementation, use a proper modal)
-    Alert.alert(
-      'Edit Node',
-      `Edit "${node.label}"`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Rename',
-          onPress: () => promptForNodeRename(node)
-        }
-      ]
-    );
+    if (!isEditMode) {
+      return;
+    }
+
+    // Open rename modal
+    setNodeToRename(node);
+    setRenameModalVisible(true);
   };
 
-  const promptForNodeRename = (node: FlowchartNode) => {
-    // In a real implementation, this would use a proper text input modal
-    // For now, we'll just demonstrate the concept
-    Alert.prompt(
-      'Rename Node',
-      'Enter new name:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Save',
-          onPress: (newName) => {
-            if (newName && flowchart && currentFlowchartId) {
-              updateNodeLabel(node.id, newName);
-            }
-          }
-        }
-      ],
-      'plain-text',
-      node.label
-    );
+  const handleRenameSubmit = (newName: string) => {
+    if (nodeToRename && flowchart && currentFlowchartId) {
+      updateNodeLabel(nodeToRename.id, newName);
+    }
+    setRenameModalVisible(false);
+    setNodeToRename(null);
+  };
+
+  const handleRenameCancel = () => {
+    setRenameModalVisible(false);
+    setNodeToRename(null);
+  };
+
+  const handleNodeDescriptionEdit = (node: FlowchartNode) => {
+    if (!user || !isEditMode) return;
+    
+    setNodeToEdit(node);
+    setNodeEditModalVisible(true);
+  };
+
+  const handleNodeEditSubmit = async (updates: { label: string; type: string; description: string }) => {
+    if (nodeToEdit && flowchart && currentFlowchartId) {
+      await updateNodeProperties(nodeToEdit.id, updates);
+    }
+    setNodeEditModalVisible(false);
+    setNodeToEdit(null);
+  };
+
+  const handleNodeEditCancel = () => {
+    setNodeEditModalVisible(false);
+    setNodeToEdit(null);
+  };
+
+  const handleConnectMode = () => {
+    if (nodeToEdit) {
+      setConnectingFromNode(nodeToEdit);
+      setIsConnectMode(true);
+      setNodeEditModalVisible(false);
+      Alert.alert('Connect Mode', 'Tap another node to create a relationship');
+    }
+  };
+
+  const createRelationship = async (fromNode: FlowchartNode, toNode: FlowchartNode) => {
+    if (!flowchart || !currentFlowchartId) return;
+
+    try {
+      // Check if relationship already exists
+      const existingEdge = flowchart.edges.find(
+        edge => (edge.from === fromNode.id && edge.to === toNode.id) ||
+                (edge.from === toNode.id && edge.to === fromNode.id)
+      );
+
+      if (existingEdge) {
+        Alert.alert('Relationship Exists', 'These nodes are already connected');
+        setIsConnectMode(false);
+        setConnectingFromNode(null);
+        return;
+      }
+
+      // Create new edge
+      const newEdge: FlowchartEdge = {
+        from: fromNode.id,
+        to: toNode.id,
+        type: 'protects' // Default relationship type
+      };
+
+      const updatedStructure: FlowchartStructure = {
+        ...flowchart,
+        edges: [...flowchart.edges, newEdge]
+      };
+
+      const changeDescription = `Created relationship from "${fromNode.label}" to "${toNode.label}" (protects)`;
+
+      await updateFlowchartWithDescription(
+        currentFlowchartId,
+        updatedStructure,
+        changeDescription
+      );
+
+      setFlowchart(updatedStructure);
+      console.log('✅ Created relationship');
+      Alert.alert('Success', `Connected "${fromNode.label}" to "${toNode.label}"`);
+    } catch (err) {
+      console.error('❌ Error creating relationship:', err);
+      Alert.alert('Error', 'Failed to create relationship');
+    } finally {
+      setIsConnectMode(false);
+      setConnectingFromNode(null);
+    }
+  };
+
+  const updateNodeProperties = async (nodeId: string, updates: { label: string; type: string; description: string }) => {
+    if (!flowchart || !currentFlowchartId) return;
+
+    try {
+      // Update the local flowchart structure
+      const updatedNodes = flowchart.nodes.map(node =>
+        node.id === nodeId ? { ...node, ...updates } : node
+      );
+
+      const updatedStructure: FlowchartStructure = {
+        ...flowchart,
+        nodes: updatedNodes
+      };
+
+      // Create change description for markdown
+      const node = flowchart.nodes.find(n => n.id === nodeId);
+      const changes = [];
+      if (node?.label !== updates.label) changes.push(`renamed to "${updates.label}"`);
+      if (node?.type !== updates.type) changes.push(`changed type to ${updates.type}`);
+      if (node?.description !== updates.description) changes.push(`updated description`);
+      
+      const changeDescription = `Updated node "${node?.label}": ${changes.join(', ')}`;
+
+      // Update in Supabase and append to markdown
+      await updateFlowchartWithDescription(
+        currentFlowchartId,
+        updatedStructure,
+        changeDescription
+      );
+
+      // Update local state
+      setFlowchart(updatedStructure);
+
+      console.log('✅ Updated node properties');
+    } catch (err) {
+      console.error('❌ Error updating node:', err);
+      Alert.alert('Error', 'Failed to update node');
+    }
+  };
+
+  const handleNodeMove = async (nodeId: string, x: number, y: number) => {
+    if (!flowchart || !currentFlowchartId || !isEditMode) return;
+
+    try {
+      // Update the local flowchart structure immediately for smooth dragging
+      const updatedNodes = flowchart.nodes.map(node =>
+        node.id === nodeId ? { ...node, x, y } : node
+      );
+
+      const updatedStructure: FlowchartStructure = {
+        ...flowchart,
+        nodes: updatedNodes
+      };
+
+      // Update local state immediately
+      setFlowchart(updatedStructure);
+
+      // Skip database updates during dragging to prevent issues
+      // TODO: Add debounced database update later
+      
+      /* Temporarily disabled database updates during drag
+      // Create change description for markdown
+      const node = flowchart.nodes.find(n => n.id === nodeId);
+      const changeDescription = `Moved node "${node?.label}" to position (${Math.round(x)}, ${Math.round(y)})`;
+
+      // Update in Supabase and append to markdown
+      await updateFlowchartWithDescription(
+        currentFlowchartId,
+        updatedStructure,
+        changeDescription
+      );
+      */
+    } catch (err) {
+      console.error('❌ Error moving node:', err);
+      Alert.alert('Error', 'Failed to move node');
+    }
   };
 
   const updateNodeLabel = async (nodeId: string, newLabel: string) => {
@@ -210,6 +369,74 @@ export default function SphereScreen() {
     );
   };
 
+  const handleEditRequirements = () => {
+    router.push('/requirements-editor');
+  };
+
+  const handleAddNode = async () => {
+    console.log('🔧 handleAddNode called');
+    console.log('User:', !!user);
+    console.log('Edit mode:', isEditMode);
+    console.log('Flowchart:', !!flowchart);
+    console.log('Flowchart ID:', currentFlowchartId);
+    
+    if (!user || !isEditMode || !flowchart || !currentFlowchartId) {
+      if (!currentFlowchartId) {
+        console.error('❌ No flowchart ID available');
+        Alert.alert('Error', 'Unable to add node. Please refresh the page.');
+      }
+      return;
+    }
+
+    // Calculate center position for new node
+    const centerX = screenWidth / 2;
+    const centerY = screenWidth / 2;
+
+    const newNodeId = `node-${Date.now()}`;
+    const newNode: FlowchartNode = {
+      id: newNodeId,
+      label: 'New Node',
+      type: 'manager', // Default type
+      x: centerX,
+      y: centerY,
+      description: 'A new node'
+    };
+
+    const updatedStructure: FlowchartStructure = {
+      ...flowchart,
+      nodes: [...flowchart.nodes, newNode]
+    };
+
+    try {
+      await updateFlowchartWithDescription(
+        currentFlowchartId,
+        updatedStructure,
+        `Added new node "${newNode.label}" at center position`
+      );
+      setFlowchart(updatedStructure);
+      
+      // Immediately prompt to rename the new node
+      setTimeout(() => {
+        setNodeToRename(newNode);
+        setRenameModalVisible(true);
+      }, 100);
+    } catch (err) {
+      console.error('❌ Error adding node:', err);
+      Alert.alert('Error', 'Failed to add node');
+    }
+  };
+
+  const toggleEditMode = () => {
+    if (!user) {
+      Alert.alert('Sign In Required', 'Please sign in to edit the flowchart');
+      return;
+    }
+    setIsEditMode(!isEditMode);
+    // Disable other modes when toggling edit mode
+    setIsConnectMode(false);
+  };
+
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -246,6 +473,35 @@ export default function SphereScreen() {
             <ThemedText style={styles.refreshIcon}>↻</ThemedText>
           </Pressable>
         )}
+
+        {/* Edit Mode Toggle - Bottom Left */}
+        {user && (
+          <Pressable 
+            style={[styles.editModeButton, isEditMode && styles.editModeButtonActive]}
+            onPress={toggleEditMode}
+          >
+            <ThemedText style={styles.editModeIcon}>{isEditMode ? '✓' : '✏️'}</ThemedText>
+          </Pressable>
+        )}
+
+        {/* Add Node Button - Shows only in edit mode */}
+        {user && isEditMode && (
+          <Pressable 
+            style={styles.addNodeButton}
+            onPress={handleAddNode}
+          >
+            <ThemedText style={styles.addNodeIcon}>+</ThemedText>
+          </Pressable>
+        )}
+
+
+        {/* Edit Requirements Button - Top Right */}
+        <Pressable 
+          style={styles.editButton}
+          onPress={handleEditRequirements}
+        >
+          <ThemedText style={styles.editIcon}>✎</ThemedText>
+        </Pressable>
         
         {flowchart && (
           <ThemedView style={styles.flowchartContainer}>
@@ -253,14 +509,39 @@ export default function SphereScreen() {
               flowchart={flowchart}
               onNodeSelect={handleNodeSelect}
               onNodeEdit={handleNodeEdit}
+              onNodeDescriptionEdit={handleNodeDescriptionEdit}
+              onNodeMove={handleNodeMove}
               onEdgeEdit={handleEdgeEdit}
+              onEmptySpaceTap={() => {}}
               width={screenWidth}
               height={screenWidth}
-              editable={!!user}
+              editable={isEditMode}
+              isEditMode={isEditMode}
+              isConnectMode={isConnectMode}
+              connectingFromNode={connectingFromNode}
             />
           </ThemedView>
         )}
       </ThemedView>
+      
+      {/* Rename Modal */}
+      <TextInputModal
+        visible={renameModalVisible}
+        title="Rename Node"
+        placeholder="Enter node name..."
+        initialValue={nodeToRename?.label || ''}
+        onCancel={handleRenameCancel}
+        onSubmit={handleRenameSubmit}
+      />
+      
+      {/* Node Edit Modal */}
+      <NodeEditModal
+        visible={nodeEditModalVisible}
+        node={nodeToEdit}
+        onCancel={handleNodeEditCancel}
+        onSubmit={handleNodeEditSubmit}
+        onConnectMode={handleConnectMode}
+      />
     </SafeAreaView>
   );
 }
@@ -313,5 +594,75 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 24,
     fontWeight: 'bold',
+  },
+  editButton: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#34C759',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  editIcon: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  editModeButton: {
+    position: 'absolute',
+    bottom: 120,
+    left: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#666666',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  editModeButtonActive: {
+    backgroundColor: '#FF9500',
+  },
+  editModeIcon: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  addNodeButton: {
+    position: 'absolute',
+    bottom: 120,
+    right: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#34C759',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  addNodeIcon: {
+    color: '#FFFFFF',
+    fontSize: 30,
+    fontWeight: 'bold',
+    lineHeight: 30,
   },
 });

@@ -1,6 +1,8 @@
 import { FlowchartStructure } from '../types/flowchart';
 import * as FileSystem from 'expo-file-system';
 import { Asset } from 'expo-asset';
+import { promptContent } from '../../assets/flowchart/prompt_instructions.js';
+import { requirementsContent } from '../../assets/flowchart/requirements.js';
 // Note: OpenAI SDK requires polyfills for React Native
 // We'll use fetch API directly instead
 
@@ -10,6 +12,7 @@ import { Asset } from 'expo-asset';
  * This service integrates with ChatGPT to generate flowcharts
  * based on markdown requirements and IFS/Jungian psychology principles.
  */
+
 
 // OpenAI API configuration
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
@@ -32,35 +35,187 @@ export interface AIGenerationResponse {
 }
 
 /**
- * Read flowchart requirements from markdown file
+ * Read flowchart prompt from bundled JavaScript file
+ */
+export const readFlowchartPrompt = async (): Promise<{ systemPrompt: string; userInstructions: string; jsonFormat: string; finalInstructions: string }> => {
+  try {
+    let contentToUse = promptContent;
+    
+    // First try to read from document directory (updated prompt)
+    const documentPath = `${FileSystem.documentDirectory}prompt_instructions.js`;
+    try {
+      const documentContent = await FileSystem.readAsStringAsync(documentPath);
+      if (documentContent.trim()) {
+        console.log('📝 Reading flowchart prompt from document directory...');
+        // Extract content from the JavaScript export
+        const match = documentContent.match(/export const promptContent = `(.+?)`;/s);
+        if (match) {
+          contentToUse = match[1].replace(/\\`/g, '`');
+        }
+      }
+    } catch (documentError) {
+      console.log('📝 No prompt found in document directory, using bundled version...');
+    }
+    
+    console.log('📝 Using prompt content...');
+    
+    // Validate content before parsing
+    if (!contentToUse || typeof contentToUse !== 'string') {
+      console.error('❌ Prompt content is invalid:', typeof contentToUse, contentToUse);
+      throw new Error('Prompt content is undefined or not a string');
+    }
+    
+    console.log('📝 Content preview:', contentToUse.substring(0, 100) + '...');
+    
+    // Parse the markdown content to extract sections
+    const lines = contentToUse.split('\n');
+    let currentSection = '';
+    let systemPrompt = '';
+    let userInstructions = '';
+    let jsonFormat = '';
+    let finalInstructions = '';
+    let inCodeBlock = false;
+    
+    for (const line of lines) {
+      if (line.startsWith('## System Prompt')) {
+        currentSection = 'system';
+        continue;
+      } else if (line.startsWith('## User Instructions')) {
+        currentSection = 'user';
+        continue;
+      } else if (line.startsWith('## JSON Format Template')) {
+        currentSection = 'json';
+        continue;
+      } else if (line.startsWith('## Final Instructions')) {
+        currentSection = 'final';
+        continue;
+      } else if (line.startsWith('#') || line.trim() === '') {
+        continue;
+      }
+      
+      // Handle code blocks for JSON
+      if (line.trim() === '```json' || line.trim() === '```') {
+        inCodeBlock = !inCodeBlock;
+        continue;
+      }
+      
+      // Add content to appropriate section
+      const content = line + '\n';
+      switch (currentSection) {
+        case 'system':
+          systemPrompt += content;
+          break;
+        case 'user':
+          userInstructions += content;
+          break;
+        case 'json':
+          if (inCodeBlock) {
+            jsonFormat += content;
+          }
+          break;
+        case 'final':
+          finalInstructions += content;
+          break;
+      }
+    }
+    
+    const result = {
+      systemPrompt: (systemPrompt || '').trim(),
+      userInstructions: (userInstructions || '').trim(),
+      jsonFormat: (jsonFormat || '').trim(),
+      finalInstructions: (finalInstructions || '').trim()
+    };
+    
+    console.log('📝 Parsed sections:', {
+      systemPrompt: result.systemPrompt.length,
+      userInstructions: result.userInstructions.length,
+      jsonFormat: result.jsonFormat.length,
+      finalInstructions: result.finalInstructions.length
+    });
+    
+    return result;
+  } catch (error) {
+    throw new Error(`Failed to read flowchart prompt: ${error.message}`);
+  }
+};
+
+/**
+ * Read flowchart requirements from bundled JavaScript file
  */
 export const readFlowchartRequirements = async (): Promise<string> => {
   try {
-    const documentPath = `${FileSystem.documentDirectory}flowchart_requirements.md`;
-    
+    // First try to read from document directory (updated requirements)
+    const documentPath = `${FileSystem.documentDirectory}requirements.js`;
     try {
-      const content = await FileSystem.readAsStringAsync(documentPath);
-      console.log('📄 Reading from document directory:', documentPath);
-      console.log('📝 Content preview:', content.substring(0, 100) + '...');
-      
-      // Delete the old document file to force using bundled version
-      await FileSystem.deleteAsync(documentPath);
-      console.log('🗑️ Deleted old document directory file, will use bundled version next time');
-      
-      return content;
-    } catch (pathError) {
-      // Fallback to bundled requirements
-      console.log('📄 Reading from bundled requirements.js');
-      const { requirementsContent } = await import('../../assets/flowchart/requirements.js');
-      console.log('📝 Content preview:', requirementsContent.substring(0, 100) + '...');
-      return requirementsContent;
+      const documentContent = await FileSystem.readAsStringAsync(documentPath);
+      if (documentContent.trim()) {
+        console.log('📄 Reading flowchart requirements from document directory...');
+        // Extract content from the JavaScript export
+        const match = documentContent.match(/export const requirementsContent = `(.+?)`;/s);
+        if (match) {
+          const content = match[1].replace(/\\`/g, '`');
+          console.log('📝 Content preview:', content.substring(0, 100) + '...');
+          return content;
+        }
+      }
+    } catch (documentError) {
+      console.log('📄 No requirements found in document directory, using bundled version...');
     }
+
+    console.log('📄 Reading flowchart requirements from bundled file...');
+    console.log('📝 Content preview:', requirementsContent.substring(0, 100) + '...');
     
+    return requirementsContent;
   } catch (error) {
     throw new Error(`Failed to read flowchart requirements: ${error.message}`);
   }
 };
 
+/**
+ * Update flowchart requirements by modifying the JavaScript file
+ */
+export const updateFlowchartRequirements = async (newContent: string): Promise<void> => {
+  try {
+    // Update the requirements.js file with new content
+    const jsContent = `// This file exports the flowchart requirements content
+// It's automatically generated from flowchart_requirements.md
+// DO NOT EDIT THIS FILE DIRECTLY - edit flowchart_requirements.md instead
+
+export const requirementsContent = \`${newContent.replace(/`/g, '\\`')}\`;
+
+export default requirementsContent;
+`;
+    
+    const filePath = `${FileSystem.documentDirectory}requirements.js`;
+    await FileSystem.writeAsStringAsync(filePath, jsContent);
+    console.log('✅ Updated flowchart requirements at:', filePath);
+  } catch (error) {
+    throw new Error(`Failed to update flowchart requirements: ${error.message}`);
+  }
+};
+
+/**
+ * Update flowchart prompt by modifying the JavaScript file
+ */
+export const updateFlowchartPrompt = async (newContent: string): Promise<void> => {
+  try {
+    // Update the prompt_instructions.js file with new content
+    const jsContent = `// This file exports the flowchart prompt content
+// Updated: ${new Date().toISOString().split('T')[0]} - Modified via in-app editor
+// You can edit this file directly
+
+export const promptContent = \`${newContent.replace(/`/g, '\\`')}\`;
+
+export default promptContent;
+`;
+    
+    const filePath = `${FileSystem.documentDirectory}prompt_instructions.js`;
+    await FileSystem.writeAsStringAsync(filePath, jsContent);
+    console.log('✅ Updated flowchart prompt at:', filePath);
+  } catch (error) {
+    throw new Error(`Failed to update flowchart prompt: ${error.message}`);
+  }
+};
 
 /**
  * Generate flowchart using ChatGPT API
@@ -81,83 +236,52 @@ export const generateFlowchartWithAI = async (
     const apiKeyDebug = `${OPENAI_API_KEY.substring(0, 7)}...${OPENAI_API_KEY.substring(OPENAI_API_KEY.length - 4)}`;
     console.log('🔑 API Key status:', apiKeyDebug);
     
-    // Read requirements document
+    // Read requirements document and prompt template
     const requirements = await readFlowchartRequirements();
+    const promptData = await readFlowchartPrompt();
     
-    // Read and encode the image file using Asset API
+    // No automatic image loading - images should only be included if explicitly configured
     let imageBase64 = '';
     let hasImage = false;
-    try {
-      // Load the asset and download it
-      const asset = Asset.fromModule(require('../../assets/flowchart/theory_flowchart_1.jpg'));
-      await asset.downloadAsync();
-      
-      // Read the downloaded file as base64
-      const imageData = await FileSystem.readAsStringAsync(asset.localUri!, { encoding: FileSystem.EncodingType.Base64 });
-      imageBase64 = `data:image/jpeg;base64,${imageData}`;
-      hasImage = true;
-      console.log('✅ Successfully loaded and encoded image');
-    } catch (imageError) {
-      console.log('⚠️ Could not load image, proceeding without it:', imageError);
-      hasImage = false;
+    
+    // Validate prompt data
+    if (!promptData || typeof promptData !== 'object') {
+      throw new Error('Invalid prompt data received');
     }
     
-    // Send requirements directly to OpenAI with directive system prompt
-    const systemPrompt = `You are a helpful assistant that generates flowchart data structures in JSON format.`;
-    const userPrompt = hasImage 
-      ? `Analyze the provided flowchart diagram image and recreate it as a JSON data structure with the following format:
-
-{
-  "nodes": [
-    {
-      "id": "unique_id",
-      "label": "Node Label", 
-      "x": 200,
-      "y": 150,
-      "type": "self",
-      "description": "Optional description"
+    console.log('🔍 Prompt data validation:', {
+      systemPrompt: typeof promptData.systemPrompt,
+      userInstructions: typeof promptData.userInstructions,
+      jsonFormat: typeof promptData.jsonFormat,
+      finalInstructions: typeof promptData.finalInstructions
+    });
+    
+    // Validate that all required sections are present in prompt file
+    if (!promptData.systemPrompt) {
+      throw new Error('Missing "## System Prompt" section in prompt_instructions.js');
     }
-  ],
-  "edges": [
-    {
-      "from": "node1_id",
-      "to": "node2_id", 
-      "type": "protection",
-      "label": "optional label"
+    if (!promptData.userInstructions) {
+      throw new Error('Missing "## User Instructions" section in prompt_instructions.js');
     }
-  ]
-}
-
-
-Please examine the image carefully and recreate the exact structure, positions, and connections shown.
-
-Requirements: ${requirements}`
-      : `Generate a JSON flowchart structure with the following format:
-
-{
-  "nodes": [
-    {
-      "id": "unique_id",
-      "label": "Node Label", 
-      "x": 200,
-      "y": 150,
-      "type": "self",
-      "description": "Optional description"
+    if (!promptData.jsonFormat) {
+      throw new Error('Missing "## JSON Format Template" section in prompt_instructions.js');
     }
-  ],
-  "edges": [
-    {
-      "from": "node1_id",
-      "to": "node2_id", 
-      "type": "protection",
-      "label": "optional label"
+    if (!promptData.finalInstructions) {
+      throw new Error('Missing "## Final Instructions" section in prompt_instructions.js');
     }
-  ]
-}
 
-Requirements: ${requirements}
+    // Use system prompt from file (no fallbacks - file must contain valid prompt)
+    const systemPrompt = promptData.systemPrompt;
+    
+    // Combine user instructions with requirements (no hardcoded text)
+    const userPrompt = `${promptData.userInstructions}
 
-Create a simple flowchart with 3-5 nodes that represents a basic emotional system.`;
+## Requirements
+${requirements}
+
+${promptData.jsonFormat}
+
+${promptData.finalInstructions}`;
 
     // Log what we're actually sending to OpenAI
     console.log('📤 PROMPT BEING SENT TO OPENAI:');
@@ -192,7 +316,7 @@ Create a simple flowchart with 3-5 nodes that represents a basic emotional syste
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: hasImage ? "gpt-4o" : "gpt-3.5-turbo",
+        model: hasImage ? "gpt-4o" : "gpt-4o-mini",
         messages: messages,
         temperature: 0.7,
         max_tokens: 2000
@@ -260,7 +384,8 @@ Create a simple flowchart with 3-5 nodes that represents a basic emotional syste
       console.log(`  ${node.id}: (${node.x}, ${node.y}) - ${node.label}`);
     });
 
-    // Check if coordinates need scaling to fit 400x400 viewbox
+
+    // Check if coordinates need scaling to fit viewport
     const allX = parsedResponse.nodes.map((n: any) => n.x);
     const allY = parsedResponse.nodes.map((n: any) => n.y);
     const minX = Math.min(...allX);
@@ -270,27 +395,42 @@ Create a simple flowchart with 3-5 nodes that represents a basic emotional syste
     
     console.log(`📐 Coordinate bounds: X(${minX} to ${maxX}), Y(${minY} to ${maxY})`);
     
-    // Scale and translate coordinates to fit within 50-350 range (with 50px margin)
-    const targetWidth = 300; // 400 - 100 for margins
-    const targetHeight = 300;
+    // Scale coordinates to fit within the FlowchartViewer's viewBox coordinate system
+    // FlowchartViewer uses viewBox="-width -height width*3 height*3" (3x coordinate space)
+    // The actual visible area is from 0,0 to width,height within this larger space
+    const screenWidth = 400; // Approximate screen width (will be adjusted by FlowchartViewer)
+    const screenHeight = 400; // Approximate screen height 
+    const nodeRadius = 60; // Approximate max node radius to ensure full visibility
+    const margin = nodeRadius + 20; // Margin from screen edges plus node radius
+    const targetWidth = screenWidth - (margin * 2); // Safe visible area
+    const targetHeight = screenHeight - (margin * 2);
     const currentWidth = maxX - minX;
     const currentHeight = maxY - minY;
     
     if (currentWidth > 0 && currentHeight > 0) {
       const scaleX = targetWidth / currentWidth;
       const scaleY = targetHeight / currentHeight;
-      const scale = Math.min(scaleX, scaleY); // Use smaller scale to fit both dimensions
+      let scale = Math.min(scaleX, scaleY); // Use smaller scale to fit both dimensions
       
-      console.log(`🔧 Applying scale factor: ${scale}`);
+      // Don't scale down if nodes are already well-spaced (prevent over-compression)
+      // Only scale if the content is larger than our target area or much smaller
+      if (scale > 0.8 && scale < 1.2) {
+        scale = 1; // Don't scale if the size is already reasonable
+        console.log('🔧 Skipping scaling - content size is already appropriate');
+      }
       
-      // Apply scaling and translation
+      console.log(`🔧 Applying scale factor: ${scale} (target: ${targetWidth}x${targetHeight})`);
+      
+      // Apply scaling and translation to center content in safe visible area
       parsedResponse.nodes.forEach((node: any) => {
-        const scaledX = (node.x - minX) * scale + 50; // Add 50px margin
-        const scaledY = (node.y - minY) * scale + 50;
+        const scaledX = (node.x - minX) * scale + margin;
+        const scaledY = (node.y - minY) * scale + margin;
         console.log(`  ${node.id}: (${node.x}, ${node.y}) -> (${scaledX}, ${scaledY})`);
         node.x = scaledX;
         node.y = scaledY;
       });
+      
+      console.log(`📐 Final scaled bounds: X(${margin} to ${targetWidth + margin}), Y(${margin} to ${targetHeight + margin})`);
 
     }
 
