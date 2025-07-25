@@ -1,8 +1,8 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, StyleSheet, Text, Pressable } from 'react-native';
 import { GestureHandlerRootView, PanGestureHandler, PinchGestureHandler, State } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, useAnimatedGestureHandler, runOnJS } from 'react-native-reanimated';
-import Svg, { Circle, Line, Text as SvgText, G } from 'react-native-svg';
+import Svg, { Circle, Line, Text as SvgText, G, Rect, Polygon, Path } from 'react-native-svg';
 import { 
   FlowchartStructure, 
   FlowchartNode, 
@@ -20,6 +20,7 @@ interface FlowchartViewerProps {
   onNodeDescriptionEdit?: (node: FlowchartNode) => void;
   onNodeMove?: (nodeId: string, x: number, y: number) => void;
   onEdgeEdit?: (edge: FlowchartEdge) => void;
+  onEdgeEditFromPopup?: (edge: FlowchartEdge) => void;
   onEmptySpaceTap?: (x: number, y: number) => void;
   width?: number;
   height?: number;
@@ -36,6 +37,7 @@ export function FlowchartViewer({
   onNodeDescriptionEdit,
   onNodeMove,
   onEdgeEdit,
+  onEdgeEditFromPopup,
   onEmptySpaceTap,
   width = 400,
   height = 400,
@@ -46,6 +48,7 @@ export function FlowchartViewer({
 }: FlowchartViewerProps) {
   const colorScheme = useColorScheme();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<FlowchartEdge | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
   
@@ -61,19 +64,100 @@ export function FlowchartViewer({
   const translateY = useSharedValue(0);
   const focalX = useSharedValue(0);
   const focalY = useSharedValue(0);
+  const opacity = useSharedValue(0); // Start with 0 opacity
+
+  // Helper functions to generate shape paths
+  const generatePentagonPath = (centerX: number, centerY: number, radius: number): string => {
+    const points = [];
+    for (let i = 0; i < 5; i++) {
+      const angle = (i * 2 * Math.PI / 5) - (Math.PI / 2); // Start from top
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      points.push(`${x},${y}`);
+    }
+    return points.join(' ');
+  };
+
+  const generateHexagonPath = (centerX: number, centerY: number, radius: number): string => {
+    const points = [];
+    for (let i = 0; i < 6; i++) {
+      const angle = (i * 2 * Math.PI / 6) - (Math.PI / 2); // Start from top
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      points.push(`${x},${y}`);
+    }
+    return points.join(' ');
+  };
+
+  const generateTrianglePath = (centerX: number, centerY: number, radius: number): string => {
+    const points = [];
+    for (let i = 0; i < 3; i++) {
+      const angle = (i * 2 * Math.PI / 3) - (Math.PI / 2); // Start from top
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      points.push(`${x},${y}`);
+    }
+    return points.join(' ');
+  };
+
+  // Helper function to wrap text optimally for circular display
+  const wrapTextForCircle = (text: string, maxCharsPerLine: number = 12): string[] => {
+    const words = text.split(' ');
+    const lines: string[] = [];
+    let currentLine = '';
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      
+      if (testLine.length <= maxCharsPerLine) {
+        currentLine = testLine;
+      } else {
+        if (currentLine) {
+          lines.push(currentLine);
+          currentLine = word;
+        } else {
+          // Word itself is too long, break it
+          lines.push(word.substring(0, maxCharsPerLine));
+          currentLine = word.substring(maxCharsPerLine);
+        }
+      }
+    }
+    
+    if (currentLine) {
+      lines.push(currentLine);
+    }
+    
+    return lines;
+  };
 
   // Helper function to calculate node radius (matches renderNode logic)
   const calculateNodeRadius = (node: FlowchartNode) => {
-    const nodeLabel = node.label || node.id || 'Untitled';
-    const wrappedLines = wrapTextForCircle(nodeLabel);
-    const maxLineLength = Math.max(...wrappedLines.map(line => line.length));
-    const lineHeight = 16;
-    const textHeight = wrappedLines.length * lineHeight;
-    const textWidth = maxLineLength * 8; // Approximate character width
-    return Math.max(35, Math.max(textWidth / 2, textHeight / 2) + 15);
+    // Return the uniform maximum radius for all nodes
+    return maxNodeRadius;
   };
 
   // Calculate initial centering offset when flowchart loads or structure changes
+  // Calculate viewBox that contains all content
+  const [viewBoxDimensions, setViewBoxDimensions] = useState({ x: 0, y: 0, width: width, height: height });
+  
+  // Calculate the maximum radius needed for all nodes to ensure uniform sizing
+  const maxNodeRadius = useMemo(() => {
+    if (!flowchart || flowchart.nodes.length === 0) return 35;
+    
+    const lineHeight = 16; // Define lineHeight constant
+    
+    const radii = flowchart.nodes.map(node => {
+      const nodeLabel = node.label || node.id || 'Untitled';
+      const wrappedLines = wrapTextForCircle(nodeLabel);
+      const maxLineLength = Math.max(...wrappedLines.map(line => line.length));
+      const textHeight = wrappedLines.length * lineHeight;
+      const textWidth = maxLineLength * 8; // Approximate character width
+      return Math.max(35, Math.max(textWidth / 2, textHeight / 2) + 15);
+    });
+    
+    return Math.max(...radii);
+  }, [flowchart?.nodes, flowchart?.nodes?.map(n => n.type).join(',')]);
+  
   // Track node count and IDs to detect structural changes vs position changes
   const nodeCount = flowchart?.nodes.length || 0;
   const nodeIds = flowchart?.nodes.map(n => n.id).sort().join(',') || '';
@@ -82,47 +166,34 @@ export function FlowchartViewer({
     if (flowchart && flowchart.nodes.length > 0) {
       console.log(`📱 FlowchartViewer viewport: ${width}x${height}`);
       
-      // Find the bounds of all nodes including their radius
-      const nodeBounds = flowchart.nodes.map(node => {
-        const radius = calculateNodeRadius(node);
-        return {
-          minX: node.x - radius,
-          maxX: node.x + radius,
-          minY: node.y - radius,
-          maxY: node.y + radius
-        };
-      });
+      // Use the helper function to set initial viewBox
+      updateViewBoxForNodes(flowchart.nodes);
       
-      const minX = Math.min(...nodeBounds.map(b => b.minX));
-      const maxX = Math.max(...nodeBounds.map(b => b.maxX));
-      const minY = Math.min(...nodeBounds.map(b => b.minY));
-      const maxY = Math.max(...nodeBounds.map(b => b.maxY));
+      // Reset transforms since viewBox handles positioning
+      translateX.value = 0;
+      translateY.value = 0;
+      scale.value = 1;
       
-      console.log(`📐 Flowchart bounds (including radius): X(${minX} to ${maxX}), Y(${minY} to ${maxY})`);
-      console.log(`📏 Flowchart size: ${maxX - minX}x${maxY - minY}`);
-      
-      // Calculate the center of the flowchart content
-      const contentCenterX = (minX + maxX) / 2;
-      const contentCenterY = (minY + maxY) / 2;
-      
-      // Calculate screen center (original coordinate system)
-      const screenCenterX = width / 2;
-      const screenCenterY = height / 2;
-      
-      // Set initial translation to center the content with additional safety margin
-      // Account for the fact that viewBox extends beyond visible area
-      const safetyMargin = 20; // Additional margin to ensure bottom nodes aren't cut off
-      translateX.value = screenCenterX - contentCenterX;
-      translateY.value = screenCenterY - contentCenterY + safetyMargin; // Shift up slightly
+      // Fade in after positioning
+      opacity.value = 1;
     }
-  }, [nodeCount, nodeIds, width, height, translateX, translateY]); // Only recenter when structure changes, not positions
+  }, [nodeCount, nodeIds, width, height, updateViewBoxForNodes]); // Only recenter when structure changes, not positions
 
   const handleNodePress = useCallback((node: FlowchartNode) => {
     if (!isDragging) {
       setSelectedNodeId(node.id === selectedNodeId ? null : node.id);
+      setSelectedEdge(null); // Clear edge selection when selecting a node
       onNodeSelect?.(node);
     }
   }, [selectedNodeId, onNodeSelect, isDragging]);
+
+  const handleEdgePress = useCallback((edge: FlowchartEdge) => {
+    setSelectedEdge(prevEdge => 
+      prevEdge && prevEdge.from === edge.from && prevEdge.to === edge.to ? null : edge
+    );
+    setSelectedNodeId(null); // Clear node selection when selecting an edge
+    onEdgeEdit?.(edge);
+  }, [onEdgeEdit]);
 
   const handleLongPress = useCallback((node: FlowchartNode) => {
     console.log('Long press detected on node:', node.id);
@@ -157,6 +228,47 @@ export function FlowchartViewer({
     },
   });
 
+  // Helper function to update viewBox when nodes move
+  const updateViewBoxForNodes = useCallback((nodes: FlowchartNode[]) => {
+    if (!nodes || nodes.length === 0) return;
+    
+    // Find the bounds of all nodes including their radius
+    const nodeBounds = nodes.map(node => {
+      const radius = calculateNodeRadius(node);
+      return {
+        minX: node.x - radius,
+        maxX: node.x + radius,
+        minY: node.y - radius,
+        maxY: node.y + radius
+      };
+    });
+    
+    const minX = Math.min(...nodeBounds.map(b => b.minX));
+    const maxX = Math.max(...nodeBounds.map(b => b.maxX));
+    const minY = Math.min(...nodeBounds.map(b => b.minY));
+    const maxY = Math.max(...nodeBounds.map(b => b.maxY));
+    
+    // Calculate content dimensions
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    
+    // Calculate viewBox to fit all content with padding
+    const viewBoxPadding = 50;
+    const viewBoxX = minX - viewBoxPadding;
+    const viewBoxY = minY - viewBoxPadding;
+    const viewBoxWidth = contentWidth + (viewBoxPadding * 2);
+    const viewBoxHeight = contentHeight + (viewBoxPadding * 2);
+    
+    setViewBoxDimensions({ 
+      x: viewBoxX, 
+      y: viewBoxY, 
+      width: viewBoxWidth, 
+      height: viewBoxHeight 
+    });
+    
+    console.log(`📐 Updated ViewBox: ${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`);
+  }, []);
+
   // Pan gesture handler for movement and dragging
   const panGestureHandler = useAnimatedGestureHandler({
     onStart: (event, context) => {
@@ -176,16 +288,23 @@ export function FlowchartViewer({
       if (isDraggingShared.value || context.isDragMode) {
         if (draggedNodeIdShared.value) {
           // Handle node dragging - completely disable panning
-          // Convert screen coordinates to SVG coordinates accounting for current transform
-          // Scale factor of 3 to compensate for the larger viewBox (3x coordinate space)
-          const dragSensitivity = 3;
-          const deltaX = (event.x - dragStartPos.value.x) / scale.value * dragSensitivity;
-          const deltaY = (event.y - dragStartPos.value.y) / scale.value * dragSensitivity;
+          // Convert screen pixel coordinates to SVG viewBox coordinates
+          // Account for both scale transform and viewBox scaling
+          const viewBoxScale = viewBoxDimensions.width / width; // Ratio of viewBox to screen
+          const deltaX = (event.translationX / scale.value) * viewBoxScale;
+          const deltaY = (event.translationY / scale.value) * viewBoxScale;
           const newX = nodeStartPos.value.x + deltaX;
           const newY = nodeStartPos.value.y + deltaY;
           
           if (onNodeMove) {
             runOnJS(onNodeMove)(draggedNodeIdShared.value, newX, newY);
+            // Update viewBox dynamically during drag to prevent clipping
+            const updatedNodes = flowchart.nodes.map(node => 
+              node.id === draggedNodeIdShared.value 
+                ? { ...node, x: newX, y: newY }
+                : node
+            );
+            runOnJS(updateViewBoxForNodes)(updatedNodes);
           }
         }
         // Explicitly do nothing for panning when in drag mode
@@ -193,8 +312,9 @@ export function FlowchartViewer({
       }
       
       // Normal pan behavior (only when definitely not in drag mode)
-      translateX.value = context.startX + event.translationX;
-      translateY.value = context.startY + event.translationY;
+      // Adjust translation based on current scale to maintain 1:1 finger movement
+      translateX.value = context.startX + (event.translationX / scale.value);
+      translateY.value = context.startY + (event.translationY / scale.value);
     },
     onEnd: () => {
       if (isDraggingShared.value) {
@@ -211,41 +331,89 @@ export function FlowchartViewer({
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [
+        { scale: scale.value },
         { translateX: translateX.value },
         { translateY: translateY.value },
-        { scale: scale.value },
       ],
+      opacity: opacity.value,
     };
   });
 
-  // Helper function to wrap text optimally for circular display
-  const wrapTextForCircle = (text: string, maxCharsPerLine: number = 12): string[] => {
-    const words = text.split(' ');
-    const lines: string[] = [];
-    let currentLine = '';
+  // Helper function to render the appropriate shape based on node type
+  const renderNodeShape = (node: FlowchartNode, radius: number, circleColor: string, strokeColor: string, strokeWidth: number, opacity: number) => {
+    const { x, y, type } = node;
     
-    for (const word of words) {
-      const testLine = currentLine ? `${currentLine} ${word}` : word;
-      
-      if (testLine.length <= maxCharsPerLine) {
-        currentLine = testLine;
-      } else {
-        if (currentLine) {
-          lines.push(currentLine);
-          currentLine = word;
-        } else {
-          // Word itself is too long, break it
-          lines.push(word.substring(0, maxCharsPerLine));
-          currentLine = word.substring(maxCharsPerLine);
-        }
-      }
+    // Debug logging to check node type
+    console.log(`🔶 Rendering node ${node.id} with type: "${type}"`);
+    
+    const commonProps = {
+      fill: circleColor,
+      stroke: strokeColor,
+      strokeWidth: strokeWidth,
+      opacity: opacity,
+      onPress: () => handleNodePress(node),
+      onLongPress: () => handleLongPress(node),
+    };
+
+    const nodeType = String(type).toLowerCase().trim();
+    
+    switch (nodeType) {
+      case 'need':
+        console.log(`🔶 Rendering PENTAGON for node ${node.id}`);
+        return (
+          <Polygon
+            points={generatePentagonPath(x, y, radius)}
+            {...commonProps}
+          />
+        );
+      case 'self':
+        console.log(`🔶 Rendering CIRCLE for node ${node.id}`);
+        return (
+          <Circle
+            cx={x}
+            cy={y}
+            r={radius}
+            {...commonProps}
+          />
+        );
+      case 'manager':
+        console.log(`🔶 Rendering HEXAGON for node ${node.id}`);
+        return (
+          <Polygon
+            points={generateHexagonPath(x, y, radius)}
+            {...commonProps}
+          />
+        );
+      case 'exile':
+        console.log(`🔶 Rendering SQUARE for node ${node.id}`);
+        return (
+          <Rect
+            x={x - radius}
+            y={y - radius}
+            width={radius * 2}
+            height={radius * 2}
+            {...commonProps}
+          />
+        );
+      case 'firefighter':
+        console.log(`🔶 Rendering TRIANGLE for node ${node.id}`);
+        return (
+          <Polygon
+            points={generateTrianglePath(x, y, radius)}
+            {...commonProps}
+          />
+        );
+      default:
+        console.log(`🔶 Rendering DEFAULT CIRCLE for node ${node.id} (unknown type: "${nodeType}")`);
+        return (
+          <Circle
+            cx={x}
+            cy={y}
+            r={radius}
+            {...commonProps}
+          />
+        );
     }
-    
-    if (currentLine) {
-      lines.push(currentLine);
-    }
-    
-    return lines;
   };
 
   const renderNode = (node: FlowchartNode) => {
@@ -256,16 +424,12 @@ export function FlowchartViewer({
     const textColor = '#000000'; // Always black text
     const nodeColor = PartColors[node.type] || '#808080';
     
-    // Wrap text and calculate circle radius based on wrapped text
+    // Wrap text and use uniform radius for all nodes
     const nodeLabel = node.label || node.id || 'Untitled';
     const wrappedLines = wrapTextForCircle(nodeLabel);
-    const maxLineLength = Math.max(...wrappedLines.map(line => line.length));
-    const lineHeight = 16;
-    const textHeight = wrappedLines.length * lineHeight;
-    const textWidth = maxLineLength * 8; // Approximate character width
     
-    // Calculate radius to fit text comfortably (add padding)
-    const radius = Math.max(35, Math.max(textWidth / 2, textHeight / 2) + 15);
+    // Use the maximum radius calculated for all nodes
+    const radius = maxNodeRadius;
     
     // Background color for circle (always white)
     const circleColor = '#FFFFFF';
@@ -291,21 +455,12 @@ export function FlowchartViewer({
 
     return (
       <G key={node.id}>
-        {/* Circle background */}
-        <Circle
-          cx={node.x}
-          cy={node.y}
-          r={radius}
-          fill={circleColor}
-          stroke={strokeColor}
-          strokeWidth={strokeWidth}
-          opacity={opacity}
-          onPress={() => handleNodePress(node)}
-          onLongPress={() => handleLongPress(node)}
-        />
+        {/* Node shape background */}
+        {renderNodeShape(node, radius, circleColor, strokeColor, strokeWidth, opacity)}
         {/* Multi-line text label */}
         {wrappedLines.map((line, index) => {
           const totalLines = wrappedLines.length;
+          const lineHeight = 16; // Define lineHeight constant for text rendering
           const textBlockHeight = (totalLines - 1) * lineHeight;
           const startY = node.y - (textBlockHeight / 2) + (lineHeight * 0.35); // Add baseline offset
           const yPosition = startY + (index * lineHeight);
@@ -338,21 +493,60 @@ export function FlowchartViewer({
     if (!fromNode || !toNode) return null;
 
     const style = RelationshipStyles[edge.type] || { strokeWidth: 2, strokeDasharray: '0', color: '#808080' }; // Default style
+    const isSelected = selectedEdge && selectedEdge.from === edge.from && selectedEdge.to === edge.to;
     const lineColor = '#FFFFFF'; // Always white lines
+    const strokeWidth = isSelected ? style.strokeWidth + 2 : style.strokeWidth; // Thicker when selected
+    const opacity = isSelected ? 1 : 0.7; // More opaque when selected
+
+    // Calculate midpoint for label placement
+    const midX = (fromNode.x + toNode.x) / 2;
+    const midY = (fromNode.y + toNode.y) / 2;
+    
+    // Calculate angle for text rotation (optional - can be removed if rotation not desired)
+    const angle = Math.atan2(toNode.y - fromNode.y, toNode.x - fromNode.x) * (180 / Math.PI);
+    
+    // Capitalize first letter of relationship type for display
+    const displayLabel = edge.label || edge.type.charAt(0).toUpperCase() + edge.type.slice(1);
 
     return (
       <G key={`${edge.from}-${edge.to}`}>
+        {/* Edge line */}
         <Line
           x1={fromNode.x}
           y1={fromNode.y}
           x2={toNode.x}
           y2={toNode.y}
           stroke={lineColor}
-          strokeWidth={style.strokeWidth}
+          strokeWidth={strokeWidth}
           strokeDasharray={style.strokeDasharray}
-          opacity={0.7}
-          onPress={() => onEdgeEdit?.(edge)}
+          opacity={opacity}
+          onPress={() => handleEdgePress(edge)}
         />
+        {/* Edge label background rectangle for better readability */}
+        <Rect
+          x={midX - (displayLabel.length * 3)}
+          y={midY - 15}
+          width={displayLabel.length * 6}
+          height={14}
+          fill={isSelected ? '#FF9500' : '#000000'}
+          opacity={isSelected ? 0.9 : 0.7}
+          rx={3}
+          ry={3}
+          onPress={() => handleEdgePress(edge)}
+        />
+        {/* Edge label text */}
+        <SvgText
+          x={midX}
+          y={midY - 6}
+          fontSize="10"
+          textAnchor="middle"
+          fill="#FFFFFF"
+          fontWeight="600"
+          opacity={1}
+          onPress={() => handleEdgePress(edge)}
+        >
+          {displayLabel}
+        </SvgText>
       </G>
     );
   };
@@ -393,6 +587,9 @@ export function FlowchartViewer({
     });
     
     if (!clickedNode) {
+      // Clear selections when clicking empty space
+      setSelectedNodeId(null);
+      setSelectedEdge(null);
       onEmptySpaceTap(worldX, worldY);
     }
   };
@@ -406,8 +603,9 @@ export function FlowchartViewer({
               <Svg 
                 width={width} 
                 height={height} 
-                viewBox={`-${width} -${height} ${width * 3} ${height * 3}`}
+                viewBox={`${viewBoxDimensions.x} ${viewBoxDimensions.y} ${viewBoxDimensions.width} ${viewBoxDimensions.height}`}
                 onPress={handleSvgPress}
+                preserveAspectRatio="xMidYMid meet"
               >
                 {/* Render edges first (behind nodes) */}
                 {flowchart.edges.map(renderEdge)}
@@ -466,6 +664,40 @@ export function FlowchartViewer({
             { color: colorScheme === 'dark' ? '#CCC' : '#666' }
           ]}>
             {selectedNode.description || (isEditMode ? 'Tap to add description' : 'No description')}
+          </Text>
+        </Pressable>
+      )}
+      
+      {/* Edge info panel */}
+      {selectedEdge && (
+        <Pressable 
+          style={[
+            styles.infoPanel, 
+            { backgroundColor: colorScheme === 'dark' ? '#333' : '#F5F5F5' }
+          ]}
+          onPress={() => isEditMode && onEdgeEditFromPopup?.(selectedEdge)}
+        >
+          <Text style={[
+            styles.infoTitle,
+            { color: colorScheme === 'dark' ? '#FFF' : '#000' }
+          ]}>
+            Relationship: {selectedEdge.type.charAt(0).toUpperCase() + selectedEdge.type.slice(1)}
+          </Text>
+          <Text style={[
+            styles.infoType,
+            { color: RelationshipStyles[selectedEdge.type]?.color || '#808080' }
+          ]}>
+            {(() => {
+              const fromNode = flowchart.nodes.find(n => n.id === selectedEdge.from);
+              const toNode = flowchart.nodes.find(n => n.id === selectedEdge.to);
+              return `${fromNode?.label || selectedEdge.from} → ${toNode?.label || selectedEdge.to}`;
+            })()}
+          </Text>
+          <Text style={[
+            styles.infoDescription,
+            { color: colorScheme === 'dark' ? '#CCC' : '#666' }
+          ]}>
+            {selectedEdge.label || (isEditMode ? 'Tap to edit relationship' : 'No custom label')}
           </Text>
         </Pressable>
       )}

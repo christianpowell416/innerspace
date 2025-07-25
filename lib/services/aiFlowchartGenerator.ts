@@ -395,14 +395,13 @@ ${promptData.finalInstructions}`;
     
     console.log(`📐 Coordinate bounds: X(${minX} to ${maxX}), Y(${minY} to ${maxY})`);
     
-    // Scale coordinates to fit within the FlowchartViewer's viewBox coordinate system
-    // FlowchartViewer uses viewBox="-width -height width*3 height*3" (3x coordinate space)
-    // The actual visible area is from 0,0 to width,height within this larger space
-    const screenWidth = 400; // Approximate screen width (will be adjusted by FlowchartViewer)
-    const screenHeight = 400; // Approximate screen height 
-    const nodeRadius = 60; // Approximate max node radius to ensure full visibility
-    const margin = nodeRadius + 20; // Margin from screen edges plus node radius
-    const targetWidth = screenWidth - (margin * 2); // Safe visible area
+    // Scale coordinates to fit within the FlowchartViewer's viewport
+    // Most mobile screens are around 390-430px wide, so we'll target a safe area
+    const screenWidth = 350; // Target a smaller area to ensure it fits on all screens
+    const screenHeight = 350; // Keep it square for consistent layout
+    const nodeRadius = 50; // Approximate max node radius to ensure full visibility
+    const margin = nodeRadius + 30; // Larger margin from screen edges
+    const targetWidth = screenWidth - (margin * 2); // Safe visible area (~220px)
     const targetHeight = screenHeight - (margin * 2);
     const currentWidth = maxX - minX;
     const currentHeight = maxY - minY;

@@ -11,50 +11,50 @@ import {
   ScrollView,
 } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { FlowchartNode, PartType } from '@/lib/types/flowchart';
+import { FlowchartEdge, RelationshipType, RelationshipStyles } from '@/lib/types/flowchart';
 
-interface NodeEditModalProps {
+interface EdgeEditModalProps {
   visible: boolean;
-  node: FlowchartNode | null;
+  edge: FlowchartEdge | null;
+  fromNodeLabel?: string;
+  toNodeLabel?: string;
   onCancel: () => void;
-  onSubmit: (updates: { label: string; type: string; description: string }) => void;
-  onConnectMode: () => void;
+  onSubmit: (updates: { type: string; label?: string }) => void;
   onDelete?: () => void;
 }
 
-
-export function NodeEditModal({
+export function EdgeEditModal({
   visible,
-  node,
+  edge,
+  fromNodeLabel,
+  toNodeLabel,
   onCancel,
   onSubmit,
-  onConnectMode,
   onDelete,
-}: NodeEditModalProps) {
+}: EdgeEditModalProps) {
+  const [type, setType] = useState<string>('alliance');
   const [label, setLabel] = useState('');
-  const [type, setType] = useState<string>('manager');
-  const [description, setDescription] = useState('');
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   useEffect(() => {
-    if (node) {
-      setLabel(node.label || node.id || '');
-      setType(node.type || 'manager');
-      setDescription(node.description || '');
+    if (edge) {
+      setType(edge.type);
+      setLabel(edge.label || '');
     }
-  }, [node]);
+  }, [edge]);
 
   const handleSubmit = () => {
-    const trimmedLabel = (label || '').trim();
-    if (trimmedLabel) {
-      onSubmit({
-        label: trimmedLabel,
-        type,
-        description: (description || '').trim(),
-      });
-      resetForm();
+    const trimmedType = type.trim();
+    if (!trimmedType) {
+      return; // Don't submit if type is empty
     }
+    
+    onSubmit({
+      type: trimmedType,
+      label: label.trim() || undefined,
+    });
+    resetForm();
   };
 
   const handleCancel = () => {
@@ -68,10 +68,9 @@ export function NodeEditModal({
   };
 
   const resetForm = () => {
-    if (node) {
-      setLabel(node.label || node.id || '');
-      setType(node.type || 'manager');
-      setDescription(node.description || '');
+    if (edge) {
+      setType(edge.type);
+      setLabel(edge.label || '');
     }
   };
 
@@ -95,17 +94,24 @@ export function NodeEditModal({
               styles.modalTitle,
               { color: isDark ? '#FFFFFF' : '#000000' }
             ]}>
-              Edit Node
+              Edit Relationship
+            </Text>
+            
+            <Text style={[
+              styles.connectionInfo,
+              { color: isDark ? '#8E8E93' : '#666666' }
+            ]}>
+              {fromNodeLabel || 'Unknown'} → {toNodeLabel || 'Unknown'}
             </Text>
             
             <ScrollView style={styles.formContainer}>
-              {/* Name Input */}
+              {/* Relationship Type Input */}
               <View style={styles.inputGroup}>
                 <Text style={[
                   styles.inputLabel,
                   { color: isDark ? '#FFFFFF' : '#000000' }
                 ]}>
-                  Name
+                  Relationship Type
                 </Text>
                 <TextInput
                   style={[
@@ -115,60 +121,34 @@ export function NodeEditModal({
                       color: isDark ? '#FFFFFF' : '#000000',
                     }
                   ]}
-                  placeholder="Enter node name..."
-                  placeholderTextColor={isDark ? '#8E8E93' : '#C7C7CC'}
-                  value={label}
-                  onChangeText={setLabel}
-                  autoFocus
-                />
-              </View>
-
-              {/* Type Input */}
-              <View style={styles.inputGroup}>
-                <Text style={[
-                  styles.inputLabel,
-                  { color: isDark ? '#FFFFFF' : '#000000' }
-                ]}>
-                  Type
-                </Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
-                      color: isDark ? '#FFFFFF' : '#000000',
-                    }
-                  ]}
-                  placeholder="Enter node type..."
+                  placeholder="Enter relationship type (e.g., protection, alliance, conflict)..."
                   placeholderTextColor={isDark ? '#8E8E93' : '#C7C7CC'}
                   value={type}
                   onChangeText={setType}
+                  autoCapitalize="none"
                 />
               </View>
 
-              {/* Description Input */}
+              {/* Custom Label Input */}
               <View style={styles.inputGroup}>
                 <Text style={[
                   styles.inputLabel,
                   { color: isDark ? '#FFFFFF' : '#000000' }
                 ]}>
-                  Description
+                  Custom Label (Optional)
                 </Text>
                 <TextInput
                   style={[
                     styles.input,
-                    styles.textArea,
                     {
                       backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
                       color: isDark ? '#FFFFFF' : '#000000',
                     }
                   ]}
-                  placeholder="Enter description..."
+                  placeholder="Enter custom label for this relationship..."
                   placeholderTextColor={isDark ? '#8E8E93' : '#C7C7CC'}
-                  value={description}
-                  onChangeText={setDescription}
-                  multiline
-                  numberOfLines={3}
+                  value={label}
+                  onChangeText={setLabel}
                 />
               </View>
             </ScrollView>
@@ -191,24 +171,17 @@ export function NodeEditModal({
               )}
               
               <Pressable
-                style={[styles.button, styles.connectButton]}
-                onPress={onConnectMode}
-              >
-                <Text style={styles.connectButtonText}>Connect</Text>
-              </Pressable>
-              
-              <Pressable
                 style={[
                   styles.button,
                   styles.submitButton,
-                  !(label || '').trim() && styles.submitButtonDisabled
+                  !type.trim() && styles.submitButtonDisabled
                 ]}
                 onPress={handleSubmit}
-                disabled={!(label || '').trim()}
+                disabled={!type.trim()}
               >
                 <Text style={[
                   styles.submitButtonText,
-                  !(label || '').trim() && styles.submitButtonTextDisabled
+                  !type.trim() && styles.submitButtonTextDisabled
                 ]}>
                   Save
                 </Text>
@@ -249,8 +222,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  connectionInfo: {
+    fontSize: 14,
     marginBottom: 20,
     textAlign: 'center',
+    fontStyle: 'italic',
   },
   formContainer: {
     marginBottom: 20,
@@ -268,28 +247,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 16,
     fontSize: 16,
-  },
-  textArea: {
-    height: 80,
-    paddingTop: 12,
-    paddingBottom: 12,
-    textAlignVertical: 'top',
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  typeOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  typeOptionText: {
-    fontSize: 14,
-    fontWeight: '500',
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -315,14 +272,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF3B30',
   },
   deleteButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  connectButton: {
-    backgroundColor: '#FF9500',
-  },
-  connectButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',

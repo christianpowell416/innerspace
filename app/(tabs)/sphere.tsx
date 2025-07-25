@@ -8,6 +8,7 @@ import { ThemedView } from '@/components/ThemedView';
 import { FlowchartViewer } from '@/components/FlowchartViewer';
 import { TextInputModal } from '@/components/TextInputModal';
 import { NodeEditModal } from '@/components/NodeEditModal';
+import { EdgeEditModal } from '@/components/EdgeEditModal';
 import { FlowchartStructure, FlowchartNode, FlowchartEdge, PartType } from '@/lib/types/flowchart';
 import { 
   getUserFlowchart,
@@ -34,6 +35,8 @@ export default function SphereScreen() {
   const [nodeToRename, setNodeToRename] = useState<FlowchartNode | null>(null);
   const [nodeEditModalVisible, setNodeEditModalVisible] = useState(false);
   const [nodeToEdit, setNodeToEdit] = useState<FlowchartNode | null>(null);
+  const [edgeEditModalVisible, setEdgeEditModalVisible] = useState(false);
+  const [edgeToEdit, setEdgeToEdit] = useState<FlowchartEdge | null>(null);
   const [isConnectMode, setIsConnectMode] = useState(false);
   const [connectingFromNode, setConnectingFromNode] = useState<FlowchartNode | null>(null);
   
@@ -156,6 +159,55 @@ export default function SphereScreen() {
       setNodeEditModalVisible(false);
       Alert.alert('Connect Mode', 'Tap another node to create a relationship');
     }
+  };
+
+  const handleNodeDelete = async () => {
+    if (!user || !flowchart || !currentFlowchartId || !nodeToEdit) {
+      Alert.alert('Error', 'Unable to delete node');
+      return;
+    }
+
+    Alert.alert(
+      'Delete Node',
+      `Are you sure you want to delete "${nodeToEdit.label || nodeToEdit.id}"? This will also remove all connected relationships.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Remove the node and all connected edges
+              const updatedStructure: FlowchartStructure = {
+                ...flowchart,
+                nodes: flowchart.nodes.filter(node => node.id !== nodeToEdit.id),
+                edges: flowchart.edges.filter(edge => 
+                  edge.from !== nodeToEdit.id && edge.to !== nodeToEdit.id
+                )
+              };
+
+              const changeDescription = `Deleted node "${nodeToEdit.label || nodeToEdit.id}" and all connected relationships`;
+
+              await updateFlowchartWithDescription(
+                currentFlowchartId,
+                updatedStructure,
+                changeDescription
+              );
+
+              // Update local state
+              setFlowchart(updatedStructure);
+              setNodeEditModalVisible(false);
+              setNodeToEdit(null);
+
+              console.log('✅ Deleted node:', nodeToEdit.id);
+            } catch (err) {
+              console.error('❌ Error deleting node:', err);
+              Alert.alert('Error', 'Failed to delete node');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const createRelationship = async (fromNode: FlowchartNode, toNode: FlowchartNode) => {
@@ -367,7 +419,99 @@ export default function SphereScreen() {
     }
 
     console.log('🔗 Edit relationship:', edge.type, 'from', edge.from, 'to', edge.to);
-    // TODO: Implement edge editing modal
+    // Only show the popup info panel, don't open modal immediately
+    // The modal will be opened when the user taps the popup in edit mode
+  };
+
+  const handleEdgeEditFromPopup = (edge: FlowchartEdge) => {
+    if (!user) {
+      Alert.alert('Sign In Required', 'Please sign in to edit relationships');
+      return;
+    }
+
+    if (!isEditMode) {
+      return; // Only allow editing in edit mode
+    }
+
+    console.log('🔗 Opening edge edit modal for:', edge.type, 'from', edge.from, 'to', edge.to);
+    setEdgeToEdit(edge);
+    setEdgeEditModalVisible(true);
+  };
+
+  const handleEdgeUpdate = async (updates: { type: string; label?: string }) => {
+    if (!user || !flowchart || !currentFlowchartId || !edgeToEdit) {
+      Alert.alert('Error', 'Unable to update relationship');
+      return;
+    }
+
+    try {
+      // Update the edge in the flowchart structure
+      const updatedStructure: FlowchartStructure = {
+        ...flowchart,
+        edges: flowchart.edges.map(edge => 
+          edge.from === edgeToEdit.from && edge.to === edgeToEdit.to
+            ? { ...edge, type: updates.type as any, label: updates.label }
+            : edge
+        )
+      };
+
+      const fromNode = flowchart.nodes.find(n => n.id === edgeToEdit.from);
+      const toNode = flowchart.nodes.find(n => n.id === edgeToEdit.to);
+      const changeDescription = `Updated relationship from "${fromNode?.label || edgeToEdit.from}" to "${toNode?.label || edgeToEdit.to}" to type "${updates.type}"${updates.label ? ` with label "${updates.label}"` : ''}`;
+
+      await updateFlowchartWithDescription(
+        currentFlowchartId,
+        updatedStructure,
+        changeDescription
+      );
+
+      // Update local state
+      setFlowchart(updatedStructure);
+      setEdgeEditModalVisible(false);
+      setEdgeToEdit(null);
+
+      console.log('✅ Updated relationship:', updates);
+    } catch (err) {
+      console.error('❌ Error updating relationship:', err);
+      Alert.alert('Error', 'Failed to update relationship');
+    }
+  };
+
+  const handleEdgeDelete = async () => {
+    if (!user || !flowchart || !currentFlowchartId || !edgeToEdit) {
+      Alert.alert('Error', 'Unable to delete relationship');
+      return;
+    }
+
+    try {
+      // Remove the edge from the flowchart structure
+      const updatedStructure: FlowchartStructure = {
+        ...flowchart,
+        edges: flowchart.edges.filter(edge => 
+          !(edge.from === edgeToEdit.from && edge.to === edgeToEdit.to)
+        )
+      };
+
+      const fromNode = flowchart.nodes.find(n => n.id === edgeToEdit.from);
+      const toNode = flowchart.nodes.find(n => n.id === edgeToEdit.to);
+      const changeDescription = `Deleted relationship from "${fromNode?.label || edgeToEdit.from}" to "${toNode?.label || edgeToEdit.to}"`;
+
+      await updateFlowchartWithDescription(
+        currentFlowchartId,
+        updatedStructure,
+        changeDescription
+      );
+
+      // Update local state
+      setFlowchart(updatedStructure);
+      setEdgeEditModalVisible(false);
+      setEdgeToEdit(null);
+
+      console.log('✅ Deleted relationship');
+    } catch (err) {
+      console.error('❌ Error deleting relationship:', err);
+      Alert.alert('Error', 'Failed to delete relationship');
+    }
   };
 
   const handleGenerateWithAI = async () => {
@@ -565,6 +709,7 @@ export default function SphereScreen() {
               onNodeDescriptionEdit={handleNodeDescriptionEdit}
               onNodeMove={handleNodeMove}
               onEdgeEdit={handleEdgeEdit}
+              onEdgeEditFromPopup={handleEdgeEditFromPopup}
               onEmptySpaceTap={() => {}}
               width={screenWidth}
               height={screenWidth}
@@ -594,6 +739,20 @@ export default function SphereScreen() {
         onCancel={handleNodeEditCancel}
         onSubmit={handleNodeEditSubmit}
         onConnectMode={handleConnectMode}
+        onDelete={handleNodeDelete}
+      />
+      
+      <EdgeEditModal
+        visible={edgeEditModalVisible}
+        edge={edgeToEdit}
+        fromNodeLabel={edgeToEdit ? flowchart?.nodes.find(n => n.id === edgeToEdit.from)?.label : undefined}
+        toNodeLabel={edgeToEdit ? flowchart?.nodes.find(n => n.id === edgeToEdit.to)?.label : undefined}
+        onCancel={() => {
+          setEdgeEditModalVisible(false);
+          setEdgeToEdit(null);
+        }}
+        onSubmit={handleEdgeUpdate}
+        onDelete={handleEdgeDelete}
       />
     </SafeAreaView>
   );
