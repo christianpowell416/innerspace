@@ -100,6 +100,36 @@ export function FlowchartViewer({
     return points.join(' ');
   };
 
+  // Simplified helper function to get approximate edge position for label placement
+  const getApproximateEdgePosition = (fromNode: FlowchartNode, toNode: FlowchartNode) => {
+    // Calculate direction from fromNode to toNode
+    const dx = toNode.x - fromNode.x;
+    const dy = toNode.y - fromNode.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    if (distance === 0) return { x: fromNode.x, y: fromNode.y };
+    
+    // Get the shape radii for both nodes
+    const fromRadius = getShapeRadiusForEqualArea(maxNodeRadius, fromNode.type);
+    const toRadius = getShapeRadiusForEqualArea(maxNodeRadius, toNode.type);
+    
+    // Calculate approximate edge positions by moving inward from center by radius
+    const unitX = dx / distance;
+    const unitY = dy / distance;
+    
+    const fromEdgeX = fromNode.x + unitX * fromRadius;
+    const fromEdgeY = fromNode.y + unitY * fromRadius;
+    
+    const toEdgeX = toNode.x - unitX * toRadius;
+    const toEdgeY = toNode.y - unitY * toRadius;
+    
+    // Return midpoint between approximate edge positions
+    const midX = (fromEdgeX + toEdgeX) / 2;
+    const midY = (fromEdgeY + toEdgeY) / 2;
+    
+    return { x: midX, y: midY };
+  };
+
   // Helper function to wrap text optimally for circular display
   const wrapTextForCircle = (text: string, maxCharsPerLine: number = 12): string[] => {
     const words = text.split(' ');
@@ -132,8 +162,11 @@ export function FlowchartViewer({
 
   // Helper function to calculate node radius (matches renderNode logic)
   const calculateNodeRadius = (node: FlowchartNode) => {
-    // Return the uniform maximum radius for all nodes
-    return maxNodeRadius;
+    // For bounds calculation, use the maximum radius to ensure proper spacing
+    // regardless of shape type
+    const radius = maxNodeRadius || 50; // Fallback to 50 if maxNodeRadius not ready
+    console.log('📐 calculateNodeRadius returning:', radius, 'for node:', node.id);
+    return radius;
   };
 
   // Calculate initial centering offset when flowchart loads or structure changes
@@ -147,7 +180,7 @@ export function FlowchartViewer({
     const lineHeight = 16; // Define lineHeight constant
     
     const radii = flowchart.nodes.map(node => {
-      const nodeLabel = node.label || node.id || 'Untitled';
+      const nodeLabel = node.id || 'Untitled';
       const wrappedLines = wrapTextForCircle(nodeLabel);
       const maxLineLength = Math.max(...wrappedLines.map(line => line.length));
       const textHeight = wrappedLines.length * lineHeight;
@@ -163,19 +196,30 @@ export function FlowchartViewer({
   const nodeIds = flowchart?.nodes.map(n => n.id).sort().join(',') || '';
   
   useEffect(() => {
+    console.log('🔄 FlowchartViewer useEffect triggered');
+    console.log('🔄 flowchart exists:', !!flowchart);
+    console.log('🔄 node count:', flowchart?.nodes?.length);
+    
     if (flowchart && flowchart.nodes.length > 0) {
       console.log(`📱 FlowchartViewer viewport: ${width}x${height}`);
+      console.log('🔄 About to call updateViewBoxForNodes...');
       
-      // Use the helper function to set initial viewBox
-      updateViewBoxForNodes(flowchart.nodes);
-      
-      // Reset transforms since viewBox handles positioning
-      translateX.value = 0;
-      translateY.value = 0;
-      scale.value = 1;
-      
-      // Fade in after positioning
-      opacity.value = 1;
+      try {
+        // Use the helper function to set initial viewBox
+        updateViewBoxForNodes(flowchart.nodes);
+        console.log('🔄 updateViewBoxForNodes completed successfully');
+        
+        // Reset transforms since viewBox handles positioning
+        translateX.value = 0;
+        translateY.value = 0;
+        scale.value = 1;
+        
+        // Fade in after positioning
+        opacity.value = 1;
+        console.log('🔄 useEffect completed successfully');
+      } catch (error) {
+        console.error('❌ Error in useEffect:', error);
+      }
     }
   }, [nodeCount, nodeIds, width, height, updateViewBoxForNodes]); // Only recenter when structure changes, not positions
 
@@ -230,44 +274,105 @@ export function FlowchartViewer({
 
   // Helper function to update viewBox when nodes move
   const updateViewBoxForNodes = useCallback((nodes: FlowchartNode[]) => {
-    if (!nodes || nodes.length === 0) return;
+    console.log('📐 updateViewBoxForNodes called with nodes:', nodes?.length);
     
-    // Find the bounds of all nodes including their radius
-    const nodeBounds = nodes.map(node => {
-      const radius = calculateNodeRadius(node);
-      return {
-        minX: node.x - radius,
-        maxX: node.x + radius,
-        minY: node.y - radius,
-        maxY: node.y + radius
-      };
-    });
+    if (!nodes || nodes.length === 0) {
+      console.log('📐 No nodes provided, returning early');
+      return;
+    }
     
-    const minX = Math.min(...nodeBounds.map(b => b.minX));
-    const maxX = Math.max(...nodeBounds.map(b => b.maxX));
-    const minY = Math.min(...nodeBounds.map(b => b.minY));
-    const maxY = Math.max(...nodeBounds.map(b => b.maxY));
+    console.log('📐 Starting viewBox calculation for nodes:', nodes.length);
+    console.log('📐 Node data:', nodes.map(n => ({ id: n.id, x: n.x, y: n.y, type: n.type })));
     
-    // Calculate content dimensions
-    const contentWidth = maxX - minX;
-    const contentHeight = maxY - minY;
-    
-    // Calculate viewBox to fit all content with padding
-    const viewBoxPadding = 50;
-    const viewBoxX = minX - viewBoxPadding;
-    const viewBoxY = minY - viewBoxPadding;
-    const viewBoxWidth = contentWidth + (viewBoxPadding * 2);
-    const viewBoxHeight = contentHeight + (viewBoxPadding * 2);
-    
-    setViewBoxDimensions({ 
-      x: viewBoxX, 
-      y: viewBoxY, 
-      width: viewBoxWidth, 
-      height: viewBoxHeight 
-    });
-    
-    console.log(`📐 Updated ViewBox: ${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`);
-  }, []);
+    try {
+      console.log('📐 About to calculate node bounds...');
+      // Find the bounds of all nodes including their radius
+      const nodeBounds = nodes.map(node => {
+        console.log('📐 Processing node:', node.id, 'at', node.x, node.y);
+        // Validate node coordinates - handle undefined coordinates
+        if (!node || node.x === undefined || node.y === undefined || 
+            typeof node.x !== 'number' || typeof node.y !== 'number' || 
+            isNaN(node.x) || isNaN(node.y) || !isFinite(node.x) || !isFinite(node.y)) {
+          console.error('❌ Invalid node coordinates:', { id: node?.id, x: node?.x, y: node?.y, type: node?.type });
+          // Use a default position for invalid nodes
+          const defaultX = 200 + (Math.random() * 100); // Add some randomness to avoid overlap
+          const defaultY = 200 + (Math.random() * 100);
+          return {
+            minX: defaultX - 50,
+            maxX: defaultX + 50,
+            minY: defaultY - 50,
+            maxY: defaultY + 50
+          };
+        }
+        
+        const radius = calculateNodeRadius(node);
+        if (!radius || isNaN(radius) || !isFinite(radius) || radius <= 0) {
+          console.error('❌ Invalid node radius:', radius, 'for node:', node.id);
+          return {
+            minX: node.x - 50,
+            maxX: node.x + 50,
+            minY: node.y - 50,
+            maxY: node.y + 50
+          };
+        }
+        
+        return {
+          minX: node.x - radius,
+          maxX: node.x + radius,
+          minY: node.y - radius,
+          maxY: node.y + radius
+        };
+      });
+      
+      const validBounds = nodeBounds.filter(b => 
+        isFinite(b.minX) && isFinite(b.maxX) && isFinite(b.minY) && isFinite(b.maxY)
+      );
+      
+      if (validBounds.length === 0) {
+        console.error('❌ No valid node bounds found');
+        return;
+      }
+      
+      const minX = Math.min(...validBounds.map(b => b.minX));
+      const maxX = Math.max(...validBounds.map(b => b.maxX));
+      const minY = Math.min(...validBounds.map(b => b.minY));
+      const maxY = Math.max(...validBounds.map(b => b.maxY));
+      
+      // Validate calculated bounds
+      if (!isFinite(minX) || !isFinite(maxX) || !isFinite(minY) || !isFinite(maxY)) {
+        console.error('❌ Invalid calculated bounds:', { minX, maxX, minY, maxY });
+        return;
+      }
+      
+      // Calculate content dimensions
+      const contentWidth = maxX - minX;
+      const contentHeight = maxY - minY;
+      
+      // Calculate viewBox to fit all content with padding
+      const viewBoxPadding = 50;
+      const viewBoxX = minX - viewBoxPadding;
+      const viewBoxY = minY - viewBoxPadding;
+      const viewBoxWidth = contentWidth + (viewBoxPadding * 2);
+      const viewBoxHeight = contentHeight + (viewBoxPadding * 2);
+      
+      // Final validation
+      if (!isFinite(viewBoxX) || !isFinite(viewBoxY) || !isFinite(viewBoxWidth) || !isFinite(viewBoxHeight)) {
+        console.error('❌ Invalid viewBox dimensions:', { viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight });
+        return;
+      }
+      
+      setViewBoxDimensions({ 
+        x: viewBoxX, 
+        y: viewBoxY, 
+        width: viewBoxWidth, 
+        height: viewBoxHeight 
+      });
+      
+      console.log(`📐 Updated ViewBox: ${viewBoxX} ${viewBoxY} ${viewBoxWidth} ${viewBoxHeight}`);
+    } catch (error) {
+      console.error('❌ Error in updateViewBoxForNodes:', error);
+    }
+  }, [maxNodeRadius]);
 
   // Pan gesture handler for movement and dragging
   const panGestureHandler = useAnimatedGestureHandler({
@@ -339,12 +444,55 @@ export function FlowchartViewer({
     };
   });
 
+  // Helper function to calculate equivalent radius for equal area shapes
+  const getShapeRadiusForEqualArea = (baseRadius: number, shapeType: string): number => {
+    // Base area is a circle: π * r²
+    const baseArea = Math.PI * baseRadius * baseRadius;
+    
+    const nodeType = String(shapeType).toLowerCase().trim();
+    
+    switch (nodeType) {
+      case 'need': // Pentagon
+        // Pentagon area = (1/4) * √(25 + 10√5) * s²
+        // Where s is the side length, and for a regular pentagon inscribed in a circle: s = 2r * sin(π/5)
+        // Simplifying: Pentagon area ≈ 2.377 * r²
+        // To get equal area: baseArea = 2.377 * r², so r = √(baseArea / 2.377)
+        return Math.sqrt(baseArea / 2.377);
+        
+      case 'self': // Circle
+        // Circle area = π * r², so radius stays the same
+        return baseRadius;
+        
+      case 'manager': // Hexagon
+        // Hexagon area = (3√3/2) * r² ≈ 2.598 * r²
+        // To get equal area: baseArea = 2.598 * r², so r = √(baseArea / 2.598)
+        return Math.sqrt(baseArea / 2.598);
+        
+      case 'exile': // Square
+        // Square area = (2r)² = 4r² (where 2r is the side length for a square inscribed in a circle)
+        // To get equal area: baseArea = 4 * r², so r = √(baseArea / 4)
+        return Math.sqrt(baseArea / 4);
+        
+      case 'firefighter': // Triangle
+        // Equilateral triangle area = (3√3/4) * s²
+        // For triangle inscribed in circle: s = r * √3, so area = (3√3/4) * (r√3)² = (3√3/4) * 3r² ≈ 2.598 * r²
+        // To get equal area: baseArea = 2.598 * r², so r = √(baseArea / 2.598)
+        return Math.sqrt(baseArea / 2.598);
+        
+      default:
+        return baseRadius;
+    }
+  };
+
   // Helper function to render the appropriate shape based on node type
-  const renderNodeShape = (node: FlowchartNode, radius: number, circleColor: string, strokeColor: string, strokeWidth: number, opacity: number) => {
+  const renderNodeShape = (node: FlowchartNode, baseRadius: number, circleColor: string, strokeColor: string, strokeWidth: number, opacity: number) => {
     const { x, y, type } = node;
     
+    // Calculate the adjusted radius for equal area
+    const shapeRadius = getShapeRadiusForEqualArea(baseRadius, type);
+    
     // Debug logging to check node type
-    console.log(`🔶 Rendering node ${node.id} with type: "${type}"`);
+    console.log(`🔶 Rendering node ${node.id} with type: "${type}", base radius: ${baseRadius.toFixed(1)}, shape radius: ${shapeRadius.toFixed(1)}`);
     
     const commonProps = {
       fill: circleColor,
@@ -362,7 +510,7 @@ export function FlowchartViewer({
         console.log(`🔶 Rendering PENTAGON for node ${node.id}`);
         return (
           <Polygon
-            points={generatePentagonPath(x, y, radius)}
+            points={generatePentagonPath(x, y, shapeRadius)}
             {...commonProps}
           />
         );
@@ -372,7 +520,7 @@ export function FlowchartViewer({
           <Circle
             cx={x}
             cy={y}
-            r={radius}
+            r={shapeRadius}
             {...commonProps}
           />
         );
@@ -380,7 +528,7 @@ export function FlowchartViewer({
         console.log(`🔶 Rendering HEXAGON for node ${node.id}`);
         return (
           <Polygon
-            points={generateHexagonPath(x, y, radius)}
+            points={generateHexagonPath(x, y, shapeRadius)}
             {...commonProps}
           />
         );
@@ -388,10 +536,10 @@ export function FlowchartViewer({
         console.log(`🔶 Rendering SQUARE for node ${node.id}`);
         return (
           <Rect
-            x={x - radius}
-            y={y - radius}
-            width={radius * 2}
-            height={radius * 2}
+            x={x - shapeRadius}
+            y={y - shapeRadius}
+            width={shapeRadius * 2}
+            height={shapeRadius * 2}
             {...commonProps}
           />
         );
@@ -399,7 +547,7 @@ export function FlowchartViewer({
         console.log(`🔶 Rendering TRIANGLE for node ${node.id}`);
         return (
           <Polygon
-            points={generateTrianglePath(x, y, radius)}
+            points={generateTrianglePath(x, y, shapeRadius)}
             {...commonProps}
           />
         );
@@ -409,7 +557,7 @@ export function FlowchartViewer({
           <Circle
             cx={x}
             cy={y}
-            r={radius}
+            r={shapeRadius}
             {...commonProps}
           />
         );
@@ -425,7 +573,7 @@ export function FlowchartViewer({
     const nodeColor = PartColors[node.type] || '#808080';
     
     // Wrap text and use uniform radius for all nodes
-    const nodeLabel = node.label || node.id || 'Untitled';
+    const nodeLabel = node.id || 'Untitled';
     const wrappedLines = wrapTextForCircle(nodeLabel);
     
     // Use the maximum radius calculated for all nodes
@@ -498,9 +646,10 @@ export function FlowchartViewer({
     const strokeWidth = isSelected ? style.strokeWidth + 2 : style.strokeWidth; // Thicker when selected
     const opacity = isSelected ? 1 : 0.7; // More opaque when selected
 
-    // Calculate midpoint for label placement
-    const midX = (fromNode.x + toNode.x) / 2;
-    const midY = (fromNode.y + toNode.y) / 2;
+    // Calculate approximate midpoint between node edges for label placement
+    const labelPosition = getApproximateEdgePosition(fromNode, toNode);
+    const midX = labelPosition.x;
+    const midY = labelPosition.y;
     
     // Calculate angle for text rotation (optional - can be removed if rotation not desired)
     const angle = Math.atan2(toNode.y - fromNode.y, toNode.x - fromNode.x) * (180 / Math.PI);
@@ -651,7 +800,7 @@ export function FlowchartViewer({
             styles.infoTitle,
             { color: colorScheme === 'dark' ? '#FFF' : '#000' }
           ]}>
-            {selectedNode.label || selectedNode.id || 'Untitled'}
+            {selectedNode.id || 'Untitled'}
           </Text>
           <Text style={[
             styles.infoType,

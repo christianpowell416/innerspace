@@ -9,6 +9,7 @@ import { FlowchartViewer } from '@/components/FlowchartViewer';
 import { TextInputModal } from '@/components/TextInputModal';
 import { NodeEditModal } from '@/components/NodeEditModal';
 import { EdgeEditModal } from '@/components/EdgeEditModal';
+import { VoiceFlowchartCreator } from '@/components/VoiceFlowchartCreator';
 import { FlowchartStructure, FlowchartNode, FlowchartEdge, PartType } from '@/lib/types/flowchart';
 import { 
   getUserFlowchart,
@@ -17,7 +18,8 @@ import {
   subscribeToFlowchartChanges,
   FlowchartRow,
   generateFlowchartFromRequirements,
-  createFlowchart
+  createFlowchart,
+  exportFlowchartAsTemplate
 } from '@/lib/services/flowcharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -39,6 +41,7 @@ export default function SphereScreen() {
   const [edgeToEdit, setEdgeToEdit] = useState<FlowchartEdge | null>(null);
   const [isConnectMode, setIsConnectMode] = useState(false);
   const [connectingFromNode, setConnectingFromNode] = useState<FlowchartNode | null>(null);
+  const [voiceModalVisible, setVoiceModalVisible] = useState(false);
   
   // Debounced position update
   const positionUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -78,12 +81,53 @@ export default function SphereScreen() {
       setError(null);
       
       const { structure, id } = await getUserFlowchartWithId();
-      setFlowchart(structure);
+      
+      // Fix any nodes that don't have x,y coordinates
+      const fixedStructure = {
+        ...structure,
+        nodes: structure.nodes.map((node, index) => {
+          if (node.x === undefined || node.y === undefined || 
+              typeof node.x !== 'number' || typeof node.y !== 'number' ||
+              isNaN(node.x) || isNaN(node.y)) {
+            console.log('🔧 Fixing node coordinates for:', node.id);
+            // Arrange nodes in a circle pattern
+            const angle = (index * 2 * Math.PI) / structure.nodes.length;
+            const radius = 150;
+            const centerX = 300;
+            const centerY = 300;
+            return {
+              ...node,
+              x: centerX + radius * Math.cos(angle),
+              y: centerY + radius * Math.sin(angle)
+            };
+          }
+          return node;
+        })
+      };
+      
+      setFlowchart(fixedStructure);
       
       // Set the flowchart ID for updates
       if (id) {
         setCurrentFlowchartId(id);
         console.log('✅ Loaded flowchart with ID:', id);
+        
+        // Save the fixed coordinates back to database if any were fixed
+        const hasFixedNodes = structure.nodes.some(node => 
+          node.x === undefined || node.y === undefined || 
+          typeof node.x !== 'number' || typeof node.y !== 'number' ||
+          isNaN(node.x) || isNaN(node.y)
+        );
+        
+        if (hasFixedNodes) {
+          console.log('💾 Saving fixed node coordinates to database...');
+          try {
+            await updateFlowchartWithDescription(id, fixedStructure, 'Fixed missing node coordinates');
+            console.log('✅ Fixed coordinates saved to database');
+          } catch (error) {
+            console.warn('⚠️ Could not save fixed coordinates:', error);
+          }
+        }
       } else {
         console.log('ℹ️ Loaded flowchart without ID (non-authenticated)');
       }
@@ -96,7 +140,7 @@ export default function SphereScreen() {
   };
 
   const handleNodeSelect = (node: FlowchartNode) => {
-    console.log('📍 Selected node:', node.label, '(', node.type, ')');
+    console.log('📍 Selected node:', node.id, '(', node.type, ')');
     
     // If in connect mode, create a relationship
     if (isConnectMode && connectingFromNode && node.id !== connectingFromNode.id) {
@@ -139,7 +183,7 @@ export default function SphereScreen() {
     setNodeEditModalVisible(true);
   };
 
-  const handleNodeEditSubmit = async (updates: { label: string; type: string; description: string }) => {
+  const handleNodeEditSubmit = async (updates: { id: string; type: string; description: string; transcripts: string[] }) => {
     if (nodeToEdit && flowchart && currentFlowchartId) {
       await updateNodeProperties(nodeToEdit.id, updates);
     }
@@ -169,7 +213,7 @@ export default function SphereScreen() {
 
     Alert.alert(
       'Delete Node',
-      `Are you sure you want to delete "${nodeToEdit.label || nodeToEdit.id}"? This will also remove all connected relationships.`,
+      `Are you sure you want to delete "${nodeToEdit.id}"? This will also remove all connected relationships.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -186,7 +230,7 @@ export default function SphereScreen() {
                 )
               };
 
-              const changeDescription = `Deleted node "${nodeToEdit.label || nodeToEdit.id}" and all connected relationships`;
+              const changeDescription = `Deleted node "${nodeToEdit.id}" and all connected relationships`;
 
               await updateFlowchartWithDescription(
                 currentFlowchartId,
@@ -239,7 +283,7 @@ export default function SphereScreen() {
         edges: [...flowchart.edges, newEdge]
       };
 
-      const changeDescription = `Created relationship from "${fromNode.label}" to "${toNode.label}" (protects)`;
+      const changeDescription = `Created relationship from "${fromNode.id}" to "${toNode.id}" (protects)`;
 
       await updateFlowchartWithDescription(
         currentFlowchartId,
@@ -249,7 +293,7 @@ export default function SphereScreen() {
 
       setFlowchart(updatedStructure);
       console.log('✅ Created relationship');
-      Alert.alert('Success', `Connected "${fromNode.label}" to "${toNode.label}"`);
+      Alert.alert('Success', `Connected "${fromNode.id}" to "${toNode.id}"`);
     } catch (err) {
       console.error('❌ Error creating relationship:', err);
       Alert.alert('Error', 'Failed to create relationship');
@@ -259,8 +303,8 @@ export default function SphereScreen() {
     }
   };
 
-  const updateNodeProperties = async (nodeId: string, updates: { label: string; type: string; description: string }) => {
-    console.log('🔧 updateNodeProperties called with:', { nodeId, updates });
+  const updateNodeProperties = async (oldNodeId: string, updates: { id: string; type: string; description: string; transcripts: string[] }) => {
+    console.log('🔧 updateNodeProperties called with:', { oldNodeId, updates });
     console.log('🔧 Current state:', { 
       hasFlowchart: !!flowchart, 
       currentFlowchartId, 
@@ -274,24 +318,43 @@ export default function SphereScreen() {
     }
 
     try {
-      // Update the local flowchart structure
+      const newNodeId = updates.id.trim();
+      
+      // Check if new ID already exists (unless it's the same as current)
+      if (newNodeId !== oldNodeId && flowchart.nodes.some(node => node.id === newNodeId)) {
+        Alert.alert('Error', `A node with ID "${newNodeId}" already exists. Please choose a different ID.`);
+        return;
+      }
+
+      // Update the node with new properties
       const updatedNodes = flowchart.nodes.map(node =>
-        node.id === nodeId ? { ...node, ...updates } : node
+        node.id === oldNodeId 
+          ? { ...node, id: newNodeId, type: updates.type as any, description: updates.description, transcripts: updates.transcripts }
+          : node
       );
+
+      // Update all edges that reference the old node ID
+      const updatedEdges = flowchart.edges.map(edge => ({
+        ...edge,
+        from: edge.from === oldNodeId ? newNodeId : edge.from,
+        to: edge.to === oldNodeId ? newNodeId : edge.to
+      }));
 
       const updatedStructure: FlowchartStructure = {
         ...flowchart,
-        nodes: updatedNodes
+        nodes: updatedNodes,
+        edges: updatedEdges
       };
 
       // Create change description for markdown
-      const node = flowchart.nodes.find(n => n.id === nodeId);
+      const node = flowchart.nodes.find(n => n.id === oldNodeId);
       const changes = [];
-      if (node?.label !== updates.label) changes.push(`renamed to "${updates.label}"`);
+      if (oldNodeId !== newNodeId) changes.push(`renamed from "${oldNodeId}" to "${newNodeId}"`);
       if (node?.type !== updates.type) changes.push(`changed type to ${updates.type}`);
       if (node?.description !== updates.description) changes.push(`updated description`);
+      if (JSON.stringify(node?.transcripts || []) !== JSON.stringify(updates.transcripts)) changes.push(`updated transcripts`);
       
-      const changeDescription = `Updated node "${node?.label}": ${changes.join(', ')}`;
+      const changeDescription = `Updated node: ${changes.join(', ')}`;
       
       console.log('🔧 About to call updateFlowchartWithDescription with:', {
         flowchartId: currentFlowchartId,
@@ -334,7 +397,7 @@ export default function SphereScreen() {
     positionUpdateTimeoutRef.current = setTimeout(async () => {
       try {
         const node = updatedStructure.nodes.find(n => n.id === nodeId);
-        const changeDescription = `Moved node "${node?.label}" to position (${Math.round(x)}, ${Math.round(y)})`;
+        const changeDescription = `Moved node "${node?.id}" to position (${Math.round(x)}, ${Math.round(y)})`;
 
         console.log('💾 Saving node position to database:', { nodeId, x: Math.round(x), y: Math.round(y) });
 
@@ -393,7 +456,7 @@ export default function SphereScreen() {
       };
 
       // Create change description for markdown
-      const changeDescription = `Renamed node "${flowchart.nodes.find(n => n.id === nodeId)?.label}" to "${newLabel}"`;
+      const changeDescription = `Renamed node "${flowchart.nodes.find(n => n.id === nodeId)?.id}" to "${newLabel}"`;
 
       // Update in Supabase and append to markdown
       await updateFlowchartWithDescription(
@@ -457,7 +520,7 @@ export default function SphereScreen() {
 
       const fromNode = flowchart.nodes.find(n => n.id === edgeToEdit.from);
       const toNode = flowchart.nodes.find(n => n.id === edgeToEdit.to);
-      const changeDescription = `Updated relationship from "${fromNode?.label || edgeToEdit.from}" to "${toNode?.label || edgeToEdit.to}" to type "${updates.type}"${updates.label ? ` with label "${updates.label}"` : ''}`;
+      const changeDescription = `Updated relationship from "${fromNode?.id || edgeToEdit.from}" to "${toNode?.id || edgeToEdit.to}" to type "${updates.type}"${updates.label ? ` with label "${updates.label}"` : ''}`;
 
       await updateFlowchartWithDescription(
         currentFlowchartId,
@@ -494,7 +557,7 @@ export default function SphereScreen() {
 
       const fromNode = flowchart.nodes.find(n => n.id === edgeToEdit.from);
       const toNode = flowchart.nodes.find(n => n.id === edgeToEdit.to);
-      const changeDescription = `Deleted relationship from "${fromNode?.label || edgeToEdit.from}" to "${toNode?.label || edgeToEdit.to}"`;
+      const changeDescription = `Deleted relationship from "${fromNode?.id || edgeToEdit.from}" to "${toNode?.id || edgeToEdit.to}"`;
 
       await updateFlowchartWithDescription(
         currentFlowchartId,
@@ -570,6 +633,62 @@ export default function SphereScreen() {
     router.push('/requirements-editor');
   };
 
+  const handleExportTemplate = async () => {
+    if (!flowchart) {
+      Alert.alert('No Flowchart', 'There is no flowchart to export.');
+      return;
+    }
+
+    Alert.alert(
+      'Export Template',
+      'This will export the current flowchart structure as a JSON template file that can be used as a reference for AI generation.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Export',
+          onPress: async () => {
+            try {
+              const templateName = 'empart-flowchart';
+              await exportFlowchartAsTemplate(flowchart, templateName);
+              Alert.alert('Success', 'Flowchart template exported successfully!');
+            } catch (error) {
+              console.error('❌ Error exporting template:', error);
+              Alert.alert('Error', 'Failed to export template. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleVoiceFlowchartCreated = async (newFlowchart: FlowchartStructure) => {
+    try {
+      if (currentFlowchartId) {
+        // Replace current flowchart
+        await updateFlowchartWithDescription(
+          currentFlowchartId,
+          newFlowchart,
+          'Generated flowchart via voice conversation'
+        );
+      } else {
+        // Create new flowchart
+        const createdFlowchart = await createFlowchart(
+          'Voice Generated Flowchart',
+          newFlowchart,
+          true
+        );
+        setCurrentFlowchartId(createdFlowchart.id);
+      }
+      
+      setFlowchart(newFlowchart);
+      setVoiceModalVisible(false);
+      console.log('✅ Voice-generated flowchart saved successfully');
+    } catch (error) {
+      console.error('❌ Error saving voice-generated flowchart:', error);
+      Alert.alert('Error', 'Failed to save voice-generated flowchart');
+    }
+  };
+
   const handleAddNode = async () => {
     console.log('🔧 handleAddNode called');
     console.log('User:', !!user);
@@ -608,7 +727,7 @@ export default function SphereScreen() {
       await updateFlowchartWithDescription(
         currentFlowchartId,
         updatedStructure,
-        `Added new node "${newNode.label}" at center position`
+        `Added new node "${newNode.id}" at center position`
       );
       setFlowchart(updatedStructure);
       
@@ -700,6 +819,26 @@ export default function SphereScreen() {
           <ThemedText style={styles.editIcon}>✎</ThemedText>
         </Pressable>
         
+        {/* Export Template Button - Top Right (below edit) */}
+        {flowchart && (
+          <Pressable 
+            style={[styles.editButton, { top: 110 }]}
+            onPress={handleExportTemplate}
+          >
+            <ThemedText style={styles.editIcon}>📤</ThemedText>
+          </Pressable>
+        )}
+        
+        {/* Voice Flowchart Creator Button - Top Right (below export) */}
+        {user && (
+          <Pressable 
+            style={[styles.editButton, { top: 160 }]}
+            onPress={() => setVoiceModalVisible(true)}
+          >
+            <ThemedText style={styles.editIcon}>🎤</ThemedText>
+          </Pressable>
+        )}
+        
         {flowchart && (
           <ThemedView style={styles.flowchartContainer}>
             <FlowchartViewer
@@ -727,7 +866,7 @@ export default function SphereScreen() {
         visible={renameModalVisible}
         title="Rename Node"
         placeholder="Enter node name..."
-        initialValue={nodeToRename?.label || ''}
+        initialValue={nodeToRename?.id || ''}
         onCancel={handleRenameCancel}
         onSubmit={handleRenameSubmit}
       />
@@ -745,14 +884,20 @@ export default function SphereScreen() {
       <EdgeEditModal
         visible={edgeEditModalVisible}
         edge={edgeToEdit}
-        fromNodeLabel={edgeToEdit ? flowchart?.nodes.find(n => n.id === edgeToEdit.from)?.label : undefined}
-        toNodeLabel={edgeToEdit ? flowchart?.nodes.find(n => n.id === edgeToEdit.to)?.label : undefined}
+        fromNodeLabel={edgeToEdit ? flowchart?.nodes.find(n => n.id === edgeToEdit.from)?.id : undefined}
+        toNodeLabel={edgeToEdit ? flowchart?.nodes.find(n => n.id === edgeToEdit.to)?.id : undefined}
         onCancel={() => {
           setEdgeEditModalVisible(false);
           setEdgeToEdit(null);
         }}
         onSubmit={handleEdgeUpdate}
         onDelete={handleEdgeDelete}
+      />
+      
+      <VoiceFlowchartCreator
+        visible={voiceModalVisible}
+        onClose={() => setVoiceModalVisible(false)}
+        onFlowchartCreated={handleVoiceFlowchartCreated}
       />
     </SafeAreaView>
   );

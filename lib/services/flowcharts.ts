@@ -2,7 +2,8 @@ import { supabase } from '../supabase';
 import { Database } from '../database.types';
 import { FlowchartStructure } from '../types/flowchart';
 import * as FileSystem from 'expo-file-system';
-import { Platform } from 'react-native';
+import * as Sharing from 'expo-sharing';
+import { Platform, Alert } from 'react-native';
 
 export type FlowchartRow = Database['public']['Tables']['flowcharts']['Row'];
 export type FlowchartInsert = Database['public']['Tables']['flowcharts']['Insert'];
@@ -23,7 +24,7 @@ export const getUserFlowchartWithId = async (): Promise<{ structure: FlowchartSt
       // Return minimal structure instead of the 8-node default
       const structure = {
         nodes: [
-          { id: 'self', label: 'Self', x: 200, y: 200, type: 'self', description: 'Your centered, authentic self' }
+          { id: 'self', x: 200, y: 200, type: 'self', description: 'Your centered, authentic self', transcripts: [] }
         ],
         edges: [],
         metadata: {
@@ -92,7 +93,7 @@ export const getUserFlowchart = async (): Promise<FlowchartStructure> => {
       // Return minimal structure instead of the 8-node default
       return {
         nodes: [
-          { id: 'self', label: 'Self', x: 200, y: 200, type: 'self', description: 'Your centered, authentic self' }
+          { id: 'self', x: 200, y: 200, type: 'self', description: 'Your centered, authentic self', transcripts: [] }
         ],
         edges: [],
         metadata: {
@@ -340,4 +341,84 @@ export const subscribeToFlowchartChanges = (
       supabase.removeChannel(channel);
     }
   };
+};
+
+/**
+ * Export flowchart structure as JSON template file
+ */
+export const exportFlowchartAsTemplate = async (
+  flowchart: FlowchartStructure,
+  flowchartName: string = 'flowchart-template'
+): Promise<void> => {
+  try {
+    console.log('📄 Exporting flowchart as template:', flowchartName);
+    
+    // Create a clean template structure
+    const template = {
+      templateName: flowchartName,
+      createdAt: new Date().toISOString(),
+      description: 'Flowchart template exported from Empart app',
+      structure: {
+        nodes: flowchart.nodes.map(node => ({
+          id: node.id,
+          label: node.label,
+          type: node.type,
+          description: node.description || '',
+          x: node.x,
+          y: node.y
+        })),
+        edges: flowchart.edges.map(edge => ({
+          from: edge.from,
+          to: edge.to,
+          type: edge.type,
+          label: edge.label || ''
+        })),
+        metadata: {
+          version: '1.0',
+          lastModified: new Date().toISOString(),
+          notes: flowchart.metadata?.notes || 'Exported template for AI generation'
+        }
+      },
+      usage: {
+        instructions: 'Use this template structure as a reference when generating new flowcharts',
+        nodeTypes: [...new Set(flowchart.nodes.map(n => n.type))],
+        edgeTypes: [...new Set(flowchart.edges.map(e => e.type))]
+      }
+    };
+    
+    // Convert to formatted JSON
+    const jsonContent = JSON.stringify(template, null, 2);
+    
+    // Create filename with timestamp
+    const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const filename = `${flowchartName}-template-${timestamp}.json`;
+    
+    // Write to temporary file
+    const fileUri = `${FileSystem.documentDirectory}${filename}`;
+    await FileSystem.writeAsStringAsync(fileUri, jsonContent);
+    
+    console.log('✅ Template file created:', fileUri);
+    
+    // Check if sharing is available and share the file
+    const isAvailable = await Sharing.isAvailableAsync();
+    if (isAvailable) {
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/json',
+        dialogTitle: 'Export Flowchart Template',
+        UTI: 'public.json'
+      });
+      console.log('✅ Template shared successfully');
+    } else {
+      Alert.alert(
+        'Export Complete',
+        `Template saved to: ${filename}\n\nYou can find it in your app's documents folder.`,
+        [{ text: 'OK' }]
+      );
+    }
+    
+  } catch (error) {
+    console.error('❌ Error exporting flowchart template:', error);
+    Alert.alert('Export Error', 'Failed to export flowchart template. Please try again.');
+    throw error;
+  }
 };

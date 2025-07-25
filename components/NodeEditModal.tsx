@@ -17,7 +17,7 @@ interface NodeEditModalProps {
   visible: boolean;
   node: FlowchartNode | null;
   onCancel: () => void;
-  onSubmit: (updates: { label: string; type: string; description: string }) => void;
+  onSubmit: (updates: { id: string; type: string; description: string; transcripts: string[] }) => void;
   onConnectMode: () => void;
   onDelete?: () => void;
 }
@@ -34,14 +34,16 @@ export function NodeEditModal({
   const [label, setLabel] = useState('');
   const [type, setType] = useState<string>('manager');
   const [description, setDescription] = useState('');
+  const [transcripts, setTranscripts] = useState<string[]>([]);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
   useEffect(() => {
     if (node) {
-      setLabel(node.label || node.id || '');
+      setLabel(node.id || '');
       setType(node.type || 'manager');
       setDescription(node.description || '');
+      setTranscripts(node.transcripts || []);
     }
   }, [node]);
 
@@ -49,9 +51,10 @@ export function NodeEditModal({
     const trimmedLabel = (label || '').trim();
     if (trimmedLabel) {
       onSubmit({
-        label: trimmedLabel,
+        id: trimmedLabel,
         type,
         description: (description || '').trim(),
+        transcripts: transcripts,
       });
       resetForm();
     }
@@ -69,10 +72,26 @@ export function NodeEditModal({
 
   const resetForm = () => {
     if (node) {
-      setLabel(node.label || node.id || '');
+      setLabel(node.id || '');
       setType(node.type || 'manager');
       setDescription(node.description || '');
+      setTranscripts(node.transcripts || []);
     }
+  };
+
+  const addTranscript = () => {
+    setTranscripts([...transcripts, '']);
+  };
+
+  const updateTranscript = (index: number, value: string) => {
+    const updated = [...transcripts];
+    updated[index] = value;
+    setTranscripts(updated);
+  };
+
+  const removeTranscript = (index: number) => {
+    const updated = transcripts.filter((_, i) => i !== index);
+    setTranscripts(updated);
   };
 
   return (
@@ -170,6 +189,61 @@ export function NodeEditModal({
                   multiline
                   numberOfLines={3}
                 />
+              </View>
+
+              {/* Transcripts Section */}
+              <View style={styles.inputGroup}>
+                <View style={styles.transcriptsHeader}>
+                  <Text style={[
+                    styles.inputLabel,
+                    { color: isDark ? '#FFFFFF' : '#000000' }
+                  ]}>
+                    AI Conversation Transcripts
+                  </Text>
+                  <Pressable
+                    style={[styles.addButton, { backgroundColor: isDark ? '#007AFF' : '#007AFF' }]}
+                    onPress={addTranscript}
+                  >
+                    <Text style={styles.addButtonText}>+ Add</Text>
+                  </Pressable>
+                </View>
+                
+                {transcripts.map((transcript, index) => (
+                  <View key={index} style={styles.transcriptItem}>
+                    <TextInput
+                      style={[
+                        styles.input,
+                        styles.textArea,
+                        {
+                          backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7',
+                          color: isDark ? '#FFFFFF' : '#000000',
+                          flex: 1,
+                        }
+                      ]}
+                      placeholder={`Transcript ${index + 1}...`}
+                      placeholderTextColor={isDark ? '#8E8E93' : '#C7C7CC'}
+                      value={transcript}
+                      onChangeText={(value) => updateTranscript(index, value)}
+                      multiline
+                      numberOfLines={4}
+                    />
+                    <Pressable
+                      style={[styles.removeButton, { backgroundColor: '#FF3B30' }]}
+                      onPress={() => removeTranscript(index)}
+                    >
+                      <Text style={styles.removeButtonText}>×</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                
+                {transcripts.length === 0 && (
+                  <Text style={[
+                    styles.noTranscriptsText,
+                    { color: isDark ? '#8E8E93' : '#C7C7CC' }
+                  ]}>
+                    No transcripts yet. Add one to document AI conversations about this node.
+                  </Text>
+                )}
               </View>
             </ScrollView>
             
@@ -340,5 +414,47 @@ const styles = StyleSheet.create({
   },
   submitButtonTextDisabled: {
     color: '#8E8E93',
+  },
+  transcriptsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  addButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  transcriptItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    gap: 8,
+  },
+  removeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  removeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    lineHeight: 18,
+  },
+  noTranscriptsText: {
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginVertical: 12,
+    fontSize: 14,
   },
 });

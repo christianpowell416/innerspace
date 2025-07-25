@@ -1,0 +1,96 @@
+{
+  "templateName": "empart-flowchart",
+  "createdAt": "2025-07-25T07:54:30.451Z",
+  "description": "Flowchart template exported from Empart app",
+  "structure": {
+    "nodes": [
+      {
+        "id": "need_name",
+        "label": "need_name",
+        "type": "Need",
+        "description": "need_description",
+        "x": 282.92083127827715,
+        "y": 61.1779803314559
+      },
+      {
+        "id": "self_name",
+        "label": "exile_name",
+        "type": "Self",
+        "description": "self_description",
+        "x": 125.62192892767241,
+        "y": 217.90691494705382
+      },
+      {
+        "id": "manager_name",
+        "label": "manager_name",
+        "type": "Manager",
+        "description": "manager_description",
+        "x": 448.6485591408564,
+        "y": 222.8352101595247
+      },
+      {
+        "id": "exile_name",
+        "label": "exile_name",
+        "type": "Exile",
+        "description": "exile_description",
+        "x": 449.88372754678994,
+        "y": 424.19592831764595
+      },
+      {
+        "id": "firefighter_name",
+        "label": "firefighter_name",
+        "type": "Firefighter",
+        "description": "firefighter_description",
+        "x": 450.5507124437046,
+        "y": 650.4975762221266
+      }
+    ],
+    "edges": [
+      {
+        "from": "need_name",
+        "to": "self_name",
+        "type": "💚",
+        "label": ""
+      },
+      {
+        "from": "need_name",
+        "to": "manager_name",
+        "type": "💔",
+        "label": ""
+      },
+      {
+        "from": "manager_name",
+        "to": "exile_name",
+        "type": "❌",
+        "label": ""
+      },
+      {
+        "from": "exile_name",
+        "to": "firefighter_name",
+        "type": "🚨",
+        "label": ""
+      }
+    ],
+    "metadata": {
+      "version": "1.0",
+      "lastModified": "2025-07-25T07:54:30.451Z",
+      "notes": "Exported template for AI generation"
+    }
+  },
+  "usage": {
+    "instructions": "Use this template structure as a reference when generating new flowcharts",
+    "nodeTypes": [
+      "Need",
+      "Self",
+      "Manager",
+      "Exile",
+      "Firefighter"
+    ],
+    "edgeTypes": [
+      "💚",
+      "💔",
+      "❌",
+      "🚨"
+    ]
+  }
+}

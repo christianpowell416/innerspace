@@ -5,11 +5,11 @@ export type RelationshipType = 'protection' | 'suppression' | 'alliance' | 'conf
 
 export interface FlowchartNode {
   id: string;
-  label: string;
   x: number;
   y: number;
   type: PartType;
   description?: string;
+  transcripts?: string[];
 }
 
 export interface FlowchartEdge {

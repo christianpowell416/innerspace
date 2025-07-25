@@ -1,0 +1,92 @@
+{
+  "templateName": "empart-flowchart",
+  "createdAt": "2025-07-25T06:58:51.474Z",
+  "description": "Flowchart template exported from Empart app",
+  "structure": {
+    "nodes": [
+      {
+        "id": "unmetNeed",
+        "type": "Need",
+        "description": "need_description",
+        "transcripts": [],
+        "x": 282.92083127827715,
+        "y": 61.1779803314559
+      },
+      {
+        "id": "exile",
+        "type": "Part",
+        "description": "exile_description",
+        "transcripts": [],
+        "x": 125.62192892767241,
+        "y": 217.90691494705382
+      },
+      {
+        "id": "firefighter",
+        "type": "Manager",
+        "description": "manager_description",
+        "transcripts": [],
+        "x": 448.6485591408564,
+        "y": 222.8352101595247
+      },
+      {
+        "id": "node-1753336401930",
+        "type": "Exile",
+        "description": "exile_description",
+        "transcripts": [],
+        "x": 449.88372754678994,
+        "y": 424.19592831764595
+      },
+      {
+        "id": "node-1753425439058",
+        "type": "Firefighter",
+        "description": "firefighter_description",
+        "transcripts": [],
+        "x": 449.1367277850305,
+        "y": 632.115659149906
+      }
+    ],
+    "edges": [
+      {
+        "from": "unmetNeed",
+        "to": "exile",
+        "type": "💚"
+      },
+      {
+        "from": "unmetNeed",
+        "to": "firefighter",
+        "type": "💔"
+      },
+      {
+        "from": "firefighter",
+        "to": "node-1753336401930",
+        "type": "❌"
+      },
+      {
+        "from": "node-1753336401930",
+        "to": "node-1753425439058",
+        "type": "🚨"
+      }
+    ],
+    "metadata": {
+      "version": "1.0",
+      "lastModified": "2025-07-25T06:58:51.474Z",
+      "notes": "Exported template for AI generation"
+    }
+  },
+  "usage": {
+    "instructions": "Use this template structure as a reference when generating new flowcharts",
+    "nodeTypes": [
+      "Need",
+      "Part",
+      "Manager",
+      "Exile",
+      "Firefighter"
+    ],
+    "edgeTypes": [
+      "💚",
+      "💔",
+      "❌",
+      "🚨"
+    ]
+  }
+}
