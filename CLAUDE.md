@@ -4,12 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is an Expo React Native app called "Empart" built with:
-- **Framework**: Expo 53 with React Native 0.79.5 and React 19
-- **Navigation**: Expo Router with file-based routing and typed routes
-- **Architecture**: Tab-based navigation with Stack navigator
-- **Platform Support**: iOS, Android, and Web
-- **TypeScript**: Strict mode enabled with path aliases (@/*)
+Refer to PRD.md
 
 ## Development Commands
 
@@ -58,31 +53,32 @@ npm run reset-project
 3. **Platform-Specific Components**: Separate `.ios.tsx` files for iOS-specific implementations
 4. **Haptic Feedback**: Custom HapticTab component for enhanced user experience
 5. **Typed Routes**: Expo Router experimental typed routes enabled for type-safe navigation
+6. **Centralized AI Instructions**: ALL AI prompt instructions must be in `assets/flowchart/prompt_instructions.js` - never hardcode instructions elsewhere
 
-## Empart Product Context
+## AI Instruction Management
 
-Empart is an AI-powered mobile therapy app focused on emotional exploration through:
+**CRITICAL RULE**: All AI prompt instructions MUST be stored in `assets/flowchart/prompt_instructions.js`. This is the single source of truth for all AI interactions.
 
-1. **3D Emotion Visualization**: Transparent sphere with three symbolic axes:
-   - Masculine (-3) ↔ Feminine (3)
-   - Light (-3) ↔ Dark (3) 
-   - Child (-3) ↔ Parent (3)
+### Instructions Structure
+The prompt file contains these sections:
+- `## System Prompt` - Core AI behavior and role definition
+- `## User Instructions` - How to interpret user requests
+- `## Response Guidelines` - When and how to respond with JSON
+- `## Voice Conversation Guidelines` - Voice-specific interaction rules
+- `## Expected Output Format` - JSON structure examples
+- `## Final Instructions` - Additional implementation details
 
-2. **Core Features**:
-   - Emotion rating flow (manual or AI-assisted)
-   - 3D vectors plotted in sphere, color-coded by consciousness scale
-   - Emotion history list with filtering/sorting
-   - AI therapy agent using IFS and Jungian psychology
+### Enforcement Rules
+1. **Never hardcode instructions** in TypeScript/JavaScript files
+2. **All instruction changes** must be made in the centralized prompt file
+3. **All AI services** (voice, text, generation) must read from this file
+4. **No fallback instructions** should contain hardcoded prompt logic
+5. **Function comments** about AI behavior should reference the prompt file
 
-3. **Tech Requirements**:
-   - Dark mode UI only
-   - Supabase backend (auth, database)
-   - Stripe payments for premium features
-   - Cross-platform responsiveness
-
-4. **Current Development Phase**: MVP 1 - UI Skeleton
-   - Navigation structure: "Emotion Sphere" and "Emotions List" tabs
-   - 28 open GitHub issues prioritized by feature area
+### Files That Use Centralized Instructions
+- `lib/services/voiceFlowchartGenerator.ts` - Voice interactions
+- `lib/services/aiFlowchartGenerator.ts` - Text-based generation
+- `components/VoiceFlowchartCreator.tsx` - Voice UI interactions
 
 ## Configuration Files
 

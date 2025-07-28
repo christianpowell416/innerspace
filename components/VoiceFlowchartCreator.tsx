@@ -16,7 +16,8 @@ import { FlowchartStructure } from '@/lib/types/flowchart';
 import { 
   createVoiceFlowchartSession, 
   VoiceFlowchartSession,
-  loadFlowchartTemplate 
+  loadFlowchartTemplate,
+  generateVoiceInstructions 
 } from '@/lib/services/voiceFlowchartGenerator';
 import * as DocumentPicker from 'expo-document-picker';
 
@@ -38,12 +39,11 @@ export function VoiceFlowchartCreator({
   const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [conversation, setConversation] = useState<Array<{type: 'user' | 'assistant', text: string, timestamp?: number}>>([]);
+  const [conversation, setConversation] = useState<Array<{type: 'user' | 'assistant', text: string}>>([]);
   const [textInput, setTextInput] = useState('');
   
   const sessionRef = useRef<VoiceFlowchartSession | null>(null);
   const textInputRef = useRef<any>(null);
-  const responseBufferRef = useRef<{text: string, timeout: NodeJS.Timeout | null}>({ text: '', timeout: null });
 
   useEffect(() => {
     if (visible) {
@@ -59,11 +59,17 @@ export function VoiceFlowchartCreator({
     try {
       setIsLoading(true);
       
+      // Load the flowchart template
+      const template = await loadFlowchartTemplate();
+      
+      // Generate instructions from the centralized prompt file
+      const sessionInstructions = await generateVoiceInstructions(template);
+      
       const session = createVoiceFlowchartSession(
         {
           voice: 'alloy',
           temperature: 0.7,
-          sessionInstructions: `You are an AI assistant helping to create therapy flowcharts. Have a natural conversation with the user to understand their therapeutic needs and create flowcharts using Internal Family Systems (IFS) principles.`
+          sessionInstructions
         },
         {
           onConnected: () => {
@@ -84,61 +90,36 @@ export function VoiceFlowchartCreator({
           },
           onTranscript: (transcriptText, isFinal) => {
             if (isFinal) {
+              console.log('📝 Adding voice transcript:', transcriptText);
               setTranscript(transcriptText);
+              
+              // Add user message to conversation from voice
               setConversation(prev => {
-                // Check if this exact transcript is already in recent user messages to prevent duplicates
-                const recentUserMessages = prev.filter(msg => msg.type === 'user').slice(-3); // Check last 3 user messages
-                if (recentUserMessages.some(msg => msg.text === transcriptText)) {
+                // Simple duplicate check - don't add if last message is identical
+                const lastMessage = prev[prev.length - 1];
+                if (lastMessage && lastMessage.type === 'user' && lastMessage.text === transcriptText) {
                   return prev;
                 }
-                
-                console.log('✅ Adding voice transcript:', transcriptText);
-                return [...prev, { type: 'user', text: transcriptText, timestamp: Date.now() }];
+                return [...prev, { type: 'user', text: transcriptText }];
               });
             }
           },
           onResponse: (response) => {
-            try {
-              if (!response) return;
-              
-              // Add to buffer
-              responseBufferRef.current.text += response;
-              
-              // Clear existing timeout
-              if (responseBufferRef.current.timeout) {
-                clearTimeout(responseBufferRef.current.timeout);
+            if (!response) return;
+            
+            setConversation(prev => {
+              const lastMessage = prev[prev.length - 1];
+              if (lastMessage && lastMessage.type === 'assistant') {
+                // Append to existing assistant message (streaming)
+                return [...prev.slice(0, -1), { 
+                  type: 'assistant', 
+                  text: lastMessage.text + response
+                }];
+              } else {
+                // Create new assistant message
+                return [...prev, { type: 'assistant', text: response }];
               }
-              
-              // Set new timeout to finalize message after 1000ms of no new chunks
-              responseBufferRef.current.timeout = setTimeout(() => {
-                const finalText = responseBufferRef.current.text.trim();
-                
-                if (finalText) {
-                  setConversation(prev => {
-                    // Check if this response is already added (prevent duplicates)
-                    const lastMessage = prev[prev.length - 1];
-                    if (lastMessage && lastMessage.type === 'assistant' && lastMessage.text === finalText) {
-                      return prev;
-                    }
-                    
-                    // Add the complete response as a single message
-                    console.log('✅ Adding AI response:', finalText.substring(0, 50) + '...');
-                    return [...prev, { 
-                      type: 'assistant', 
-                      text: finalText,
-                      timestamp: Date.now()
-                    }];
-                  });
-                }
-                
-                // Reset buffer
-                responseBufferRef.current.text = '';
-                responseBufferRef.current.timeout = null;
-              }, 1000);
-              
-            } catch (error) {
-              console.error('❌ Error handling AI response:', error);
-            }
+            });
           },
           onFlowchartGenerated: (flowchart) => {
             console.log('🎯 Flowchart generated via voice!');
@@ -171,17 +152,18 @@ export function VoiceFlowchartCreator({
       sessionRef.current = null;
     }
     
-    // Clean up response buffer
-    if (responseBufferRef.current.timeout) {
-      clearTimeout(responseBufferRef.current.timeout);
-    }
-    responseBufferRef.current.text = '';
-    responseBufferRef.current.timeout = null;
-    
     setIsConnected(false);
     setIsListening(false);
     setConversation([]);
     setTranscript('');
+  };
+
+  const restartSession = async () => {
+    console.log('🔄 Restarting voice session with fresh instructions...');
+    cleanupSession();
+    setTimeout(() => {
+      initializeSession();
+    }, 1000);
   };
 
 
@@ -189,10 +171,6 @@ export function VoiceFlowchartCreator({
     if (sessionRef.current && isConnected) {
       sessionRef.current.startListening();
       setTranscript('');
-      // Focus on text input since we're using text-based communication
-      setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 100);
     }
   };
 
@@ -205,9 +183,27 @@ export function VoiceFlowchartCreator({
   const handleSendText = () => {
     if (sessionRef.current && isConnected && textInput.trim()) {
       const messageText = textInput.trim();
-      sessionRef.current.sendMessage(messageText);
-      // Add text message to conversation (voice messages are added via onTranscript callback)
-      setConversation(prev => [...prev, { type: 'user', text: messageText, timestamp: Date.now() }]);
+      
+      // Add user message to conversation
+      setConversation(prev => [...prev, { type: 'user', text: messageText }]);
+      
+      // Check if this is a data structure request and modify the message to be more explicit
+      const dataStructureTriggers = [
+        'output the data structure', 'provide the json format', 'show me the data',
+        'format this as json', 'structure this data', 'convert to data format',
+        'create a flowchart', 'make a copy', 'generate a flowchart' // backup phrases
+      ];
+      
+      let finalMessage = messageText;
+      if (dataStructureTriggers.some(trigger => messageText.toLowerCase().includes(trigger.toLowerCase()))) {
+        finalMessage = `I need this therapeutic information formatted as a JSON data structure. ${messageText}. Please output the data structure in JSON format.`;
+        console.log('🎯 Data structure request detected, enhancing message:', finalMessage);
+      }
+      
+      // Send to OpenAI
+      sessionRef.current.sendMessage(finalMessage);
+      
+      // Clear input
       setTextInput('');
     }
   };
@@ -255,6 +251,14 @@ export function VoiceFlowchartCreator({
               {isLoading ? 'Connecting...' : isConnected ? 'Connected' : 'Disconnected'}
             </Text>
           </View>
+          {isConnected && (
+            <Pressable
+              style={styles.restartButton}
+              onPress={restartSession}
+            >
+              <Text style={styles.restartButtonText}>Restart Session</Text>
+            </Pressable>
+          )}
         </View>
 
         {/* Conversation */}
@@ -308,13 +312,17 @@ export function VoiceFlowchartCreator({
                   opacity: isConnected ? 1 : 0.5
                 }
               ]}
-              onPress={isListening ? handleStopListening : handleStartListening}
+              onPressIn={handleStartListening}
+              onPressOut={handleStopListening}
               disabled={!isConnected}
             >
               <Text style={styles.voiceButtonText}>
-                {isListening ? '🛑 Stop Recording' : '🎤 Start Voice Chat'}
+                {isListening ? '🎤 Recording... (Hold to speak)' : '🎤 Hold to Talk'}
               </Text>
             </Pressable>
+            <Text style={[styles.instructionText, { color: isDark ? '#888888' : '#666666' }]}>
+              Hold the button while speaking
+            </Text>
           </View>
 
           {/* Text Input */}
@@ -403,12 +411,26 @@ const styles = StyleSheet.create({
   statusSection: {
     paddingHorizontal: 20,
     paddingBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   statusIndicator: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     alignSelf: 'flex-start',
+  },
+  restartButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  restartButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   statusText: {
     color: '#FFFFFF',
@@ -492,5 +514,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  instructionText: {
+    fontSize: 12,
+    marginTop: 5,
+    textAlign: 'center',
   },
 });
