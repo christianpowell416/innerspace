@@ -20,6 +20,11 @@ import {
   loadFlowchartTemplate,
   generateVoiceInstructions 
 } from '@/lib/services/voiceFlowchartGenerator';
+import { 
+  incrementalFlowchartGenerator, 
+  ConversationMessage, 
+  IncrementalFlowchartCallbacks 
+} from '@/lib/services/incrementalFlowchartGenerator';
 import * as DocumentPicker from 'expo-document-picker';
 
 interface VoiceFlowchartCreatorProps {
@@ -48,12 +53,28 @@ export function VoiceFlowchartCreator({
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [selectedVoice, setSelectedVoice] = useState<'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse'>('alloy'); // Realtime API voices
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
+  const [isMinimized, setIsMinimized] = useState(false);
+  const [incrementalFlowchart, setIncrementalFlowchart] = useState<FlowchartStructure | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<string>('');
+  const [showIncrementalFlowchart, setShowIncrementalFlowchart] = useState(true);
   
   const sessionRef = useRef<VoiceFlowchartSession | null>(null);
   const textInputRef = useRef<any>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const scrollViewRef = useRef<ScrollView>(null);
+
+  // Helper function to get node colors
+  const getNodeColor = (type: string, isDark: boolean) => {
+    const colors = {
+      'Self': isDark ? '#4CAF50' : '#81C784',
+      'Manager': isDark ? '#2196F3' : '#64B5F6', 
+      'Firefighter': isDark ? '#FF5722' : '#FF8A65',
+      'Exile': isDark ? '#9C27B0' : '#BA68C8',
+      'Need': isDark ? '#FF9800' : '#FFB74D'
+    };
+    return colors[type as keyof typeof colors] || (isDark ? '#666666' : '#CCCCCC');
+  };
 
   useEffect(() => {
     if (visible) {
@@ -64,6 +85,33 @@ export function VoiceFlowchartCreator({
     
     return () => cleanupSession();
   }, [visible]);
+
+  // Setup incremental flowchart callbacks
+  // These are COMPLETELY ISOLATED from the voice conversation system
+  const incrementalCallbacks: IncrementalFlowchartCallbacks = {
+    onFlowchartUpdate: (flowchart, isPartial) => {
+      // Update the incremental flowchart display in chat
+      setIncrementalFlowchart(flowchart);
+      
+      // If this is a complete flowchart (not partial), create it on the main flowchart viewer
+      if (!isPartial) {
+        onFlowchartCreated(flowchart);
+        // Show success message and close chat after a brief delay
+        setTimeout(() => {
+          Alert.alert('Flowchart Generated', 'A flowchart has been created from your conversation and added to the flowchart viewer.', [
+            { text: 'Continue Conversation', onPress: () => {} },
+            { text: 'Close Chat', onPress: onClose }
+          ]);
+        }, 1000);
+      }
+    },
+    onAnalysisUpdate: (analysis) => {
+      setAnalysisStatus(analysis);
+    },
+    onError: (error) => {
+      setAnalysisStatus(`Analysis Error: ${error.message}`);
+    }
+  };
 
   // Pulse animation for recording
   useEffect(() => {
@@ -106,16 +154,15 @@ export function VoiceFlowchartCreator({
         },
         {
           onConnected: () => {
-            console.log('🎯 Voice session connected');
             setIsConnected(true);
             setIsLoading(false);
           },
           onDisconnected: () => {
-            console.log('🔌 Voice session disconnected');
             setIsConnected(false);
             setIsListening(false);
           },
           onListeningStart: () => {
+            console.log('🎤 VOICE: Started recording');
             setIsListening(true);
           },
           onListeningStop: () => {
@@ -125,7 +172,7 @@ export function VoiceFlowchartCreator({
           },
           onTranscript: (transcriptText, isFinal) => {
             if (isFinal) {
-              console.log('📝 Voice transcript completed:', transcriptText);
+              console.log('📝 TRANSCRIPTION:', transcriptText);
               
               // Immediately clear transcript
               setTranscript('');
@@ -142,14 +189,23 @@ export function VoiceFlowchartCreator({
                 );
                 
                 if (isDuplicate) {
-                  console.log('⚠️ Skipping duplicate transcript');
                   return prev;
                 }
                 
-                console.log('✅ Adding user message to conversation at:', new Date().toISOString());
-                console.log('📊 Current conversation length before:', prev.length);
                 const newConversation = [...prev, { type: 'user', text: transcriptText }];
-                console.log('📊 New conversation length:', newConversation.length);
+                
+                // Add to incremental flowchart generator (ISOLATED from voice system)
+                try {
+                  const message: ConversationMessage = {
+                    role: 'user',
+                    content: transcriptText,
+                    timestamp: new Date()
+                  };
+                  incrementalFlowchartGenerator.addMessage(message, incrementalCallbacks);
+                } catch (analyzerError) {
+                  // Silently handle analyzer errors - they won't affect voice conversation
+                }
+                
                 return newConversation;
               });
               
@@ -163,34 +219,54 @@ export function VoiceFlowchartCreator({
           onResponse: (response) => {
             if (!response) return;
             
-            console.log('🤖 Adding AI response at:', new Date().toISOString(), 'Content:', response.substring(0, 50));
             
             setConversation(prev => {
-              console.log('📊 Conversation length when adding AI response:', prev.length);
               const lastMessage = prev[prev.length - 1];
+              
+              let newConversation;
               if (lastMessage && lastMessage.type === 'assistant') {
                 // Append to existing assistant message (streaming)
-                console.log('📝 Appending to existing AI message');
-                return [...prev.slice(0, -1), { 
+                newConversation = [...prev.slice(0, -1), { 
                   type: 'assistant', 
                   text: lastMessage.text + response
                 }];
               } else {
                 // Create new assistant message
-                console.log('📝 Creating new AI message');
-                return [...prev, { type: 'assistant', text: response }];
+                newConversation = [...prev, { type: 'assistant', text: response }];
               }
+              
+              // Add complete assistant message to incremental flowchart generator (ISOLATED)
+              // Only track complete messages when streaming finishes
+              if (!lastMessage || lastMessage.type !== 'assistant') {
+                // This is a new assistant message
+                setTimeout(() => {
+                  try {
+                    // Wait a bit for streaming to complete, then add the full message
+                    const fullMessage = newConversation[newConversation.length - 1]?.text;
+                    if (fullMessage) {
+                      const message: ConversationMessage = {
+                        role: 'assistant', 
+                        content: fullMessage,
+                        timestamp: new Date()
+                      };
+                      incrementalFlowchartGenerator.addMessage(message, incrementalCallbacks);
+                    }
+                  } catch (analyzerError) {
+                    // Silently handle analyzer errors - they won't affect voice conversation
+                  }
+                }, 2000); // Wait 2 seconds for streaming to complete
+              }
+              
+              return newConversation;
             });
           },
           onFlowchartGenerated: (flowchart) => {
-            console.log('🎯 Flowchart generated via voice!');
             onFlowchartCreated(flowchart);
             Alert.alert('Success', 'Flowchart created successfully!', [
               { text: 'Close', onPress: onClose }
             ]);
           },
           onError: (error) => {
-            console.error('❌ Voice session error:', error);
             Alert.alert('Error', error.message);
             setIsLoading(false);
           }
@@ -201,7 +277,6 @@ export function VoiceFlowchartCreator({
       await session.connect();
       
     } catch (error) {
-      console.error('❌ Error initializing voice session:', error);
       Alert.alert('Error', 'Failed to initialize voice session');
       setIsLoading(false);
     }
@@ -218,6 +293,11 @@ export function VoiceFlowchartCreator({
       recordingTimerRef.current = null;
     }
     
+    // Reset incremental flowchart generator
+    incrementalFlowchartGenerator.reset();
+    setIncrementalFlowchart(null);
+    setAnalysisStatus('');
+    
     setIsConnected(false);
     setIsListening(false);
     setConversation([]);
@@ -227,7 +307,6 @@ export function VoiceFlowchartCreator({
   };
 
   const restartSession = async () => {
-    console.log('🔄 Restarting voice session with fresh instructions...');
     cleanupSession();
     setTimeout(() => {
       initializeSession();
@@ -302,6 +381,18 @@ export function VoiceFlowchartCreator({
       // Add user message to conversation
       setConversation(prev => [...prev, { type: 'user', text: messageText }]);
       
+      // Add to incremental flowchart generator (ISOLATED from voice system)
+      try {
+        const message: ConversationMessage = {
+          role: 'user',
+          content: messageText,
+          timestamp: new Date()
+        };
+        incrementalFlowchartGenerator.addMessage(message, incrementalCallbacks);
+      } catch (analyzerError) {
+        // Silently handle analyzer errors - they won't affect voice conversation
+      }
+      
       // Check if this is a data structure request and modify the message to be more explicit
       const dataStructureTriggers = [
         'output the data structure', 'provide the json format', 'show me the data',
@@ -322,6 +413,46 @@ export function VoiceFlowchartCreator({
       setTextInput('');
     }
   };
+
+  // Minimized floating button
+  if (visible && isMinimized) {
+    return (
+      <View style={styles.minimizedContainer}>
+        <Animated.View
+          style={{
+            transform: [{ scale: isListening ? pulseAnim : 1 }]
+          }}
+        >
+          <Pressable
+            style={[
+              styles.minimizedButton,
+              { 
+                backgroundColor: isListening ? '#FF5722' : (isConnected ? '#4CAF50' : '#666666')
+              }
+            ]}
+            onPress={() => setIsMinimized(false)}
+          >
+            <Text style={styles.minimizedButtonText}>
+              {isListening ? '🔴' : '🎤'}
+            </Text>
+          </Pressable>
+        </Animated.View>
+        
+        {/* Quick tap-to-talk when minimized */}
+        {isConnected && (
+          <Pressable
+            style={[styles.minimizedTalkButton, { opacity: isConnected ? 1 : 0.5 }]}
+            onPress={handleTapToTalk}
+            disabled={!isConnected}
+          >
+            <Text style={styles.minimizedTalkText}>
+              {isListening ? '⏹️' : '🎙️'}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+    );
+  }
 
   return (
     <Modal
@@ -347,12 +478,20 @@ export function VoiceFlowchartCreator({
           ]}>
             Voice Flowchart Creator
           </Text>
-          <Pressable
-            style={styles.closeButton}
-            onPress={onClose}
-          >
-            <Text style={styles.closeButtonText}>✕</Text>
-          </Pressable>
+          <View style={styles.headerButtons}>
+            <Pressable
+              style={styles.minimizeButton}
+              onPress={() => setIsMinimized(true)}
+            >
+              <Text style={styles.minimizeButtonText}>−</Text>
+            </Pressable>
+            <Pressable
+              style={styles.closeButton}
+              onPress={onClose}
+            >
+              <Text style={styles.closeButtonText}>✕</Text>
+            </Pressable>
+          </View>
         </View>
 
 
@@ -420,10 +559,76 @@ export function VoiceFlowchartCreator({
           </View>
         </View>
 
+        {/* Incremental Flowchart Toggle */}
+        {incrementalFlowchart && (
+          <View style={styles.incrementalToggleSection}>
+            <Pressable
+              style={[
+                styles.incrementalToggle,
+                { backgroundColor: showIncrementalFlowchart ? '#4CAF50' : (isDark ? '#333333' : '#E0E0E0') }
+              ]}
+              onPress={() => setShowIncrementalFlowchart(!showIncrementalFlowchart)}
+            >
+              <Text style={[
+                styles.incrementalToggleText,
+                { color: showIncrementalFlowchart ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
+              ]}>
+                📊 {showIncrementalFlowchart ? 'Hide' : 'Show'} Live Flowchart
+              </Text>
+            </Pressable>
+            {analysisStatus && (
+              <Text style={[styles.analysisStatus, { color: isDark ? '#888888' : '#666666' }]}>
+                {analysisStatus}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Incremental Flowchart Display */}
+        {showIncrementalFlowchart && incrementalFlowchart && (
+          <View style={[
+            styles.incrementalFlowchartContainer,
+            { backgroundColor: isDark ? '#1A1A1A' : '#F5F5F5' }
+          ]}>
+            <Text style={[styles.incrementalFlowchartTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+              🎯 Live Flowchart Analysis
+            </Text>
+            <ScrollView style={styles.incrementalFlowchartContent} horizontal>
+              <View style={styles.flowchartNodes}>
+                {incrementalFlowchart.nodes.map((node, index) => (
+                  <View
+                    key={node.id}
+                    style={[
+                      styles.flowchartNode,
+                      { backgroundColor: getNodeColor(node.type, isDark) }
+                    ]}
+                  >
+                    <Text style={[
+                      styles.flowchartNodeText,
+                      { color: isDark ? '#FFFFFF' : '#000000' }
+                    ]}>
+                      {node.label}
+                    </Text>
+                    <Text style={[
+                      styles.flowchartNodeType,
+                      { color: isDark ? '#CCCCCC' : '#666666' }
+                    ]}>
+                      {node.type}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        )}
+
         {/* Conversation */}
         <ScrollView 
           ref={scrollViewRef}
-          style={styles.conversationContainer}
+          style={[
+            styles.conversationContainer,
+            { flex: showIncrementalFlowchart && incrementalFlowchart ? 0.6 : 1 }
+          ]}
           onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         >
           {conversation.map((message, index) => (
@@ -757,5 +962,139 @@ const styles = StyleSheet.create({
   voiceButtonText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  minimizeButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FFC107',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  minimizeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    lineHeight: 18,
+  },
+  minimizedContainer: {
+    position: 'absolute',
+    top: 100,
+    right: 20,
+    zIndex: 1000,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 10,
+  },
+  minimizedButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
+  },
+  minimizedButtonText: {
+    fontSize: 24,
+  },
+  minimizedTalkButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  minimizedTalkText: {
+    fontSize: 20,
+  },
+  incrementalToggleSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  incrementalToggle: {
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  incrementalToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  analysisStatus: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 5,
+    fontStyle: 'italic',
+  },
+  incrementalFlowchartContainer: {
+    maxHeight: 200,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+    padding: 15,
+  },
+  incrementalFlowchartTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  incrementalFlowchartContent: {
+    flex: 1,
+  },
+  flowchartNodes: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 5,
+  },
+  flowchartNode: {
+    padding: 10,
+    borderRadius: 8,
+    minWidth: 80,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+    elevation: 2,
+  },
+  flowchartNodeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  flowchartNodeType: {
+    fontSize: 10,
+    textAlign: 'center',
+    fontWeight: '400',
   },
 });
