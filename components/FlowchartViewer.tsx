@@ -492,7 +492,6 @@ export function FlowchartViewer({
     const shapeRadius = getShapeRadiusForEqualArea(baseRadius, type);
     
     // Debug logging to check node type
-    console.log(`🔶 Rendering node ${node.id} with type: "${type}", base radius: ${baseRadius.toFixed(1)}, shape radius: ${shapeRadius.toFixed(1)}`);
     
     const commonProps = {
       fill: circleColor,
@@ -507,7 +506,6 @@ export function FlowchartViewer({
     
     switch (nodeType) {
       case 'need':
-        console.log(`🔶 Rendering PENTAGON for node ${node.id}`);
         return (
           <Polygon
             points={generatePentagonPath(x, y, shapeRadius)}
@@ -515,7 +513,6 @@ export function FlowchartViewer({
           />
         );
       case 'self':
-        console.log(`🔶 Rendering CIRCLE for node ${node.id}`);
         return (
           <Circle
             cx={x}
@@ -525,7 +522,6 @@ export function FlowchartViewer({
           />
         );
       case 'manager':
-        console.log(`🔶 Rendering HEXAGON for node ${node.id}`);
         return (
           <Polygon
             points={generateHexagonPath(x, y, shapeRadius)}
@@ -533,7 +529,6 @@ export function FlowchartViewer({
           />
         );
       case 'exile':
-        console.log(`🔶 Rendering SQUARE for node ${node.id}`);
         return (
           <Rect
             x={x - shapeRadius}
@@ -544,7 +539,6 @@ export function FlowchartViewer({
           />
         );
       case 'firefighter':
-        console.log(`🔶 Rendering TRIANGLE for node ${node.id}`);
         return (
           <Polygon
             points={generateTrianglePath(x, y, shapeRadius)}
@@ -552,7 +546,6 @@ export function FlowchartViewer({
           />
         );
       default:
-        console.log(`🔶 Rendering DEFAULT CIRCLE for node ${node.id} (unknown type: "${nodeType}")`);
         return (
           <Circle
             cx={x}

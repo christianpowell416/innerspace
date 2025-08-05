@@ -2,14 +2,14 @@ import * as FileSystem from 'expo-file-system';
 import { Audio } from 'expo-av';
 import { useAudioRecorder, AudioModule } from 'expo-audio';
 import { FlowchartStructure } from '../types/flowchart';
-import { promptContent } from '../../assets/flowchart/prompt_instructions.js';
+import { voiceConversationInstructions } from '../../assets/flowchart/voice_conversation_instructions.js';
 
 const OPENAI_REALTIME_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
 const REALTIME_API_URL = 'wss://api.openai.com/v1/realtime';
 
-const extractSystemPromptFromCentralFile = (): string => {
+const extractSystemPromptFromVoiceInstructions = (): string => {
   try {
-    const lines = promptContent.split('\n');
+    const lines = voiceConversationInstructions.split('\n');
     let systemPrompt = '';
     let currentSection = '';
     
@@ -17,7 +17,9 @@ const extractSystemPromptFromCentralFile = (): string => {
       if (line.startsWith('## System Prompt')) {
         currentSection = 'system';
         continue;
-      } else if (line.startsWith('#') || line.trim() === '') {
+      } else if (line.startsWith('##') && currentSection === 'system') {
+        break; // End of system prompt section
+      } else if (line.trim() === '' && currentSection !== 'system') {
         continue;
       }
       
@@ -28,18 +30,9 @@ const extractSystemPromptFromCentralFile = (): string => {
     
     return systemPrompt.trim();
   } catch (error) {
-    console.error('❌ Error extracting system prompt from central file:', error);
-    // Even in error case, try to get something from the raw content
-    if (promptContent && typeof promptContent === 'string') {
-      const firstLine = promptContent.split('\n').find(line => 
-        line.includes('You are') && line.includes('assistant')
-      );
-      if (firstLine) {
-        return firstLine.trim();
-      }
-    }
-    // Ultimate fallback only if prompt file is completely unavailable
-    return 'You are a helpful assistant that generates flowchart data structures in JSON format.';
+    console.error('❌ Error extracting system prompt from voice instructions:', error);
+    // Fallback
+    return 'You are a compassionate AI therapeutic companion trained in Internal Family Systems (IFS) therapy principles.';
   }
 };
 
@@ -47,7 +40,6 @@ export const loadFlowchartTemplate = async (): Promise<any> => {
   try {
     // Import the template directly instead of using Asset.fromModule
     const template = require('../../assets/flowchart/templates/template1.json');
-    console.log('✅ Template loaded successfully:', template.templateName);
     return template;
   } catch (error) {
     console.error('❌ Error loading flowchart template:', error);
@@ -79,11 +71,9 @@ export const loadFlowchartTemplate = async (): Promise<any> => {
 
 export const generateVoiceInstructions = async (template: any): Promise<string> => {
   try {
-    console.log('🔍 Parsing prompt content, length:', promptContent.length);
-    console.log('🔍 First 200 chars:', promptContent.substring(0, 200));
     
-    // Parse the prompt content to extract system instructions
-    const lines = promptContent.split('\n');
+    // Parse the voice instructions to extract system instructions
+    const lines = voiceConversationInstructions.split('\n');
     let currentSection = '';
     let systemPrompt = '';
     let responseGuidelines = '';
@@ -93,19 +83,15 @@ export const generateVoiceInstructions = async (template: any): Promise<string> 
     for (const line of lines) {
       if (line.startsWith('## System Prompt')) {
         currentSection = 'system';
-        console.log('🔍 Found System Prompt section');
         continue;
       } else if (line.startsWith('## Response Guidelines')) {
         currentSection = 'response';
-        console.log('🔍 Found Response Guidelines section');
         continue;
       } else if (line.startsWith('## Voice Conversation Guidelines')) {
         currentSection = 'voice';
-        console.log('🔍 Found Voice Conversation Guidelines section');
         continue;
       } else if (line.startsWith('## Final Instructions')) {
         currentSection = 'final';
-        console.log('🔍 Found Final Instructions section');
         continue;
       } else if (line.startsWith('#') || line.trim() === '') {
         continue;
@@ -128,12 +114,6 @@ export const generateVoiceInstructions = async (template: any): Promise<string> 
       }
     }
     
-    console.log('🔍 Parsed sections:');
-    console.log('  System prompt length:', systemPrompt.length);
-    console.log('  Response guidelines length:', responseGuidelines.length);
-    console.log('  Voice guidelines length:', voiceGuidelines.length);
-    console.log('  Final instructions length:', finalInstructions.length);
-    console.log('  System prompt preview:', systemPrompt.substring(0, 100) + '...');
     
     // Create voice-specific instructions using ONLY content from the centralized prompt file
     const voiceInstructions = `${systemPrompt.trim()}
@@ -147,7 +127,6 @@ ${JSON.stringify(template.structure, null, 2)}
 
 ${finalInstructions.trim()}`;
 
-    console.log('🔍 Generated voice instructions:', voiceInstructions);
     return voiceInstructions;
     
   } catch (error) {
@@ -203,6 +182,7 @@ export const createVoiceFlowchartSession = (
   let isReceivingAudio = false;
   let hasActiveResponse = false;
   let continuousRecordingInterval: NodeJS.Timeout | null = null;
+  let isJsonResponse = false;
 
   const session: VoiceFlowchartSession = {
     connect: async () => {
@@ -211,12 +191,7 @@ export const createVoiceFlowchartSession = (
           throw new Error('OpenAI API key not configured');
         }
 
-        console.log('🔌 Connecting to OpenAI Realtime API...');
-        console.log('🔑 API Key present:', !!OPENAI_REALTIME_API_KEY);
-        console.log('🔑 API Key prefix:', OPENAI_REALTIME_API_KEY ? OPENAI_REALTIME_API_KEY.substring(0, 10) + '...' : 'NONE');
-        
         const wsUrl = `${REALTIME_API_URL}?model=gpt-4o-realtime-preview-2024-10-01`;
-        console.log('🌐 WebSocket URL:', wsUrl);
         
         websocket = new WebSocket(wsUrl, [], {
           headers: {
@@ -225,12 +200,9 @@ export const createVoiceFlowchartSession = (
           }
         });
         
-        console.log('🔗 WebSocket created, waiting for connection...');
-
         // Add connection timeout
         const connectionTimeout = setTimeout(() => {
           if (websocket && websocket.readyState === WebSocket.CONNECTING) {
-            console.error('❌ Connection timeout after 10 seconds');
             websocket.close();
             callbacks.onError?.(new Error('Connection timeout. Please check your internet connection and API key.'));
           }
@@ -238,7 +210,6 @@ export const createVoiceFlowchartSession = (
 
         websocket.onopen = () => {
           clearTimeout(connectionTimeout);
-          console.log('✅ Connected to OpenAI Realtime API');
           isConnected = true;
           
           // Session configuration with audio support
@@ -277,17 +248,12 @@ export const createVoiceFlowchartSession = (
         };
 
         websocket.onclose = () => {
-          console.log('🔌 Disconnected from OpenAI Realtime API');
           isConnected = false;
           isListening = false;
           callbacks.onDisconnected?.();
         };
 
         websocket.onerror = (error) => {
-          console.error('❌ WebSocket error:', error);
-          console.error('❌ Error details:', JSON.stringify(error, null, 2));
-          console.error('❌ WebSocket readyState:', websocket?.readyState);
-          console.error('❌ WebSocket URL was:', wsUrl);
           
           isConnected = false;
           isListening = false;
@@ -334,7 +300,6 @@ export const createVoiceFlowchartSession = (
       if (!websocket || !isConnected) return;
       
       try {
-        console.log('🎤 Starting voice recording...');
         
         // Request microphone permissions using expo-audio
         const permissionStatus = await AudioModule.requestRecordingPermissionsAsync();
@@ -382,7 +347,6 @@ export const createVoiceFlowchartSession = (
         
         isListening = true;
         callbacks.onListeningStart?.();
-        console.log('✅ Voice recording started');
         
       } catch (error) {
         console.error('❌ Error starting voice recording:', error);
@@ -394,12 +358,9 @@ export const createVoiceFlowchartSession = (
       if (!websocket || !isConnected || !currentRecording) return;
       
       try {
-        console.log('🎤 Stopping voice recording...');
-        
         // Get recording status before stopping
         const status = await currentRecording.getStatusAsync();
         const recordingDuration = status.durationMillis || 0;
-        console.log('⏱️ Recording duration:', recordingDuration, 'ms');
         
         const result = await currentRecording.stopAndUnloadAsync();
         const uri = currentRecording.getURI();
@@ -407,7 +368,6 @@ export const createVoiceFlowchartSession = (
         if (uri) {
           // Get file info
           const fileInfo = await FileSystem.getInfoAsync(uri);
-          console.log('📁 Audio file size:', fileInfo.size);
           
           // Only process if we have at least 100ms of audio (matching OpenAI's requirement)
           // and the file size is substantial
@@ -418,7 +378,6 @@ export const createVoiceFlowchartSession = (
             });
             
             // First transcribe locally to show user message immediately
-            console.log('🔤 Transcribing audio locally first...');
             
             try {
               // Create a temporary file for Whisper API
@@ -452,15 +411,12 @@ export const createVoiceFlowchartSession = (
                 const transcriptionResult = await transcriptionResponse.json();
                 const userText = transcriptionResult.text;
                 
-                console.log('✅ Local transcription completed at:', new Date().toISOString(), 'Text:', userText);
                 
                 // Immediately show the user's message in the UI
-                console.log('📤 Calling onTranscript callback to add user message');
                 callbacks.onTranscript?.(userText, true);
                 
                 // Wait a bit for UI to update, then send text message for response
                 setTimeout(() => {
-                  console.log('🤖 Sending text message for AI response at:', new Date().toISOString());
                   
                   // Send as text message to Realtime API
                   const textMessage = {
@@ -476,7 +432,6 @@ export const createVoiceFlowchartSession = (
                   };
                   
                   websocket.send(JSON.stringify(textMessage));
-                  console.log('📤 Text message sent to API');
                   
                   // Request response
                   const responseMessage = {
@@ -486,7 +441,6 @@ export const createVoiceFlowchartSession = (
                     }
                   };
                   websocket.send(JSON.stringify(responseMessage));
-                  console.log('📤 Response request sent to API');
                   hasActiveResponse = true;
                 }, 300);
                 
@@ -527,7 +481,6 @@ export const createVoiceFlowchartSession = (
         return;
       }
       
-      console.log('📤 Sending message to AI:', messageText);
       
       const message = {
         type: 'conversation.item.create',
@@ -562,7 +515,6 @@ export const createVoiceFlowchartSession = (
       if (!websocket || !isConnected) return;
       
       try {
-        console.log('🎤 Starting continuous listening with VAD...');
         
         // Request microphone permissions
         const permissionStatus = await AudioModule.requestRecordingPermissionsAsync();
@@ -651,7 +603,6 @@ export const createVoiceFlowchartSession = (
         // Start streaming
         streamAudioChunks();
         
-        console.log('✅ VAD continuous listening activated - speak naturally');
         
       } catch (error) {
         console.error('❌ Error starting continuous listening:', error);
@@ -660,7 +611,6 @@ export const createVoiceFlowchartSession = (
     },
 
     stopContinuousListening: async () => {
-      console.log('🎤 Stopping VAD continuous listening...');
       
       isContinuousMode = false;
       isListening = false;
@@ -676,7 +626,6 @@ export const createVoiceFlowchartSession = (
       
       callbacks.onListeningStop?.();
       
-      console.log('✅ VAD continuous listening stopped');
     },
 
     get isConnected() { return isConnected; },
@@ -756,15 +705,15 @@ export const createVoiceFlowchartSession = (
     if (audioChunks.length === 0 || isPlaying) return;
     
     try {
-      console.log(`🎵 Playing ${audioChunks.length} audio chunks`);
       
       // Combine all audio chunks
       const pcmDataArrays = audioChunks.map(chunk => new Uint8Array(base64ToArrayBuffer(chunk)));
       const totalLength = pcmDataArrays.reduce((acc, arr) => acc + arr.length, 0);
       
       // Create combined PCM data with silence buffer at the end
-      // Add 0.2 seconds of silence (24000 Hz * 2 bytes per sample * 0.2 seconds)
-      const silenceLength = Math.floor(24000 * 2 * 0.2);
+      // Add 0.5 seconds of silence (24000 Hz * 2 bytes per sample * 0.5 seconds)
+      // Increased for alloy voice which tends to cut off
+      const silenceLength = Math.floor(24000 * 2 * 0.5);
       const combinedPCM = new Uint8Array(totalLength + silenceLength);
       let offset = 0;
       for (const arr of pcmDataArrays) {
@@ -819,7 +768,6 @@ export const createVoiceFlowchartSession = (
           await FileSystem.deleteAsync(fileUri, { idempotent: true });
           isPlaying = false;
           currentSound = null;
-          console.log('✅ Audio playback completed');
         }
       });
     } catch (error) {
@@ -831,67 +779,62 @@ export const createVoiceFlowchartSession = (
 
   const handleRealtimeMessage = (message: any) => {
     try {
-      console.log('📨 Message type:', message.type);
-      
+      // console.log('🔍 DEBUG: Received message type:', message.type); // Too verbose
       switch (message.type) {
         case 'session.created':
-          console.log('🎯 Voice session created successfully');
           break;
           
         case 'session.updated':
-          console.log('🔄 Voice session updated successfully');
           break;
           
         case 'conversation.item.created':
-          console.log('📝 Message created:', message.item?.role);
           // Don't process user messages here - they're already handled by input_audio_transcription.completed
           // This prevents duplicate messages in the conversation
           break;
           
         case 'response.created':
-          console.log('🤖 Response generation started');
+          console.log('🔍 DEBUG: New response created, ID:', message.response?.id);
           break;
           
         case 'response.text.delta':
-          if (message.delta) {
-            callbacks.onResponse?.(message.delta);
-          }
+          // Skip text deltas - they may contain JSON mixed with conversation
           break;
           
         case 'response.text.done':
-          console.log('💬 AI text response completed:', message.text);
-          // Try to parse flowchart JSON from response
+          console.log('📝 AI TEXT RESPONSE (includes JSON):', message.text);
+          console.log('🔍 DEBUG: Text response length:', message.text?.length);
+          // Try to parse flowchart JSON from response (but don't use for chat display)
           tryParseFlowchartFromResponse(message.text);
           break;
           
         case 'response.audio_transcript.delta':
-          // Show AI's speech as it's being generated
+          // Use audio transcript deltas for real-time conversation display
+          // This ensures chat matches exactly what is spoken
           if (message.delta) {
             callbacks.onResponse?.(message.delta);
           }
           break;
           
         case 'response.audio_transcript.done':
-          console.log('💬 AI said:', message.transcript);
+          console.log('🎤 ACTUAL VOICE SPOKEN:', message.transcript);
+          console.log('🔍 DEBUG: Audio transcript length:', message.transcript?.length);
+          // The complete transcript was already built from deltas above
           break;
           
         case 'response.audio.delta':
           // Handle audio response chunks
           if (message.delta) {
-            console.log('🔊 Received audio chunk');
             audioChunks.push(message.delta);
             isReceivingAudio = true;
           }
           break;
           
         case 'response.audio.done':
-          console.log('🔊 Audio response completed');
+          console.log('🔍 DEBUG: Collected', audioChunks.length, 'audio chunks');
           isReceivingAudio = false;
-          // Add a longer delay to ensure all chunks are collected
-          // This helps prevent cut-off endings, especially with certain voices
+          // Play audio chunks
           if (audioChunks.length > 0) {
-            console.log(`📦 Collected ${audioChunks.length} audio chunks, waiting for complete buffer...`);
-            setTimeout(() => playAudioChunks(), 500); // Increased from 100ms to 500ms
+            setTimeout(() => playAudioChunks(), 800); // Increased to 800ms for alloy voice
           }
           break;
           
@@ -904,18 +847,15 @@ export const createVoiceFlowchartSession = (
           
         case 'conversation.item.input_audio_transcription.completed':
           // Skip - we're now handling transcription locally for better UI control
-          console.log('📝 Realtime API transcription completed (skipped - using local)');
           break;
           
         case 'input_audio_buffer.speech_started':
-          console.log('🎤 VAD: Speech detected - user is speaking');
           if (isContinuousMode) {
             callbacks.onListeningStart?.();
           }
           break;
           
         case 'input_audio_buffer.speech_stopped':
-          console.log('🎤 VAD: Speech ended - processing...');
           if (isContinuousMode) {
             // Commit the audio buffer when speech stops
             const commitMessage = {
@@ -930,11 +870,10 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'input_audio_buffer.committed':
-          console.log('✅ Audio buffer committed');
           break;
           
         case 'response.done':
-          console.log('✅ Conversation turn completed');
+          console.log('🔍 DEBUG: Response completed, ID:', message.response?.id);
           hasActiveResponse = false;
           break;
           
@@ -948,7 +887,6 @@ export const createVoiceFlowchartSession = (
           break;
           
         default:
-          console.log('📝 Unhandled message type:', message.type);
           break;
       }
     } catch (error) {
@@ -956,9 +894,27 @@ export const createVoiceFlowchartSession = (
     }
   };
 
+  const extractConversationalText = (responseText: string): string => {
+    try {
+      // Split on common JSON indicators
+      const jsonIndicators = ['{', '```json', '```', '"nodes"', '"edges"'];
+      
+      for (const indicator of jsonIndicators) {
+        const beforeJson = responseText.split(indicator)[0];
+        if (beforeJson && beforeJson.trim().length > 0) {
+          return beforeJson.trim();
+        }
+      }
+      
+      // If no JSON found, return the whole response
+      return responseText.trim();
+    } catch (error) {
+      return responseText.trim();
+    }
+  };
+
   const tryParseFlowchartFromResponse = (responseText: string) => {
     try {
-      console.log('🔍 Trying to parse flowchart from response:', responseText);
       
       // Look for JSON in the response - try multiple patterns
       let jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -991,27 +947,15 @@ export const createVoiceFlowchartSession = (
       }
       
       if (jsonMatch) {
-        console.log('📝 Found potential JSON:', jsonMatch[0]);
         const flowchartData = JSON.parse(jsonMatch[0]);
         
         if (flowchartData.nodes && flowchartData.edges) {
-          console.log('✅ Valid flowchart structure found, triggering callback');
           callbacks.onFlowchartGenerated?.(flowchartData as FlowchartStructure);
         } else {
-          console.log('⚠️ JSON found but missing nodes/edges structure');
-          console.log('⚠️ Available keys:', Object.keys(flowchartData));
         }
       } else {
-        console.log('⚠️ No JSON structure found in response');
-        // Check if response contains flowchart-related keywords, might need to ask more explicitly
-        if (responseText.toLowerCase().includes('flowchart') || 
-            responseText.toLowerCase().includes('nodes') || 
-            responseText.toLowerCase().includes('edges')) {
-          console.log('🔄 Response mentions flowchart terms but no JSON found. Consider asking more explicitly.');
-        }
       }
     } catch (error) {
-      console.log('❌ Error parsing JSON from response:', error);
     }
   };
 

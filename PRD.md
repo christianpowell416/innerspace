@@ -1,125 +1,254 @@
-**Product Requirements Document (PRD)**
+Product Requirements Document (PRD) – Inflection
 
----
+1. Vision & Purpose
 
-**Product Name:** Empart
+1a. Core Purpose
 
----
+Inflection is an internal reflection app designed to help users map their internal parts based on Internal Family Systems (IFS) theory. It connects these parts to emotions and associated bodily sensations, providing users with customized healing practices and modalities.
 
-### 1. Overview
+1b. Problem Statement
 
-**Purpose:**
-Empart is an AI-powered mobile therapy app that helps users explore and reflect on their emotions. The app features a symbolic 3D graph and a structured emotional journal. Users rate their emotions using three symbolic axes:
+Self-help often feels inaccessible and overwhelming, particularly for individuals who aren't ready or able to speak with another person. Existing apps focus either on connecting users with therapists or use rudimentary AI/UX. Inflection solves this by offering a deeply introspective, personalized, and AI-assisted self-help experience.
 
-* Masculine ↔ Feminine
-* Light ↔ Dark
-* Child ↔ Parent
+1c. Goals (6–12 Months)
 
-**Goals:**
+Launch the MVP on iOS and Android
 
-* Provide a calming, introspective digital space for emotional exploration.
-* Help users identify and reflect on emotional patterns.
-* Visualize emotions as dynamic vectors in a 3D space.
-* Use AI guidance grounded in Internal Family Systems (IFS) and Jungian psychology.
+Deliver core functionality: AI conversations, emotion/parts/needs mapping, and body overlays
 
----
+Generate >$10k/month in revenue, ideally >$30k/month
 
-### 2. Features
+2. Target Audience
 
-#### 2.1 Emotion Rating Flow
+2a. Ideal Users
 
-* Users log emotions manually or through a conversation with an AI therapy agent.
-* Users can toggle between manual and AI-assisted input.
-* Each emotion is rated from **-3 to 3** across the following axes:
+Broadly accessible — intended for the average person, regardless of background. The product is inclusive by design and suitable for anyone interested in emotional wellness.
 
-  * Masculine (-3) to Feminine (3)
-  * Light (-3) to Dark (3)
-  * Child (-3) to Parent (3)
-* Users choose an emotion from a **preset list** (e.g., Joy, Fear, Shame, etc.) or create their own.
-* Optional: Add a short note or journal entry.
+2b. Use Context
 
-#### 2.2 Emotion Sphere (Graph Page)
+Users engage with the app to process emotions, uncover internal needs, and reflect on their inner parts without external judgment.
 
-* A transparent 3D sphere with three labeled axes:
+2c. Competitive Landscape
 
-  * Masculine ↔ Feminine
-  * Light ↔ Dark
-  * Child ↔ Parent
-* Emotions appear as **vectors** starting from the center and extending outward.
-* Vectors are **color-coded** based on the Consciousness Scale reference image.
-* Hover or tap to view emotion names and metadata.
-* Fully interactive (rotate, zoom, pan).
-* Designed with a meditative, dark-themed aesthetic.
+No direct competitors. BetterHelp is a leading player in digital therapy, but Inflection differentiates through AI-guided introspection. Existing AI therapy apps are considered basic and underdeveloped.
 
-#### 2.3 Emotion List (List Page)
+3. Core Features & Functionality
 
-* Scrollable list of logged emotions.
-* Each entry includes:
+3a. Must-Have Features (MVP)
 
-  * Emotion name
-  * 3D vector axis scores
-  * Optional journal entry
-  * Summary of conversation with AI agent
-* Filter and sort by date, emotion type, or dominant axis.
+1. AI-Guided Emotional Conversations
 
-#### 2.4 Navigation
+Users initiate text-based conversations with a Claude-powered AI agent.
 
-* Bottom navigation bar with three tabs:
+The AI is trained on IFS, Jungian psychology, and other models to guide users through reflective inquiry.
 
-  * Emotion Sphere
-  * Add emotion
-  * Profile
-* Tapping on a vector opens associated emotion details.
+Users may begin a conversation based on a single part, need, or emotion.
 
----
+The AI helps the user identify related parts, underlying needs, emotional patterns, and potential protectors/exiles.
 
-### 3. Design Requirements
+2. Automatic Internal Mapping (Flowchart Generator)
 
-* Dark mode UI only.
-* Clean typography for low-light legibility.
-* Graph and list should feel intuitive, responsive, and emotionally resonant.
-* Vector colors correspond to emotional states using the Consciousness Scale (e.g., Joy = yellow, Shame = red).
+The AI dynamically generates a hierarchical flowchart that visually organizes parts (top layer), emotions (middle layer), and needs (core layer).
 
----
+Each node includes editable attributes: name, description, sensations/memories/beliefs, and tags.
 
-### 4. Technical Requirements
+3. Interactive Zoomable Maps
 
-**Tech Stack:**
+Tapping a part reveals its emotions.
 
-* **Cursor** – IDE for collaborative development.
-* **Claude Code** – AI for code scaffolding and iteration.
-* **Expo** – Framework for cross-platform mobile development.
-* **Supabase** – Backend (auth, database, API).
-* **Stripe** – Payment processing.
-* **ChatGPT or Claude AI** – Agent trained in IFS and Jungian frameworks.
+Tapping an emotion reveals underlying needs.
 
-**System Behavior:**
+Smooth navigation between levels.
 
-* Cross-platform responsiveness.
-* Fast state updates when interacting with the graph.
-* Secure journal and emotion data storage.
+4. Body Mapping Overlay
 
----
+Prompts users to identify physical locations for emotions.
 
-### 5. Future Features
+Displays this data on a human body diagram.
 
-* Visualize emotion history over time.
-* Voice input and journaling.
-* Push notifications for daily mood tracking.
-* AI-generated insights based on emotional trends.
+Visualizes recurring emotion-body patterns.
 
----
+5. Map Editing & History
 
-### 6. Open Questions
+AI-generated maps are user-editable.
 
-* Should users be allowed to remap emotion colors?
-* How should custom emotions be mapped to color/scale?
-* What privacy protections are required for stored emotional content?
+Includes version history and change tracking.
 
----
+Users can save and export map snapshots.
 
-### 7. Attachments
+6. User Profile & State Tracking
 
-* Consciousness Scale Emotion Diagram (used for vector color mapping)
+Personal profile stores all maps, entries, and metadata.
 
----
+Timeline view displays trends in emotion and part activity.
+
+Journaling features included.
+
+7. Onboarding & First Session Wizard
+
+Walkthrough of app purpose and functionality.
+
+Guided session for creating the first part/emotion/need.
+
+Generates initial map and body overlay.
+
+3b. Nice-to-Have Features
+
+1. Customized Healing Modalities
+
+AI suggests personalized practices (e.g., somatic work, journaling, breathwork).
+
+2. Daily Check-In Reminders
+
+Push notifications for reflection prompts or practices.
+
+3. Integration with Wearables (Future)
+
+Apple Health, Oura, or similar for physiological/emotional syncing.
+
+3c. Out-of-Scope Features
+
+Live therapist chats
+
+User-to-user forums
+
+3D emotion sphere (postponed)
+
+Gamification features unrelated to introspection
+
+4. User Journey
+
+4a. First-Time Experience
+
+Onboarding flow introduces core ideas.
+
+First conversation with the AI about a part, need, or emotion.
+
+Generates first interactive map.
+
+4b. Daily Use Case
+
+Users return to reflect on evolving emotional states.
+
+Update or review maps, parts, or journals.
+
+4c. Retention Loop
+
+Increased depth and accuracy in maps leads to more trust and continued use.
+
+5. Emotional Framework
+
+5a. Theoretical Basis
+
+Internal Family Systems (IFS)
+
+Jungian Psychology
+
+NUMMENMAA LAB – Human Emotion Systems Lab
+
+Kelly’s Personal Construct Theory
+
+5b. Data Model & Mapping Structure
+
+Needs (innermost layer)
+
+Emotions (middle layer)
+
+Parts (outermost layer)
+
+Tap to zoom into each nested structure.
+
+Includes collective maps of all needs, emotions, or parts.
+
+Visualized with bubble maps and body overlays.
+
+5c. Coordinate System
+
+3D mapping postponed
+
+6. Data & Sync
+
+6a. Data Storage
+
+Supabase
+
+6b. Synchronization
+
+Supabase Realtime
+
+6c. Data Privacy
+
+Private by default
+
+Optional anonymous sharing for model training
+
+7. Platform & Tech
+
+7a. Platforms
+
+iOS and Android (Expo)
+
+7b. Tech Stack
+
+Expo, Supabase, Claude
+
+7c. Integrations
+
+Google Auth, Apple Auth, Stripe
+
+8. Design & UX
+
+8a. Visual Theme
+
+Minimalist
+
+Comforting
+
+Modern
+
+Natural
+
+Dark palette
+
+8b. Emotional Tone
+
+Calm
+
+Approachable
+
+Advanced yet minimal
+
+8c. Accessibility
+
+No current considerations
+
+9. Metrics for Success
+
+9a. KPIs
+
+TBD
+
+9b. Product-Market Fit
+
+App should appeal to average users, not just the self-help savvy
+
+9c. User Behavior Signals
+
+TBD
+
+10. Constraints & Assumptions
+
+10a. Constraints
+
+Solo founder/developer
+
+$200–500/month pre-launch budget
+
+10b. Assumptions
+
+Claude will generate all required code
+
+10c. Risks
+
+N/A at this time
+

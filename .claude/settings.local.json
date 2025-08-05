@@ -20,7 +20,18 @@
       "Bash(find:*)",
       "Bash(npm run sync-requirements:*)",
       "Bash(wc:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(git branch:*)",
+      "Bash(git filter-branch:*)",
+      "Bash(git stash:*)",
+      "Bash(git config:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(mkdir:*)",
+      "Bash(supabase:*)",
+      "Bash(npx supabase:*)",
+      "Bash(ls:*)",
+      "Bash(set SUPABASE_ACCESS_TOKEN=sbp_c47d425f7e222534544def69981feb00c15a7f99)",
+      "Bash(timeout:*)"
     ],
     "deny": []
   }
