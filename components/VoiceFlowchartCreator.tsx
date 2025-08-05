@@ -10,6 +10,7 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { FlowchartStructure } from '@/lib/types/flowchart';
@@ -41,9 +42,18 @@ export function VoiceFlowchartCreator({
   const [transcript, setTranscript] = useState('');
   const [conversation, setConversation] = useState<Array<{type: 'user' | 'assistant', text: string}>>([]);
   const [textInput, setTextInput] = useState('');
+  const [useVAD, setUseVAD] = useState(false);
+  const [isContinuousMode, setIsContinuousMode] = useState(false);
+  const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [selectedVoice, setSelectedVoice] = useState<'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse'>('alloy'); // Realtime API voices
+  const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
   
   const sessionRef = useRef<VoiceFlowchartSession | null>(null);
   const textInputRef = useRef<any>(null);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (visible) {
@@ -54,6 +64,28 @@ export function VoiceFlowchartCreator({
     
     return () => cleanupSession();
   }, [visible]);
+
+  // Pulse animation for recording
+  useEffect(() => {
+    if (isListening) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isListening]);
 
   const initializeSession = async () => {
     try {
@@ -67,9 +99,10 @@ export function VoiceFlowchartCreator({
       
       const session = createVoiceFlowchartSession(
         {
-          voice: 'alloy',
+          voice: selectedVoice,
           temperature: 0.7,
-          sessionInstructions
+          sessionInstructions,
+          enableVAD: useVAD
         },
         {
           onConnected: () => {
@@ -87,36 +120,64 @@ export function VoiceFlowchartCreator({
           },
           onListeningStop: () => {
             setIsListening(false);
+            // Clear any lingering transcript when recording stops
+            setTimeout(() => setTranscript(''), 500);
           },
           onTranscript: (transcriptText, isFinal) => {
             if (isFinal) {
-              console.log('📝 Adding voice transcript:', transcriptText);
-              setTranscript(transcriptText);
+              console.log('📝 Voice transcript completed:', transcriptText);
               
-              // Add user message to conversation from voice
+              // Immediately clear transcript
+              setTranscript('');
+              
+              // Set pending message to ensure it's added before response
+              setPendingUserMessage(transcriptText);
+              
+              // Add user message to conversation immediately
               setConversation(prev => {
-                // Simple duplicate check - don't add if last message is identical
-                const lastMessage = prev[prev.length - 1];
-                if (lastMessage && lastMessage.type === 'user' && lastMessage.text === transcriptText) {
+                // Check last 2 messages to prevent duplicates
+                const lastTwo = prev.slice(-2);
+                const isDuplicate = lastTwo.some(msg => 
+                  msg.type === 'user' && msg.text === transcriptText
+                );
+                
+                if (isDuplicate) {
+                  console.log('⚠️ Skipping duplicate transcript');
                   return prev;
                 }
-                return [...prev, { type: 'user', text: transcriptText }];
+                
+                console.log('✅ Adding user message to conversation at:', new Date().toISOString());
+                console.log('📊 Current conversation length before:', prev.length);
+                const newConversation = [...prev, { type: 'user', text: transcriptText }];
+                console.log('📊 New conversation length:', newConversation.length);
+                return newConversation;
               });
+              
+              // Clear pending after a short delay
+              setTimeout(() => setPendingUserMessage(null), 1000);
+            } else {
+              // Show partial transcript while speaking
+              setTranscript(transcriptText);
             }
           },
           onResponse: (response) => {
             if (!response) return;
             
+            console.log('🤖 Adding AI response at:', new Date().toISOString(), 'Content:', response.substring(0, 50));
+            
             setConversation(prev => {
+              console.log('📊 Conversation length when adding AI response:', prev.length);
               const lastMessage = prev[prev.length - 1];
               if (lastMessage && lastMessage.type === 'assistant') {
                 // Append to existing assistant message (streaming)
+                console.log('📝 Appending to existing AI message');
                 return [...prev.slice(0, -1), { 
                   type: 'assistant', 
                   text: lastMessage.text + response
                 }];
               } else {
                 // Create new assistant message
+                console.log('📝 Creating new AI message');
                 return [...prev, { type: 'assistant', text: response }];
               }
             });
@@ -152,10 +213,17 @@ export function VoiceFlowchartCreator({
       sessionRef.current = null;
     }
     
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    
     setIsConnected(false);
     setIsListening(false);
     setConversation([]);
     setTranscript('');
+    setRecordingDuration(0);
+    setRecordingStartTime(null);
   };
 
   const restartSession = async () => {
@@ -167,16 +235,63 @@ export function VoiceFlowchartCreator({
   };
 
 
-  const handleStartListening = () => {
-    if (sessionRef.current && isConnected) {
+  const handleTapToTalk = () => {
+    if (!sessionRef.current || !isConnected) return;
+    
+    if (isListening) {
+      // Stop recording
+      sessionRef.current.stopListening();
+      
+      // Clear timer
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+      
+      setRecordingDuration(0);
+      setRecordingStartTime(null);
+      
+      // Clear any transcript preview immediately
+      setTranscript('');
+    } else {
+      // Start recording
       sessionRef.current.startListening();
       setTranscript('');
+      
+      // Start timer
+      const startTime = new Date();
+      setRecordingStartTime(startTime);
+      
+      recordingTimerRef.current = setInterval(() => {
+        const duration = Math.floor((new Date().getTime() - startTime.getTime()) / 1000);
+        setRecordingDuration(duration);
+      }, 100);
     }
   };
 
-  const handleStopListening = () => {
+  const toggleContinuousMode = () => {
     if (sessionRef.current && isConnected) {
-      sessionRef.current.stopListening();
+      if (isContinuousMode) {
+        sessionRef.current.stopContinuousListening();
+        setIsContinuousMode(false);
+      } else {
+        sessionRef.current.startContinuousListening();
+        setIsContinuousMode(true);
+      }
+    }
+  };
+
+  const toggleVADMode = async () => {
+    const newVADState = !useVAD;
+    setUseVAD(newVADState);
+    
+    // Restart session with new VAD setting
+    if (isConnected) {
+      console.log('🔄 Restarting session with VAD:', newVADState);
+      cleanupSession();
+      setTimeout(() => {
+        initializeSession();
+      }, 500);
     }
   };
 
@@ -251,18 +366,66 @@ export function VoiceFlowchartCreator({
               {isLoading ? 'Connecting...' : isConnected ? 'Connected' : 'Disconnected'}
             </Text>
           </View>
-          {isConnected && (
+          <View style={styles.statusControls}>
             <Pressable
-              style={styles.restartButton}
-              onPress={restartSession}
+              style={[styles.vadToggle, { backgroundColor: useVAD ? '#4CAF50' : '#666666' }]}
+              onPress={toggleVADMode}
             >
-              <Text style={styles.restartButtonText}>Restart Session</Text>
+              <Text style={styles.vadToggleText}>
+                VAD: {useVAD ? 'ON' : 'OFF'}
+              </Text>
             </Pressable>
-          )}
+            {isConnected && (
+              <Pressable
+                style={styles.restartButton}
+                onPress={restartSession}
+              >
+                <Text style={styles.restartButtonText}>Restart</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+
+        {/* Voice Selection */}
+        <View style={styles.voiceSelectionSection}>
+          <Text style={[styles.voiceSectionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+            Voice: {selectedVoice}
+          </Text>
+          <View style={styles.voiceButtons}>
+            {(['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'] as const).map((voice) => (
+              <Pressable
+                key={voice}
+                style={[
+                  styles.voiceButton,
+                  {
+                    backgroundColor: selectedVoice === voice ? '#4CAF50' : (isDark ? '#333333' : '#E0E0E0'),
+                  }
+                ]}
+                onPress={() => {
+                  setSelectedVoice(voice);
+                  if (isConnected) {
+                    // Restart session with new voice
+                    restartSession();
+                  }
+                }}
+              >
+                <Text style={[
+                  styles.voiceButtonText,
+                  { color: selectedVoice === voice ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
+                ]}>
+                  {voice}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
         {/* Conversation */}
-        <ScrollView style={styles.conversationContainer}>
+        <ScrollView 
+          ref={scrollViewRef}
+          style={styles.conversationContainer}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
           {conversation.map((message, index) => (
             <View
               key={index}
@@ -290,8 +453,8 @@ export function VoiceFlowchartCreator({
             </View>
           ))}
           
-          {/* Current transcript */}
-          {transcript && (
+          {/* Current transcript - only show while recording */}
+          {transcript && isListening && (
             <View style={[styles.messageContainer, styles.transcriptMessage]}>
               <Text style={styles.transcriptText}>
                 {transcript}
@@ -304,25 +467,60 @@ export function VoiceFlowchartCreator({
         <View style={styles.controlsContainer}>
           {/* Voice Controls */}
           <View style={styles.voiceControls}>
-            <Pressable
-              style={[
-                styles.voiceButton,
-                { 
-                  backgroundColor: isListening ? '#FF5722' : '#4CAF50',
-                  opacity: isConnected ? 1 : 0.5
-                }
-              ]}
-              onPressIn={handleStartListening}
-              onPressOut={handleStopListening}
-              disabled={!isConnected}
-            >
-              <Text style={styles.voiceButtonText}>
-                {isListening ? '🎤 Recording... (Hold to speak)' : '🎤 Hold to Talk'}
-              </Text>
-            </Pressable>
-            <Text style={[styles.instructionText, { color: isDark ? '#888888' : '#666666' }]}>
-              Hold the button while speaking
-            </Text>
+            {useVAD ? (
+              // Continuous Mode with VAD
+              <>
+                <Pressable
+                  style={[
+                    styles.voiceButton,
+                    { 
+                      backgroundColor: isContinuousMode ? '#FF5722' : '#4CAF50',
+                      opacity: isConnected ? 1 : 0.5
+                    }
+                  ]}
+                  onPress={toggleContinuousMode}
+                  disabled={!isConnected}
+                >
+                  <Text style={styles.voiceButtonText}>
+                    {isContinuousMode ? '🎤 Listening... (Tap to stop)' : '🎤 Start Conversation'}
+                  </Text>
+                </Pressable>
+                <Text style={[styles.instructionText, { color: isDark ? '#888888' : '#666666' }]}>
+                  {isContinuousMode ? 'AI is listening - speak naturally' : 'Tap to start hands-free conversation'}
+                </Text>
+              </>
+            ) : (
+              // Tap to Talk Mode
+              <>
+                <Animated.View
+                  style={{
+                    transform: [{ scale: pulseAnim }]
+                  }}
+                >
+                  <Pressable
+                    style={[
+                      styles.voiceButton,
+                      { 
+                        backgroundColor: isListening ? '#FF5722' : '#4CAF50',
+                        opacity: isConnected ? 1 : 0.5
+                      }
+                    ]}
+                    onPress={handleTapToTalk}
+                    disabled={!isConnected}
+                  >
+                    <Text style={styles.voiceButtonText}>
+                      {isListening 
+                        ? `🔴 Recording... ${recordingDuration}s` 
+                        : '🎤 Tap to Talk'
+                      }
+                    </Text>
+                  </Pressable>
+                </Animated.View>
+                <Text style={[styles.instructionText, { color: isDark ? '#888888' : '#666666' }]}>
+                  {isListening ? 'Tap again to stop recording' : 'Tap to start recording'}
+                </Text>
+              </>
+            )}
           </View>
 
           {/* Text Input */}
@@ -414,6 +612,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  statusControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  vadToggle: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  vadToggleText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
   },
   statusIndicator: {
     paddingHorizontal: 12,
@@ -519,5 +732,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 5,
     textAlign: 'center',
+  },
+  voiceSelectionSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  voiceSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  voiceButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  voiceButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  voiceButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

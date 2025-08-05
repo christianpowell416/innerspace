@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system';
 import { Audio } from 'expo-av';
+import { useAudioRecorder, AudioModule } from 'expo-audio';
 import { FlowchartStructure } from '../types/flowchart';
 import { promptContent } from '../../assets/flowchart/prompt_instructions.js';
 
@@ -160,6 +161,7 @@ export interface VoiceSessionConfig {
   sessionInstructions?: string;
   voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer';
   temperature?: number;
+  enableVAD?: boolean; // Enable Voice Activity Detection for hands-free mode
 }
 
 export interface VoiceFlowchartSession {
@@ -167,10 +169,13 @@ export interface VoiceFlowchartSession {
   disconnect: () => void;
   startListening: () => void;
   stopListening: () => void;
+  startContinuousListening: () => void;
+  stopContinuousListening: () => void;
   sendMessage: (message: string) => void;
   isConnected: boolean;
   isListening: boolean;
   isPlaying: boolean;
+  isContinuousMode: boolean;
 }
 
 export const createVoiceFlowchartSession = (
@@ -191,11 +196,13 @@ export const createVoiceFlowchartSession = (
   let isConnected = false;
   let isListening = false;
   let isPlaying = false;
+  let isContinuousMode = false;
   let currentRecording: Audio.Recording | null = null;
   let currentSound: Audio.Sound | null = null;
   let audioChunks: string[] = [];
   let isReceivingAudio = false;
   let hasActiveResponse = false;
+  let continuousRecordingInterval: NodeJS.Timeout | null = null;
 
   const session: VoiceFlowchartSession = {
     connect: async () => {
@@ -246,7 +253,12 @@ export const createVoiceFlowchartSession = (
               input_audio_transcription: {
                 model: 'whisper-1'
               },
-              turn_detection: null,
+              turn_detection: config.enableVAD ? {
+                type: 'server_vad',
+                threshold: 0.5,
+                prefix_padding_ms: 300,
+                silence_duration_ms: 500
+              } : null,
               temperature: config.temperature || 0.7
             }
           };
@@ -324,9 +336,9 @@ export const createVoiceFlowchartSession = (
       try {
         console.log('🎤 Starting voice recording...');
         
-        // Request microphone permissions
-        const { granted } = await Audio.requestPermissionsAsync();
-        if (!granted) {
+        // Request microphone permissions using expo-audio
+        const permissionStatus = await AudioModule.requestRecordingPermissionsAsync();
+        if (!permissionStatus.granted) {
           throw new Error('Microphone permission not granted');
         }
 
@@ -405,41 +417,86 @@ export const createVoiceFlowchartSession = (
               encoding: FileSystem.EncodingType.Base64,
             });
             
-            // Extract raw PCM data from WAV file
-            const pcmBase64 = extractPCMFromWAV(wavBase64);
+            // First transcribe locally to show user message immediately
+            console.log('🔤 Transcribing audio locally first...');
             
-            if (pcmBase64) {
-              // Send audio through Realtime API
-              const audioMessage = {
-                type: 'input_audio_buffer.append',
-                audio: pcmBase64
-              };
-              
-              websocket.send(JSON.stringify(audioMessage));
-              
-              // Commit the audio buffer
-              const commitMessage = {
-                type: 'input_audio_buffer.commit'
-              };
-              websocket.send(JSON.stringify(commitMessage));
-              
-              // Create a response after committing audio
-              if (!hasActiveResponse) {
-                const responseMessage = {
-                  type: 'response.create',
-                  response: {
-                    modalities: ['text', 'audio'],
-                    instructions: 'Please respond to the user\'s voice input'
-                  }
-                };
-                websocket.send(JSON.stringify(responseMessage));
-                hasActiveResponse = true;
+            try {
+              // Create a temporary file for Whisper API
+              const tempUri = `${FileSystem.documentDirectory}temp_audio_${Date.now()}.wav`;
+              await FileSystem.writeAsStringAsync(tempUri, wavBase64, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
+
+              // Use local transcription
+              const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
+                },
+                body: (() => {
+                  const formData = new FormData();
+                  formData.append('file', {
+                    uri: tempUri,
+                    type: 'audio/wav',
+                    name: 'audio.wav'
+                  } as any);
+                  formData.append('model', 'whisper-1');
+                  return formData;
+                })(),
+              });
+
+              // Clean up temp file
+              await FileSystem.deleteAsync(tempUri, { idempotent: true });
+
+              if (transcriptionResponse.ok) {
+                const transcriptionResult = await transcriptionResponse.json();
+                const userText = transcriptionResult.text;
+                
+                console.log('✅ Local transcription completed at:', new Date().toISOString(), 'Text:', userText);
+                
+                // Immediately show the user's message in the UI
+                console.log('📤 Calling onTranscript callback to add user message');
+                callbacks.onTranscript?.(userText, true);
+                
+                // Wait a bit for UI to update, then send text message for response
+                setTimeout(() => {
+                  console.log('🤖 Sending text message for AI response at:', new Date().toISOString());
+                  
+                  // Send as text message to Realtime API
+                  const textMessage = {
+                    type: 'conversation.item.create',
+                    item: {
+                      type: 'message', 
+                      role: 'user',
+                      content: [{
+                        type: 'input_text',
+                        text: userText
+                      }]
+                    }
+                  };
+                  
+                  websocket.send(JSON.stringify(textMessage));
+                  console.log('📤 Text message sent to API');
+                  
+                  // Request response
+                  const responseMessage = {
+                    type: 'response.create',
+                    response: {
+                      modalities: ['text', 'audio']
+                    }
+                  };
+                  websocket.send(JSON.stringify(responseMessage));
+                  console.log('📤 Response request sent to API');
+                  hasActiveResponse = true;
+                }, 300);
+                
+              } else {
+                console.error('❌ Local transcription failed');
+                callbacks.onError?.(new Error('Transcription failed'));
               }
-              
-              console.log('🎤 PCM audio sent and response requested');
-            } else {
-              console.error('❌ Failed to extract PCM data from WAV file');
-              callbacks.onError?.(new Error('Failed to process audio recording'));
+            } catch (transcriptionError) {
+              console.error('❌ Local transcription error:', transcriptionError);
+              callbacks.onError?.(transcriptionError as Error);
             }
           } else {
             console.warn(`⚠️ Audio too short or file too small. Duration: ${recordingDuration}ms, Size: ${fileInfo.size} bytes`);
@@ -501,9 +558,131 @@ export const createVoiceFlowchartSession = (
       }
     },
 
+    startContinuousListening: async () => {
+      if (!websocket || !isConnected) return;
+      
+      try {
+        console.log('🎤 Starting continuous listening with VAD...');
+        
+        // Request microphone permissions
+        const permissionStatus = await AudioModule.requestRecordingPermissionsAsync();
+        if (!permissionStatus.granted) {
+          throw new Error('Microphone permission not granted');
+        }
+
+        // Set audio mode for continuous recording
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
+
+        isContinuousMode = true;
+        isListening = true;
+        callbacks.onListeningStart?.();
+        
+        // Function to continuously record and stream audio
+        const streamAudioChunks = async () => {
+          while (isContinuousMode) {
+            try {
+              const recording = new Audio.Recording();
+              
+              // Configure for streaming
+              await recording.prepareToRecordAsync({
+                android: {
+                  extension: '.wav',
+                  outputFormat: Audio.AndroidOutputFormat.DEFAULT,
+                  audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+                  sampleRate: 24000,
+                  numberOfChannels: 1,
+                  bitRate: 384000,
+                },
+                ios: {
+                  extension: '.wav',
+                  audioQuality: Audio.IOSAudioQuality.HIGH,
+                  sampleRate: 24000,
+                  numberOfChannels: 1,
+                  bitRate: 384000,
+                  linearPCMBitDepth: 16,
+                  linearPCMIsBigEndian: false,
+                  linearPCMIsFloat: false,
+                },
+                web: {
+                  mimeType: 'audio/wav',
+                  bitsPerSecond: 384000,
+                }
+              });
+
+              await recording.startAsync();
+              
+              // Record for 100ms chunks for low latency
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              if (!isContinuousMode) break;
+              
+              await recording.stopAndUnloadAsync();
+              const uri = recording.getURI();
+              
+              if (uri) {
+                const wavBase64 = await FileSystem.readAsStringAsync(uri, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                
+                const pcmBase64 = extractPCMFromWAV(wavBase64);
+                
+                if (pcmBase64 && websocket && websocket.readyState === WebSocket.OPEN) {
+                  // Stream audio to the API
+                  const audioMessage = {
+                    type: 'input_audio_buffer.append',
+                    audio: pcmBase64
+                  };
+                  websocket.send(JSON.stringify(audioMessage));
+                }
+                
+                // Clean up
+                await FileSystem.deleteAsync(uri, { idempotent: true });
+              }
+            } catch (error) {
+              console.error('❌ Error in audio streaming:', error);
+              // Continue streaming even if one chunk fails
+            }
+          }
+        };
+        
+        // Start streaming
+        streamAudioChunks();
+        
+        console.log('✅ VAD continuous listening activated - speak naturally');
+        
+      } catch (error) {
+        console.error('❌ Error starting continuous listening:', error);
+        callbacks.onError?.(error as Error);
+      }
+    },
+
+    stopContinuousListening: async () => {
+      console.log('🎤 Stopping VAD continuous listening...');
+      
+      isContinuousMode = false;
+      isListening = false;
+      
+      // Cancel any active response
+      if (hasActiveResponse) {
+        const cancelMessage = {
+          type: 'response.cancel'
+        };
+        websocket?.send(JSON.stringify(cancelMessage));
+        hasActiveResponse = false;
+      }
+      
+      callbacks.onListeningStop?.();
+      
+      console.log('✅ VAD continuous listening stopped');
+    },
+
     get isConnected() { return isConnected; },
     get isListening() { return isListening; },
-    get isPlaying() { return isPlaying; }
+    get isPlaying() { return isPlaying; },
+    get isContinuousMode() { return isContinuousMode; }
   };
 
   const createWAVHeader = (dataLength: number, sampleRate: number = 24000): ArrayBuffer => {
@@ -583,13 +762,17 @@ export const createVoiceFlowchartSession = (
       const pcmDataArrays = audioChunks.map(chunk => new Uint8Array(base64ToArrayBuffer(chunk)));
       const totalLength = pcmDataArrays.reduce((acc, arr) => acc + arr.length, 0);
       
-      // Create combined PCM data
-      const combinedPCM = new Uint8Array(totalLength);
+      // Create combined PCM data with silence buffer at the end
+      // Add 0.2 seconds of silence (24000 Hz * 2 bytes per sample * 0.2 seconds)
+      const silenceLength = Math.floor(24000 * 2 * 0.2);
+      const combinedPCM = new Uint8Array(totalLength + silenceLength);
       let offset = 0;
       for (const arr of pcmDataArrays) {
         combinedPCM.set(arr, offset);
         offset += arr.length;
       }
+      // Fill the rest with silence (zeros)
+      combinedPCM.fill(0, offset);
       
       // Create WAV header
       const wavHeader = createWAVHeader(combinedPCM.length);
@@ -660,7 +843,9 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'conversation.item.created':
-          console.log('📝 Message created');
+          console.log('📝 Message created:', message.item?.role);
+          // Don't process user messages here - they're already handled by input_audio_transcription.completed
+          // This prevents duplicate messages in the conversation
           break;
           
         case 'response.created':
@@ -702,9 +887,11 @@ export const createVoiceFlowchartSession = (
         case 'response.audio.done':
           console.log('🔊 Audio response completed');
           isReceivingAudio = false;
-          // Play all collected audio chunks
+          // Add a longer delay to ensure all chunks are collected
+          // This helps prevent cut-off endings, especially with certain voices
           if (audioChunks.length > 0) {
-            setTimeout(() => playAudioChunks(), 100);
+            console.log(`📦 Collected ${audioChunks.length} audio chunks, waiting for complete buffer...`);
+            setTimeout(() => playAudioChunks(), 500); // Increased from 100ms to 500ms
           }
           break;
           
@@ -716,19 +903,30 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'conversation.item.input_audio_transcription.completed':
-          // User's speech transcribed
-          if (message.transcript) {
-            console.log('📝 User said:', message.transcript);
-            callbacks.onTranscript?.(message.transcript, true);
-          }
+          // Skip - we're now handling transcription locally for better UI control
+          console.log('📝 Realtime API transcription completed (skipped - using local)');
           break;
           
         case 'input_audio_buffer.speech_started':
-          console.log('🎤 Speech detected');
+          console.log('🎤 VAD: Speech detected - user is speaking');
+          if (isContinuousMode) {
+            callbacks.onListeningStart?.();
+          }
           break;
           
         case 'input_audio_buffer.speech_stopped':
-          console.log('🎤 Speech ended');
+          console.log('🎤 VAD: Speech ended - processing...');
+          if (isContinuousMode) {
+            // Commit the audio buffer when speech stops
+            const commitMessage = {
+              type: 'input_audio_buffer.commit'
+            };
+            websocket?.send(JSON.stringify(commitMessage));
+            
+            // VAD will automatically trigger a response
+            hasActiveResponse = true;
+            callbacks.onListeningStop?.();
+          }
           break;
           
         case 'input_audio_buffer.committed':
