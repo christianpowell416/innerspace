@@ -375,7 +375,7 @@ export const createVoiceFlowchartSession = (
         try {
           await Audio.setAudioModeAsync({
             allowsRecordingIOS: true,
-            playsInSilentModeIOS: false,
+            playsInSilentModeIOS: true, // Must be true when allowsRecordingIOS is true on iOS
             staysActiveInBackground: false,
             shouldDuckAndroid: true,
           });
@@ -464,10 +464,11 @@ export const createVoiceFlowchartSession = (
         // Monitor recording status continuously to detect unexpected stops
         const startStatusMonitoring = () => {
           let monitoringStartTime = Date.now();
+          let currentSession = currentRecording; // Capture the current recording for this monitoring session
           
           const monitorInterval = setInterval(async () => {
-            // Stop monitoring if recording is gone, not listening, or user is stopping
-            if (!currentRecording || !isListening || isUserStoppingRecording) {
+            // Stop monitoring if recording is gone, not listening, user is stopping, or session changed
+            if (!currentRecording || !isListening || isUserStoppingRecording || currentRecording !== currentSession) {
               clearInterval(monitorInterval);
               return;
             }
@@ -519,7 +520,8 @@ export const createVoiceFlowchartSession = (
           }, 2000); // Check every 2 seconds (less frequent)
         };
         
-        startStatusMonitoring();
+        // Temporarily disable monitoring system - causing false positives
+        // startStatusMonitoring();
         
         // Also do the immediate check
         setTimeout(async () => {
