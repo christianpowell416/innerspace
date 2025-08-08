@@ -461,6 +461,8 @@ export const createVoiceFlowchartSession = (
         
         // Monitor recording status continuously to detect unexpected stops
         const startStatusMonitoring = () => {
+          let monitoringStartTime = Date.now();
+          
           const monitorInterval = setInterval(async () => {
             if (!currentRecording || !isListening) {
               clearInterval(monitorInterval);
@@ -469,24 +471,36 @@ export const createVoiceFlowchartSession = (
             
             try {
               const status = await currentRecording.getStatusAsync();
+              const monitoringDuration = Date.now() - monitoringStartTime;
               
-              // If we think we're listening but recording shows we're not, fix the state
-              if (isListening && !status.isRecording) {
-                console.error('🚨 STATE MISMATCH DETECTED: UI thinks recording but actual recording stopped');
-                console.log('📊 Unexpected recording status:', {
-                  isRecording: status.isRecording,
-                  durationMillis: status.durationMillis,
-                  canRecord: status.canRecord,
-                  isDoneRecording: status.isDoneRecording
+              // Only check for mismatch after recording has been running for a reasonable time
+              // and only if the recording shows it never started or has been stopped for a while
+              const hasBeenRunningLongEnough = monitoringDuration > 3000; // 3 seconds
+              const recordingNeverStarted = status.durationMillis === 0 && hasBeenRunningLongEnough;
+              const recordingStoppedUnexpectedly = !status.isRecording && hasBeenRunningLongEnough && status.durationMillis < monitoringDuration / 2;
+              
+              if (isListening && (recordingNeverStarted || recordingStoppedUnexpectedly)) {
+                console.error('🚨 STATE MISMATCH DETECTED: Recording failed to work properly');
+                console.log('📊 Recording failure details:', {
+                  monitoringDuration,
+                  hasBeenRunningLongEnough,
+                  recordingNeverStarted,
+                  recordingStoppedUnexpectedly,
+                  status: {
+                    isRecording: status.isRecording,
+                    durationMillis: status.durationMillis,
+                    canRecord: status.canRecord,
+                    isDoneRecording: status.isDoneRecording
+                  }
                 });
                 
                 // Fix the state mismatch
-                console.log('🧹 Attempting to clean up orphaned recording...');
+                console.log('🧹 Attempting to clean up failed recording...');
                 try {
                   await currentRecording.stopAndUnloadAsync();
-                  console.log('✅ Orphaned recording cleaned up');
+                  console.log('✅ Failed recording cleaned up');
                 } catch (cleanupError) {
-                  console.log('⚠️ Error cleaning up orphaned recording:', cleanupError.message);
+                  console.log('⚠️ Error cleaning up failed recording:', cleanupError.message);
                 }
                 
                 isListening = false;
@@ -498,7 +512,7 @@ export const createVoiceFlowchartSession = (
               console.error('❌ Error monitoring recording status:', error);
               clearInterval(monitorInterval);
             }
-          }, 1000); // Check every second
+          }, 2000); // Check every 2 seconds (less frequent)
         };
         
         startStatusMonitoring();
