@@ -14,6 +14,7 @@ import {
   Image,
 } from 'react-native';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { IconSymbol } from '@/components/ui/IconSymbol';
 import { FlowchartStructure } from '@/lib/types/flowchart';
 import { 
   createVoiceFlowchartSession, 
@@ -743,12 +744,11 @@ export function VoiceFlowchartCreator({
                   }
                 }}
               >
-                <Text style={[
-                  styles.textToggleButtonText,
-                  { color: showTextInput ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
-                ]}>
-                  📝
-                </Text>
+                <IconSymbol 
+                  size={20} 
+                  name="pencil" 
+                  color={showTextInput ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000')} 
+                />
               </Pressable>
             </View>
 
@@ -986,10 +986,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-  },
-  textToggleButtonText: {
-    fontSize: 20,
-    fontWeight: '600',
   },
   textInputContainer: {
     flexDirection: 'row',
