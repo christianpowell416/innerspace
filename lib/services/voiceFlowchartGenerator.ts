@@ -847,9 +847,9 @@ export const createVoiceFlowchartSession = (
     // Only start processing when we have chunks and aren't already processing
     if (isProcessingAudio || audioQueue.length === 0) return;
     
-    // Don't start until we have a few chunks OR we're done receiving
-    if (isReceivingAudio && audioQueue.length < 3) {
-      setTimeout(() => processAudioQueue(), 100);
+    // Start immediately with first chunk to minimize delay
+    if (isReceivingAudio && audioQueue.length < 1) {
+      setTimeout(() => processAudioQueue(), 25); // Reduced from 100ms to 25ms
       return;
     }
     
@@ -904,16 +904,17 @@ export const createVoiceFlowchartSession = (
         encoding: FileSystem.EncodingType.Base64,
       });
       
-      // Set audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: false,
-      });
+      // Pre-create sound object while setting audio mode in parallel to minimize delay
+      const [{ sound }] = await Promise.all([
+        Audio.Sound.createAsync({ uri: fileUri }),
+        Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: false,
+        })
+      ]);
       
-      // Play the complete audio
-      const { sound } = await Audio.Sound.createAsync({ uri: fileUri });
       currentSound = sound;
       isPlaying = true;
       hasStartedPlayingResponse = true;
@@ -943,7 +944,7 @@ export const createVoiceFlowchartSession = (
           } else {
             // More chunks might have arrived, process them
             allAudioChunks = [];
-            setTimeout(() => processAudioQueue(), 50);
+            setTimeout(() => processAudioQueue(), 10); // Reduced from 50ms to 10ms
           }
         }
       });
