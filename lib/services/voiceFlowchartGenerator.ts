@@ -348,7 +348,7 @@ export const createVoiceFlowchartSession = (
         isProcessingAudio = false;
         hasStartedPlayingResponse = false;
         
-        // Cancel any active response from the API
+        // Cancel any active response from the API and clear audio queue
         if (hasActiveResponse && websocket) {
           const cancelMessage = {
             type: 'response.cancel'
@@ -357,6 +357,13 @@ export const createVoiceFlowchartSession = (
           hasActiveResponse = false;
           console.log('🛑 Cancelled active API response');
         }
+        
+        // Force clear any remaining audio that might still be processing
+        console.log('🧹 Clearing any remaining audio queue after interruption');
+        audioQueue = [];
+        allAudioChunks = [];
+        isReceivingAudio = false;
+        isProcessingAudio = false;
         
         // Force cleanup of any existing recording before starting a new one
         if (currentRecording) {
@@ -384,9 +391,9 @@ export const createVoiceFlowchartSession = (
           console.log('⚠️ Error resetting audio mode:', modeError.message);
         }
         
-        // Add delay after interrupting AI audio to allow audio system to settle
+        // Add longer delay after interrupting AI audio to allow audio system to settle
         console.log('⏳ Waiting for audio system to settle after interruption...');
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise(resolve => setTimeout(resolve, 800)); // Increased from 300ms to 800ms
         console.log('✅ Audio system settled, proceeding with recording setup');
         
         console.log('🎤 Requesting microphone permissions...');
