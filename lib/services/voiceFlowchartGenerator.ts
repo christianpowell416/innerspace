@@ -450,10 +450,19 @@ export const createVoiceFlowchartSession = (
         isListening
       });
       
-      if (!websocket || !isConnected || !currentRecording) {
-        console.log('⚠️ stopListening aborted - missing requirements');
+      if (!websocket || !isConnected || !currentRecording || !isListening) {
+        console.log('⚠️ stopListening aborted - missing requirements or already stopped');
         return;
       }
+      
+      // Prevent double-stopping
+      if (!isListening) {
+        console.log('⚠️ Already stopped listening - ignoring duplicate stop call');
+        return;
+      }
+      
+      // Set flag immediately to prevent race conditions
+      isListening = false;
       
       try {
         // Get recording status before stopping
@@ -603,11 +612,16 @@ export const createVoiceFlowchartSession = (
         }
         
         currentRecording = null;
-        isListening = false;
+        // isListening already set to false above to prevent race conditions
         callbacks.onListeningStop?.();
         
       } catch (error) {
         console.error('❌ Error stopping voice recording:', error);
+        
+        // Ensure cleanup happens even if stopping fails
+        currentRecording = null;
+        isListening = false;
+        
         callbacks.onError?.(error as Error);
       }
     },
@@ -768,8 +782,9 @@ export const createVoiceFlowchartSession = (
     get isConnected() { return isConnected; },
     get isListening() { return isListening; },
     get isPlaying() { 
-      console.log(`🔍 isPlaying getter called: ${isPlaying} (currentSound: ${!!currentSound})`);
-      return isPlaying; 
+      const result = isPlaying && !!currentSound;
+      console.log(`🔍 isPlaying getter called: ${result} (isPlaying=${isPlaying}, currentSound=${!!currentSound})`);
+      return result; 
     },
     get isContinuousMode() { return isContinuousMode; }
   };
@@ -847,7 +862,7 @@ export const createVoiceFlowchartSession = (
     // Only start processing when we have chunks and aren't already processing
     if (isProcessingAudio || audioQueue.length === 0) return;
     
-    // Start immediately with first chunk to minimize delay
+    // Start as soon as we have at least 1 chunk to minimize delay, or if we're done receiving
     if (isReceivingAudio && audioQueue.length < 1) {
       setTimeout(() => processAudioQueue(), 25); // Reduced from 100ms to 25ms
       return;
@@ -920,8 +935,12 @@ export const createVoiceFlowchartSession = (
       hasStartedPlayingResponse = true;
       
       console.log('🔊 STARTING AUDIO PLAYBACK - isPlaying set to TRUE');
+      console.log('🎯 Audio state before playAsync:', { isPlaying, currentSound: !!currentSound });
+      
       await sound.playAsync();
+      
       console.log('🎵 Audio playback initiated - isPlaying should be TRUE');
+      console.log('🎯 Audio state after playAsync:', { isPlaying, currentSound: !!currentSound });
       
       // Clean up when playback finishes
       sound.setOnPlaybackStatusUpdate(async (status) => {
