@@ -66,6 +66,7 @@ export function VoiceFlowchartCreator({
   const [incrementalFlowchart, setIncrementalFlowchart] = useState<FlowchartStructure | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<string>('');
   const [showIncrementalFlowchart, setShowIncrementalFlowchart] = useState(true);
+  const [showTextInput, setShowTextInput] = useState(false);
   
   const sessionRef = useRef<VoiceFlowchartSession | null>(null);
   const textInputRef = useRef<any>(null);
@@ -530,8 +531,9 @@ export function VoiceFlowchartCreator({
       // Send to OpenAI
       sessionRef.current.sendMessage(finalMessage);
       
-      // Clear input
+      // Clear input and hide text input area
       setTextInput('');
+      setShowTextInput(false);
     }
   };
 
@@ -758,35 +760,70 @@ export function VoiceFlowchartCreator({
             </Animated.View>
           </View>
 
-          {/* Text Input */}
-          <View style={styles.textInputContainer}>
-            <TextInput
-              ref={textInputRef}
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: isDark ? '#333333' : '#F0F0F0',
-                  color: isDark ? '#FFFFFF' : '#000000'
-                }
-              ]}
-              placeholder="Type your message..."
-              placeholderTextColor={isDark ? '#888888' : '#666666'}
-              value={textInput}
-              onChangeText={setTextInput}
-              multiline
-              editable={isConnected}
-            />
+          {/* Text Input Toggle Button */}
+          <View style={styles.bottomControls}>
             <Pressable
               style={[
-                styles.sendButton,
-                { opacity: (isConnected && textInput.trim()) ? 1 : 0.5 }
+                styles.textToggleButton,
+                { backgroundColor: showTextInput ? '#007AFF' : (isDark ? '#333333' : '#E0E0E0') }
               ]}
-              onPress={handleSendText}
-              disabled={!isConnected || !textInput.trim()}
+              onPress={() => {
+                const newShowTextInput = !showTextInput;
+                setShowTextInput(newShowTextInput);
+                
+                // Clear text input when hiding it
+                if (!newShowTextInput) {
+                  setTextInput('');
+                }
+                
+                // Auto-focus when showing it
+                if (newShowTextInput) {
+                  setTimeout(() => {
+                    textInputRef.current?.focus();
+                  }, 100);
+                }
+              }}
             >
-              <Text style={styles.sendButtonText}>Send</Text>
+              <Text style={[
+                styles.textToggleButtonText,
+                { color: showTextInput ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
+              ]}>
+                📝
+              </Text>
             </Pressable>
           </View>
+
+          {/* Conditional Text Input */}
+          {showTextInput && (
+            <View style={styles.textInputContainer}>
+              <TextInput
+                ref={textInputRef}
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: isDark ? '#333333' : '#F0F0F0',
+                    color: isDark ? '#FFFFFF' : '#000000'
+                  }
+                ]}
+                placeholder="Type your message..."
+                placeholderTextColor={isDark ? '#888888' : '#666666'}
+                value={textInput}
+                onChangeText={setTextInput}
+                multiline
+                editable={isConnected}
+              />
+              <Pressable
+                style={[
+                  styles.sendButton,
+                  { opacity: (isConnected && textInput.trim()) ? 1 : 0.5 }
+                ]}
+                onPress={handleSendText}
+                disabled={!isConnected || !textInput.trim()}
+              >
+                <Text style={styles.sendButtonText}>Send</Text>
+              </Pressable>
+            </View>
+          )}
         </View>
       </View>
       </KeyboardAvoidingView>
@@ -914,10 +951,38 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
   },
+  bottomControls: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  textToggleButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  textToggleButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
   textInputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     gap: 10,
+    paddingHorizontal: 20,
+    paddingBottom: 15,
   },
   textInput: {
     flex: 1,
