@@ -424,7 +424,43 @@ export const createVoiceFlowchartSession = (
         callbacks.onListeningStart?.();
         console.log('✅ All listening setup complete');
         
-        // Double-check recording status after all setup
+        // Monitor recording status continuously to detect unexpected stops
+        const startStatusMonitoring = () => {
+          const monitorInterval = setInterval(async () => {
+            if (!currentRecording || !isListening) {
+              clearInterval(monitorInterval);
+              return;
+            }
+            
+            try {
+              const status = await currentRecording.getStatusAsync();
+              
+              // If we think we're listening but recording shows we're not, fix the state
+              if (isListening && !status.isRecording) {
+                console.error('🚨 STATE MISMATCH DETECTED: UI thinks recording but actual recording stopped');
+                console.log('📊 Unexpected recording status:', {
+                  isRecording: status.isRecording,
+                  durationMillis: status.durationMillis,
+                  canRecord: status.canRecord,
+                  isDoneRecording: status.isDoneRecording
+                });
+                
+                // Fix the state mismatch
+                isListening = false;
+                currentRecording = null;
+                callbacks.onListeningStop?.();
+                clearInterval(monitorInterval);
+              }
+            } catch (error) {
+              console.error('❌ Error monitoring recording status:', error);
+              clearInterval(monitorInterval);
+            }
+          }, 1000); // Check every second
+        };
+        
+        startStatusMonitoring();
+        
+        // Also do the immediate check
         setTimeout(async () => {
           if (currentRecording) {
             const delayedStatus = await currentRecording.getStatusAsync();
