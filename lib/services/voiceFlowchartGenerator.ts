@@ -347,6 +347,18 @@ export const createVoiceFlowchartSession = (
           console.log('🛑 Cancelled active API response');
         }
         
+        // Clean up any existing recording before starting a new one
+        if (currentRecording) {
+          console.log('🧹 Cleaning up existing recording before starting new one...');
+          try {
+            await currentRecording.stopAndUnloadAsync();
+            console.log('✅ Previous recording cleaned up');
+          } catch (e) {
+            console.log('⚠️ Error cleaning up previous recording:', e.message);
+          }
+          currentRecording = null;
+        }
+        
         // Add delay after interrupting AI audio to allow audio system to settle
         console.log('⏳ Waiting for audio system to settle after interruption...');
         await new Promise(resolve => setTimeout(resolve, 300));
@@ -446,6 +458,14 @@ export const createVoiceFlowchartSession = (
                 });
                 
                 // Fix the state mismatch
+                console.log('🧹 Attempting to clean up orphaned recording...');
+                try {
+                  await currentRecording.stopAndUnloadAsync();
+                  console.log('✅ Orphaned recording cleaned up');
+                } catch (cleanupError) {
+                  console.log('⚠️ Error cleaning up orphaned recording:', cleanupError.message);
+                }
+                
                 isListening = false;
                 currentRecording = null;
                 callbacks.onListeningStop?.();
