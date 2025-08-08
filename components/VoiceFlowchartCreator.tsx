@@ -129,7 +129,11 @@ export function VoiceFlowchartCreator({
   const loadVoiceSettingAndInitialize = async () => {
     const voice = await getSelectedVoice();
     setSelectedVoice(voice);
-    initializeSession();
+    
+    // Add small delay to ensure any previous session cleanup is complete
+    setTimeout(() => {
+      initializeSession();
+    }, 500);
   };
 
   // Setup incremental flowchart callbacks
@@ -366,9 +370,10 @@ export function VoiceFlowchartCreator({
 
   const restartSession = async () => {
     cleanupSession();
+    // Wait longer for cleanup to complete before reinitializing
     setTimeout(() => {
       initializeSession();
-    }, 1000);
+    }, 2000); // Increased from 1000ms to 2000ms
   };
 
 

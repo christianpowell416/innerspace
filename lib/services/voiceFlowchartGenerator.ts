@@ -282,23 +282,32 @@ export const createVoiceFlowchartSession = (
     },
 
     disconnect: () => {
+      console.log('🔌 Disconnect called - cleaning up all resources');
+      
       if (websocket) {
         websocket.close();
         websocket = null;
       }
       if (currentSound) {
-        currentSound.unloadAsync();
+        currentSound.unloadAsync().catch(e => console.log('⚠️ Error unloading sound:', e.message));
         currentSound = null;
       }
       if (currentRecording) {
-        currentRecording.stopAndUnloadAsync();
+        console.log('🧹 Disconnect: Cleaning up currentRecording');
+        currentRecording.stopAndUnloadAsync().catch(e => console.log('⚠️ Error unloading recording:', e.message));
         currentRecording = null;
       }
       isConnected = false;
       isListening = false;
       isPlaying = false;
       audioQueue = [];
+      allAudioChunks = [];
       isProcessingAudio = false;
+      isReceivingAudio = false;
+      hasActiveResponse = false;
+      hasStartedPlayingResponse = false;
+      
+      console.log('✅ Disconnect cleanup complete');
     },
 
     startListening: async () => {
@@ -347,7 +356,7 @@ export const createVoiceFlowchartSession = (
           console.log('🛑 Cancelled active API response');
         }
         
-        // Clean up any existing recording before starting a new one
+        // Force cleanup of any existing recording before starting a new one
         if (currentRecording) {
           console.log('🧹 Cleaning up existing recording before starting new one...');
           try {
@@ -357,6 +366,20 @@ export const createVoiceFlowchartSession = (
             console.log('⚠️ Error cleaning up previous recording:', e.message);
           }
           currentRecording = null;
+        }
+        
+        // Ensure proper audio mode for recording
+        console.log('🔊 Resetting audio mode for recording...');
+        try {
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: true,
+            playsInSilentModeIOS: false,
+            staysActiveInBackground: false,
+            shouldDuckAndroid: true,
+          });
+          console.log('✅ Audio mode reset for recording');
+        } catch (modeError) {
+          console.log('⚠️ Error resetting audio mode:', modeError.message);
         }
         
         // Add delay after interrupting AI audio to allow audio system to settle
