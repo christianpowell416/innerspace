@@ -187,6 +187,7 @@ export const createVoiceFlowchartSession = (
   let audioQueue: string[] = [];
   let isProcessingAudio = false;
   let hasStartedPlayingResponse = false;
+  let isUserStoppingRecording = false; // Flag to prevent monitoring from interfering with user stops
 
   const session: VoiceFlowchartSession = {
     connect: async () => {
@@ -306,6 +307,7 @@ export const createVoiceFlowchartSession = (
       isReceivingAudio = false;
       hasActiveResponse = false;
       hasStartedPlayingResponse = false;
+      isUserStoppingRecording = false;
       
       console.log('✅ Disconnect cleanup complete');
     },
@@ -464,7 +466,8 @@ export const createVoiceFlowchartSession = (
           let monitoringStartTime = Date.now();
           
           const monitorInterval = setInterval(async () => {
-            if (!currentRecording || !isListening) {
+            // Stop monitoring if recording is gone, not listening, or user is stopping
+            if (!currentRecording || !isListening || isUserStoppingRecording) {
               clearInterval(monitorInterval);
               return;
             }
@@ -479,7 +482,8 @@ export const createVoiceFlowchartSession = (
               const recordingNeverStarted = status.durationMillis === 0 && hasBeenRunningLongEnough;
               const recordingStoppedUnexpectedly = !status.isRecording && hasBeenRunningLongEnough && status.durationMillis < monitoringDuration / 2;
               
-              if (isListening && (recordingNeverStarted || recordingStoppedUnexpectedly)) {
+              // Only trigger if user is not stopping and we detect a genuine failure
+              if (isListening && !isUserStoppingRecording && (recordingNeverStarted || recordingStoppedUnexpectedly)) {
                 console.error('🚨 STATE MISMATCH DETECTED: Recording failed to work properly');
                 console.log('📊 Recording failure details:', {
                   monitoringDuration,
@@ -554,8 +558,9 @@ export const createVoiceFlowchartSession = (
         return;
       }
       
-      // Set flag immediately to prevent race conditions
+      // Set flags immediately to prevent race conditions
       isListening = false;
+      isUserStoppingRecording = true; // Prevent monitoring from interfering
       
       try {
         // Get recording status before stopping
@@ -705,6 +710,7 @@ export const createVoiceFlowchartSession = (
         }
         
         currentRecording = null;
+        isUserStoppingRecording = false; // Reset flag after stop is complete
         // isListening already set to false above to prevent race conditions
         callbacks.onListeningStop?.();
         
@@ -714,6 +720,7 @@ export const createVoiceFlowchartSession = (
         // Ensure cleanup happens even if stopping fails
         currentRecording = null;
         isListening = false;
+        isUserStoppingRecording = false; // Reset flag even on error
         
         callbacks.onError?.(error as Error);
       }
