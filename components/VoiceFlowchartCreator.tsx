@@ -532,9 +532,13 @@ export function VoiceFlowchartCreator({
       // Send to OpenAI
       sessionRef.current.sendMessage(finalMessage);
       
-      // Clear input and hide text input area
+      // Clear input but keep text input visible and focused
       setTextInput('');
-      setShowTextInput(false);
+      
+      // Keep focus on the text input to maintain keyboard
+      setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -691,33 +695,61 @@ export function VoiceFlowchartCreator({
             <View
               key={index}
               style={[
-                styles.messageContainer,
-                message.type === 'user' 
-                  ? styles.userMessage 
-                  : [
-                      styles.assistantMessage,
-                      { backgroundColor: isDark ? '#2A2A2E' : '#F8F9FA' }
-                    ]
+                styles.messageBubbleContainer,
+                message.type === 'user' ? styles.userBubbleContainer : styles.assistantBubbleContainer
               ]}
             >
-              <Text style={[
-                styles.messageText,
-                { 
-                  color: message.type === 'user' 
-                    ? '#FFFFFF' 
-                    : (isDark ? '#FFFFFF' : '#1A1A1A'),
-                  fontWeight: message.type === 'assistant' ? '500' : 'normal'
-                }
-              ]}>
-                {message.text}
-              </Text>
+              <View
+                style={[
+                  styles.messageContainer,
+                  message.type === 'user' 
+                    ? styles.userMessage 
+                    : [
+                        styles.assistantMessage,
+                        { backgroundColor: isDark ? '#2C2C2E' : '#E9E9EB' }
+                      ]
+                ]}
+              >
+                <Text style={[
+                  styles.messageText,
+                  { 
+                    color: message.type === 'user' 
+                      ? '#FFFFFF' 
+                      : (isDark ? '#FFFFFF' : '#1A1A1A'),
+                    fontWeight: message.type === 'assistant' ? '500' : 'normal'
+                  }
+                ]}>
+                  {message.text}
+                </Text>
+              </View>
+              
+              {/* Tail for user message (bottom right) */}
+              {message.type === 'user' && (
+                <View style={[
+                  styles.messageTail,
+                  styles.userTail,
+                  { borderLeftColor: '#0084FF' }
+                ]} />
+              )}
+              
+              {/* Tail for assistant message (bottom left) */}
+              {message.type === 'assistant' && (
+                <View style={[
+                  styles.messageTail,
+                  styles.assistantTail,
+                  { borderRightColor: isDark ? '#2C2C2E' : '#E9E9EB' }
+                ]} />
+              )}
             </View>
           ))}
           
         </ScrollView>
 
         {/* Controls */}
-        <View style={styles.controlsContainer}>
+        <View style={[
+          styles.controlsContainer,
+          { paddingBottom: showTextInput ? 0 : 34 } // Only add bottom padding when text input is hidden
+        ]}>
           {/* Voice Controls */}
           <View style={styles.voiceControlsContainer}>
             {/* Text Input Toggle Button - only shown when text input is hidden */}
@@ -746,56 +778,49 @@ export function VoiceFlowchartCreator({
               )}
             </View>
 
-            {/* Centered Voice Button */}
+            {/* Centered Voice Button - only show when text input is hidden */}
             <View style={styles.centerControls}>
-              <Animated.View
-                style={{
-                  backgroundColor: showTextInput 
-                    ? '#FF6B6B' // Different color when text input is visible (close/hide function)
-                    : colorPulseAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: isListening 
-                          ? ['#FF5722', '#BF360C']  // Red to much darker red when recording
-                          : isAIResponding 
-                            ? ['#2196F3', '#1565C0']  // Blue to darker blue when AI is responding
-                            : ['#4CAF50', '#4CAF50'], // Green stays the same when idle (no pulsing)
-                      }),
-                  borderRadius: 50,
-                  opacity: isConnected ? 1 : 0.5
-                }}
-              >
-                <Pressable
-                  style={styles.circularVoiceButton}
-                  onPress={() => {
-                    // If text input is visible, hide it instead of starting voice
-                    if (showTextInput) {
-                      setShowTextInput(false);
-                      setTextInput(''); // Clear text when hiding
-                      return;
-                    }
-                    
-                    // Normal voice button behavior
-                    console.log('🚨 BUTTON PRESSED DURING:', {
-                      isListening,
-                      isAIResponding,
-                      isPlaying: !!sessionRef.current?.isPlaying
-                    });
-                    handleTapToTalk();
+              {!showTextInput && (
+                <Animated.View
+                  style={{
+                    backgroundColor: colorPulseAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: isListening 
+                        ? ['#FF5722', '#BF360C']  // Red to much darker red when recording
+                        : isAIResponding 
+                          ? ['#2196F3', '#1565C0']  // Blue to darker blue when AI is responding
+                          : ['#4CAF50', '#4CAF50'], // Green stays the same when idle (no pulsing)
+                    }),
+                    borderRadius: 50,
+                    opacity: isConnected ? 1 : 0.5
                   }}
-                  disabled={!isConnected}
                 >
-                  <Image 
-                    source={require('@/assets/images/Logo.png')}
-                    style={[
-                      styles.voiceButtonLogo,
-                      { 
-                        tintColor: '#FFF',
-                      }
-                    ]}
-                    resizeMode="contain"
-                  />
-                </Pressable>
-              </Animated.View>
+                  <Pressable
+                    style={styles.circularVoiceButton}
+                    onPress={() => {
+                      // Normal voice button behavior only (text input now has its own button)
+                      console.log('🚨 BUTTON PRESSED DURING:', {
+                        isListening,
+                        isAIResponding,
+                        isPlaying: !!sessionRef.current?.isPlaying
+                      });
+                      handleTapToTalk();
+                    }}
+                    disabled={!isConnected}
+                  >
+                    <Image 
+                      source={require('@/assets/images/Logo.png')}
+                      style={[
+                        styles.voiceButtonLogo,
+                        { 
+                          tintColor: '#FFF',
+                        }
+                      ]}
+                      resizeMode="contain"
+                    />
+                  </Pressable>
+                </Animated.View>
+              )}
             </View>
 
             {/* Right side placeholder for symmetry */}
@@ -806,33 +831,70 @@ export function VoiceFlowchartCreator({
 
           {/* Conditional Text Input */}
           {showTextInput && (
-            <View style={styles.textInputContainer}>
-              <TextInput
-                ref={textInputRef}
-                style={[
-                  styles.textInput,
-                  {
-                    backgroundColor: isDark ? '#333333' : '#F0F0F0',
-                    color: isDark ? '#FFFFFF' : '#000000'
-                  }
-                ]}
-                placeholder="Type your message..."
-                placeholderTextColor={isDark ? '#888888' : '#666666'}
-                value={textInput}
-                onChangeText={setTextInput}
-                multiline
-                editable={isConnected}
-              />
+            <View style={[
+              styles.textInputContainer,
+              { paddingBottom: 10 } // Override the large bottom padding when keyboard is visible
+            ]}>
               <Pressable
                 style={[
-                  styles.sendButton,
-                  { opacity: (isConnected && textInput.trim()) ? 1 : 0.5 }
+                  styles.textInputVoiceButton,
+                  { backgroundColor: '#4CAF50' }
                 ]}
-                onPress={handleSendText}
-                disabled={!isConnected || !textInput.trim()}
+                onPress={() => {
+                  // Hide text input and clear it
+                  setShowTextInput(false);
+                  setTextInput('');
+                  
+                  // Immediately start voice recording
+                  if (sessionRef.current && isConnected) {
+                    console.log('🎤 Text input voice button - immediately starting recording');
+                    handleTapToTalk();
+                  }
+                }}
               >
-                <Text style={styles.sendButtonText}>Send</Text>
+                <Image 
+                  source={require('@/assets/images/Logo.png')}
+                  style={[
+                    styles.textInputVoiceButtonLogo,
+                    { tintColor: '#FFF' }
+                  ]}
+                  resizeMode="contain"
+                />
               </Pressable>
+              <View style={styles.textInputWithButton}>
+                <TextInput
+                  ref={textInputRef}
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: 'transparent',
+                      color: isDark ? '#FFFFFF' : '#000000',
+                      borderColor: isDark ? '#555555' : '#C7C7CC',
+                      borderWidth: 1
+                    }
+                  ]}
+                  placeholder="Type your message..."
+                  placeholderTextColor={isDark ? '#888888' : '#666666'}
+                  value={textInput}
+                  onChangeText={setTextInput}
+                  multiline
+                  editable={isConnected}
+                />
+                <Pressable
+                  style={[
+                    styles.sendButton,
+                    { opacity: (isConnected && textInput.trim()) ? 1 : 0.5 }
+                  ]}
+                  onPress={handleSendText}
+                  disabled={!isConnected || !textInput.trim()}
+                >
+                  <IconSymbol 
+                    size={18} 
+                    name="arrow.up" 
+                    color="#FFFFFF" 
+                  />
+                </Pressable>
+              </View>
             </View>
           )}
         </View>
@@ -893,19 +955,50 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
   },
+  messageBubbleContainer: {
+    marginVertical: 2,
+    position: 'relative',
+  },
+  userBubbleContainer: {
+    alignItems: 'flex-end',
+    marginLeft: '15%',
+  },
+  assistantBubbleContainer: {
+    alignItems: 'flex-start',
+    marginRight: '15%',
+  },
   messageContainer: {
-    marginVertical: 5,
-    padding: 12,
-    borderRadius: 12,
-    maxWidth: '80%',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 18,
+    maxWidth: '85%',
   },
   userMessage: {
-    backgroundColor: '#007AFF',
-    alignSelf: 'flex-end',
+    backgroundColor: '#0084FF',
   },
   assistantMessage: {
-    backgroundColor: '#F8F9FA', // Light mode default, overridden in component
-    alignSelf: 'flex-start',
+    backgroundColor: '#E9E9EB', // Light mode default, overridden in component
+  },
+  messageTail: {
+    position: 'absolute',
+    bottom: 0,
+    width: 0,
+    height: 0,
+    borderStyle: 'solid',
+  },
+  userTail: {
+    right: -6,
+    borderWidth: 8,
+    borderColor: 'transparent',
+    borderTopWidth: 12,
+    borderBottomWidth: 0,
+  },
+  assistantTail: {
+    left: -6,
+    borderWidth: 8,
+    borderColor: 'transparent',
+    borderTopWidth: 12,
+    borderBottomWidth: 0,
   },
   transcriptMessage: {
     backgroundColor: '#FFF3CD',
@@ -913,8 +1006,14 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   messageText: {
-    fontSize: 16,
+    fontSize: 17,
     lineHeight: 22,
+    fontWeight: '400',
+    fontFamily: Platform.select({
+      ios: '-apple-system',
+      android: 'Roboto',
+      default: 'System'
+    }),
   },
   transcriptText: {
     fontSize: 14,
@@ -923,14 +1022,14 @@ const styles = StyleSheet.create({
   },
   controlsContainer: {
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 0,
     borderTopWidth: 1,
-    borderTopColor: '#333333',
+    borderTopColor: '#000000',
   },
   voiceControlsContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 5,
     paddingHorizontal: 20,
   },
   leftControls: {
@@ -994,28 +1093,53 @@ const styles = StyleSheet.create({
   textInputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingBottom: 15,
+    gap: 8,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 10, // Default spacing, overridden conditionally
+  },
+  textInputWithButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
   },
   textInput: {
     flex: 1,
     borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingRight: 44, // Add space for the send button
+    minHeight: 36,
     maxHeight: 100,
-    fontSize: 14,
+    fontSize: 18,
+    textAlignVertical: 'center',
   },
   sendButton: {
     backgroundColor: '#007AFF',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 20,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    right: 6,
   },
   sendButtonText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+  },
+  textInputVoiceButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textInputVoiceButtonLogo: {
+    width: 32,
+    height: 32,
   },
   instructionText: {
     fontSize: 12,

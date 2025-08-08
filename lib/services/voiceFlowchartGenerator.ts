@@ -7,6 +7,69 @@ import { voiceConversationInstructions } from '../../assets/flowchart/voice_conv
 const OPENAI_REALTIME_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
 const REALTIME_API_URL = 'wss://api.openai.com/v1/realtime';
 
+// Simple Voice Activity Detection using audio amplitude analysis
+const checkAudioForSpeechContent = async (wavBase64: string): Promise<boolean> => {
+  try {
+    // Convert base64 to binary
+    const binaryString = atob(wavBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    
+    // Skip WAV header (typically 44 bytes) to get to audio data
+    const audioDataStart = 44;
+    if (bytes.length <= audioDataStart) {
+      console.log('🔇 Audio file too small, likely no content');
+      return false;
+    }
+    
+    // Analyze audio samples (assuming 16-bit PCM)
+    const audioSamples = [];
+    for (let i = audioDataStart; i < bytes.length - 1; i += 2) {
+      // Convert 16-bit little-endian to signed integer
+      const sample = (bytes[i + 1] << 8) | bytes[i];
+      const signedSample = sample > 32767 ? sample - 65536 : sample;
+      audioSamples.push(Math.abs(signedSample)); // Use absolute value for amplitude
+    }
+    
+    if (audioSamples.length === 0) {
+      console.log('🔇 No audio samples found');
+      return false;
+    }
+    
+    // Calculate audio statistics
+    const maxAmplitude = Math.max(...audioSamples);
+    const avgAmplitude = audioSamples.reduce((sum, sample) => sum + sample, 0) / audioSamples.length;
+    const rmsAmplitude = Math.sqrt(audioSamples.reduce((sum, sample) => sum + (sample * sample), 0) / audioSamples.length);
+    
+    // Balanced thresholds for speech detection
+    const MIN_MAX_AMPLITUDE = 2000;     // Minimum peak amplitude
+    const MIN_RMS_AMPLITUDE = 300;      // Minimum sustained level (RMS)
+    const MIN_AVG_AMPLITUDE = 150;      // Minimum average amplitude
+    
+    // Calculate what percentage of samples are above noise floor
+    const noiseFloor = 500;
+    const activeSamples = audioSamples.filter(sample => sample > noiseFloor).length;
+    const activityRatio = activeSamples / audioSamples.length;
+    const MIN_ACTIVITY_RATIO = 0.1; // At least 10% of samples should be above noise floor
+    
+    const dynamicRange = maxAmplitude - avgAmplitude;
+    const hasSpeech = maxAmplitude > MIN_MAX_AMPLITUDE && 
+                     rmsAmplitude > MIN_RMS_AMPLITUDE &&
+                     avgAmplitude > MIN_AVG_AMPLITUDE &&
+                     activityRatio > MIN_ACTIVITY_RATIO;
+    
+    console.log(`🎵 Audio analysis: max=${maxAmplitude}, avg=${avgAmplitude.toFixed(1)}, rms=${rmsAmplitude.toFixed(1)}, activity=${(activityRatio*100).toFixed(1)}%, hasSpeech=${hasSpeech}`);
+    
+    return hasSpeech;
+  } catch (error) {
+    console.error('❌ Error analyzing audio content:', error);
+    // If analysis fails, allow transcription to proceed (fail-safe)
+    return true;
+  }
+};
+
 const extractSystemPromptFromVoiceInstructions = (): string => {
   try {
     const lines = voiceConversationInstructions.split('\n');
@@ -611,6 +674,15 @@ export const createVoiceFlowchartSession = (
               encoding: FileSystem.EncodingType.Base64,
             });
             
+            // Check if audio contains actual speech content
+            const audioHasSpeech = await checkAudioForSpeechContent(wavBase64);
+            if (!audioHasSpeech) {
+              console.log('🔇 No speech detected in audio, skipping transcription');
+              // Reset AI responding state since no transcription will happen
+              callbacks.onResponseComplete?.();
+              return;
+            }
+            
             // First transcribe locally to show user message immediately
             
             try {
@@ -648,9 +720,10 @@ export const createVoiceFlowchartSession = (
                 
                 console.log(`📝 TRANSCRIPTION: "${userText}"`);
                 
-                // Check if transcription is empty or too short
+                // Only check for completely empty transcriptions
                 if (!userText || userText.trim().length === 0) {
-                  return; // Don't process empty transcriptions
+                  console.log(`🚫 Filtered out empty transcription`);
+                  return;
                 }
                 
                 // Immediately show the user's message in the UI
