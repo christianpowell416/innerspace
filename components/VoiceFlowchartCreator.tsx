@@ -720,50 +720,46 @@ export function VoiceFlowchartCreator({
         <View style={styles.controlsContainer}>
           {/* Voice Controls */}
           <View style={styles.voiceControlsContainer}>
-            {/* Text Input Toggle Button - left justified */}
+            {/* Text Input Toggle Button - only shown when text input is hidden */}
             <View style={styles.leftControls}>
-              <Pressable
-                style={[
-                  styles.textToggleButton,
-                  { backgroundColor: showTextInput ? '#007AFF' : (isDark ? '#333333' : '#E0E0E0') }
-                ]}
-                onPress={() => {
-                  const newShowTextInput = !showTextInput;
-                  setShowTextInput(newShowTextInput);
-                  
-                  // Clear text input when hiding it
-                  if (!newShowTextInput) {
-                    setTextInput('');
-                  }
-                  
-                  // Auto-focus when showing it
-                  if (newShowTextInput) {
+              {!showTextInput && (
+                <Pressable
+                  style={[
+                    styles.textToggleButton,
+                    { backgroundColor: isDark ? '#333333' : '#E0E0E0' }
+                  ]}
+                  onPress={() => {
+                    setShowTextInput(true);
+                    
+                    // Auto-focus when showing it
                     setTimeout(() => {
                       textInputRef.current?.focus();
                     }, 100);
-                  }
-                }}
-              >
-                <IconSymbol 
-                  size={20} 
-                  name="pencil" 
-                  color={showTextInput ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000')} 
-                />
-              </Pressable>
+                  }}
+                >
+                  <IconSymbol 
+                    size={20} 
+                    name="pencil" 
+                    color={isDark ? '#FFFFFF' : '#000000'} 
+                  />
+                </Pressable>
+              )}
             </View>
 
             {/* Centered Voice Button */}
             <View style={styles.centerControls}>
               <Animated.View
                 style={{
-                  backgroundColor: colorPulseAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: isListening 
-                      ? ['#FF5722', '#BF360C']  // Red to much darker red when recording
-                      : isAIResponding 
-                        ? ['#2196F3', '#1565C0']  // Blue to darker blue when AI is responding
-                        : ['#4CAF50', '#4CAF50'], // Green stays the same when idle (no pulsing)
-                  }),
+                  backgroundColor: showTextInput 
+                    ? '#FF6B6B' // Different color when text input is visible (close/hide function)
+                    : colorPulseAnim.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: isListening 
+                          ? ['#FF5722', '#BF360C']  // Red to much darker red when recording
+                          : isAIResponding 
+                            ? ['#2196F3', '#1565C0']  // Blue to darker blue when AI is responding
+                            : ['#4CAF50', '#4CAF50'], // Green stays the same when idle (no pulsing)
+                      }),
                   borderRadius: 50,
                   opacity: isConnected ? 1 : 0.5
                 }}
@@ -771,6 +767,14 @@ export function VoiceFlowchartCreator({
                 <Pressable
                   style={styles.circularVoiceButton}
                   onPress={() => {
+                    // If text input is visible, hide it instead of starting voice
+                    if (showTextInput) {
+                      setShowTextInput(false);
+                      setTextInput(''); // Clear text when hiding
+                      return;
+                    }
+                    
+                    // Normal voice button behavior
                     console.log('🚨 BUTTON PRESSED DURING:', {
                       isListening,
                       isAIResponding,
