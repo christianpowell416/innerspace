@@ -401,9 +401,9 @@ export function VoiceFlowchartCreator({
     // 1. AI is responding 
     // 2. AI audio is playing
     // 3. State mismatch (UI thinks listening but session isn't recording)
-    // 4. Recording duration > 0 but UI still shows listening (indicates silent recording failure)
-    const hasLongRecording = isListening && recordingDuration > 2; // If we've been "recording" for 2+ seconds
-    const shouldForceStart = isAIResponding || sessionRef.current?.isPlaying || hasStateMismatch || hasLongRecording;
+    // Note: Removed hasLongRecording condition as it was interfering with normal stop operations
+    // The monitoring logic in the service will handle silent recording failures
+    const shouldForceStart = isAIResponding || sessionRef.current?.isPlaying || hasStateMismatch;
     
     console.log('🔍 Button decision logic:', {
       isListening,
@@ -411,7 +411,6 @@ export function VoiceFlowchartCreator({
       sessionIsPlaying: sessionRef.current?.isPlaying,
       sessionIsListening,
       hasStateMismatch,
-      hasLongRecording,
       recordingDuration,
       shouldForceStart,
       decision: shouldForceStart ? 'FORCE_START' : (isListening ? 'STOP' : 'START')
