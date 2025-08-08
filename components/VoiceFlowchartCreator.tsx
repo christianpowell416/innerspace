@@ -719,6 +719,37 @@ export function VoiceFlowchartCreator({
         <View style={styles.controlsContainer}>
           {/* Voice Controls */}
           <View style={styles.voiceControls}>
+            {/* Text Input Toggle Button - positioned to the left of voice button */}
+            <Pressable
+              style={[
+                styles.textToggleButton,
+                { backgroundColor: showTextInput ? '#007AFF' : (isDark ? '#333333' : '#E0E0E0') }
+              ]}
+              onPress={() => {
+                const newShowTextInput = !showTextInput;
+                setShowTextInput(newShowTextInput);
+                
+                // Clear text input when hiding it
+                if (!newShowTextInput) {
+                  setTextInput('');
+                }
+                
+                // Auto-focus when showing it
+                if (newShowTextInput) {
+                  setTimeout(() => {
+                    textInputRef.current?.focus();
+                  }, 100);
+                }
+              }}
+            >
+              <Text style={[
+                styles.textToggleButtonText,
+                { color: showTextInput ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
+              ]}>
+                📝
+              </Text>
+            </Pressable>
+
             {/* Tap to Talk Mode */}
             <Animated.View
               style={{
@@ -758,39 +789,6 @@ export function VoiceFlowchartCreator({
                 />
               </Pressable>
             </Animated.View>
-          </View>
-
-          {/* Text Input Toggle Button */}
-          <View style={styles.bottomControls}>
-            <Pressable
-              style={[
-                styles.textToggleButton,
-                { backgroundColor: showTextInput ? '#007AFF' : (isDark ? '#333333' : '#E0E0E0') }
-              ]}
-              onPress={() => {
-                const newShowTextInput = !showTextInput;
-                setShowTextInput(newShowTextInput);
-                
-                // Clear text input when hiding it
-                if (!newShowTextInput) {
-                  setTextInput('');
-                }
-                
-                // Auto-focus when showing it
-                if (newShowTextInput) {
-                  setTimeout(() => {
-                    textInputRef.current?.focus();
-                  }, 100);
-                }
-              }}
-            >
-              <Text style={[
-                styles.textToggleButtonText,
-                { color: showTextInput ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
-              ]}>
-                📝
-              </Text>
-            </Pressable>
           </View>
 
           {/* Conditional Text Input */}
@@ -917,8 +915,11 @@ const styles = StyleSheet.create({
     borderTopColor: '#333333',
   },
   voiceControls: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 15,
+    gap: 20,
   },
   voiceButton: {
     paddingHorizontal: 30,
@@ -950,13 +951,6 @@ const styles = StyleSheet.create({
   voiceButtonLogo: {
     width: 80,
     height: 80,
-  },
-  bottomControls: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 10,
   },
   textToggleButton: {
     width: 44,
