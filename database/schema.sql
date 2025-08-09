@@ -5,6 +5,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
   email TEXT,
+  first_name TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -60,8 +61,8 @@ CREATE POLICY "Users can delete their own emotions" ON emotions
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO profiles (id, email)
-  VALUES (NEW.id, NEW.email);
+  INSERT INTO profiles (id, email, first_name)
+  VALUES (NEW.id, NEW.email, NULL);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

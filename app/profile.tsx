@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, Alert, TouchableOpacity, View, Pressable, ScrollView } from 'react-native';
+import { StyleSheet, Alert, TouchableOpacity, View, Pressable, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -10,10 +10,13 @@ import { GlassHeader } from '@/components/ui/GlassHeader';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@/contexts/AuthContext';
+import { updateUserFirstName } from '@/lib/services/auth';
 
 export default function ProfileScreen() {
-  const { user, signOut } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const colorScheme = useColorScheme();
+  const [editingFirstName, setEditingFirstName] = useState(false);
+  const [firstNameInput, setFirstNameInput] = useState(profile?.first_name || '');
 
   const handleSignOut = () => {
     Alert.alert(
@@ -37,7 +40,26 @@ export default function ProfileScreen() {
   };
 
   const handleEditProfile = () => {
-    Alert.alert('Edit Profile', 'Profile editing functionality coming soon!');
+    setEditingFirstName(true);
+  };
+
+  const handleSaveFirstName = async () => {
+    if (!user) return;
+    
+    try {
+      await updateUserFirstName(firstNameInput);
+      await refreshProfile();
+      setEditingFirstName(false);
+      Alert.alert('Success', 'First name updated successfully!');
+    } catch (error) {
+      console.error('Error updating first name:', error);
+      Alert.alert('Error', 'Failed to update first name. Please try again.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setFirstNameInput(profile?.first_name || '');
+    setEditingFirstName(false);
   };
 
   const handleSettings = () => {
@@ -93,9 +115,37 @@ export default function ProfileScreen() {
               ]}>
                 <IconSymbol size={64} name="person.circle.fill" color={colorScheme === 'dark' ? '#666' : '#999'} />
               </View>
-              <ThemedText type="title" style={styles.userName}>
-                {user?.email?.split('@')[0] || 'Guest User'}
-              </ThemedText>
+              {editingFirstName ? (
+                <View style={styles.editingContainer}>
+                  <TextInput
+                    style={[
+                      styles.nameInput,
+                      {
+                        backgroundColor: colorScheme === 'dark' ? '#333' : '#F0F0F0',
+                        color: colorScheme === 'dark' ? '#fff' : '#000',
+                        borderColor: colorScheme === 'dark' ? '#555' : '#DDD',
+                      }
+                    ]}
+                    value={firstNameInput}
+                    onChangeText={setFirstNameInput}
+                    placeholder="Enter your first name"
+                    placeholderTextColor={colorScheme === 'dark' ? '#666' : '#999'}
+                    autoFocus={true}
+                  />
+                  <View style={styles.editButtonsContainer}>
+                    <TouchableOpacity style={styles.saveButton} onPress={handleSaveFirstName}>
+                      <ThemedText style={styles.saveButtonText}>Save</ThemedText>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.cancelButton} onPress={handleCancelEdit}>
+                      <ThemedText style={styles.cancelButtonText}>Cancel</ThemedText>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <ThemedText type="title" style={styles.userName}>
+                  {profile?.first_name || user?.email?.split('@')[0] || 'Guest User'}
+                </ThemedText>
+              )}
               {user?.email && (
                 <ThemedText type="default" style={styles.userEmail}>
                   {user.email}
@@ -250,6 +300,47 @@ const styles = StyleSheet.create({
   userEmail: {
     opacity: 0.7,
     fontSize: 16,
+  },
+  editingContainer: {
+    alignItems: 'center',
+    width: '100%',
+    gap: 16,
+  },
+  nameInput: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    minWidth: 200,
+    textAlign: 'center',
+  },
+  editButtonsContainer: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  saveButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  cancelButton: {
+    backgroundColor: 'transparent',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#999',
+  },
+  cancelButtonText: {
+    color: '#999',
+    fontWeight: '600',
   },
   actionsContainer: {
     marginBottom: 32,

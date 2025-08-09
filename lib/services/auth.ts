@@ -83,6 +83,7 @@ export const getUserProfile = async (): Promise<Profile | null> => {
           .insert({
             id: user.id,
             email: user.email,
+            first_name: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -139,6 +140,7 @@ export const getUserProfileForUser = async (user: any): Promise<Profile | null> 
             .insert({
               id: user.id,
               email: user.email,
+              first_name: null,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })
@@ -187,6 +189,32 @@ export const updateUserProfile = async (updates: Partial<Profile>): Promise<Prof
 
   if (error) {
     console.error('Error updating user profile:', error);
+    throw error;
+  }
+
+  return data;
+};
+
+// Update user first name
+export const updateUserFirstName = async (firstName: string): Promise<Profile> => {
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  
+  if (userError || !user) {
+    throw new Error('User not authenticated');
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ 
+      first_name: firstName,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', user.id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating user first name:', error);
     throw error;
   }
 
