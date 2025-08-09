@@ -242,6 +242,7 @@ export const createVoiceFlowchartSession = (
   let isContinuousMode = false;
   let currentRecording: Audio.Recording | null = null;
   let currentSound: Audio.Sound | null = null;
+  let isCreatingRecording = false; // Prevent concurrent recording creation
   let audioChunks: string[] = [];
   let isReceivingAudio = false;
   let hasActiveResponse = false;
@@ -251,6 +252,8 @@ export const createVoiceFlowchartSession = (
   let isProcessingAudio = false;
   let hasStartedPlayingResponse = false;
   let isUserStoppingRecording = false; // Flag to prevent monitoring from interfering with user stops
+  let currentTranscript = ''; // Track transcript as it builds
+  let sentenceChunkBoundaries: number[] = []; // Track which chunks end sentences
 
   const session: VoiceFlowchartSession = {
     connect: async () => {
@@ -371,6 +374,8 @@ export const createVoiceFlowchartSession = (
       hasActiveResponse = false;
       hasStartedPlayingResponse = false;
       isUserStoppingRecording = false;
+      currentTranscript = '';
+      sentenceChunkBoundaries = [];
       
       console.log('✅ Disconnect cleanup complete');
     },
@@ -381,6 +386,15 @@ export const createVoiceFlowchartSession = (
         console.log('❌ Cannot start listening - no websocket or not connected');
         return;
       }
+      
+      // Check if already creating a recording
+      if (isCreatingRecording) {
+        console.log('⚠️ Recording creation already in progress, skipping');
+        return;
+      }
+      
+      // Set flag to prevent concurrent attempts
+      isCreatingRecording = true;
       
       try {
         console.log('🎤 Starting listening process...');
@@ -404,12 +418,14 @@ export const createVoiceFlowchartSession = (
           console.log('ℹ️ No active audio to interrupt', { isPlaying, hasCurrentSound: !!currentSound });
         }
         
-        // Clear any pending audio queue
+        // Clear any pending audio queue and sentence tracking
         audioQueue = [];
         allAudioChunks = [];
         isReceivingAudio = false;
         isProcessingAudio = false;
         hasStartedPlayingResponse = false;
+        currentTranscript = '';
+        sentenceChunkBoundaries = [];
         
         // Cancel any active response from the API and clear audio queue
         if (hasActiveResponse && websocket) {
@@ -475,42 +491,110 @@ export const createVoiceFlowchartSession = (
         });
         console.log('✅ Audio mode set');
 
-        console.log('📱 Creating recording instance...');
-        // Create and configure audio recording
-        const recording = new Audio.Recording();
+        // Force complete cleanup of any recording state
+        console.log('🧹 Force cleaning recording system...');
         
-        console.log('⚙️ Preparing recording with configuration...');
-        // Configure for PCM16 format that OpenAI expects
-        await recording.prepareToRecordAsync({
-          android: {
-            extension: '.wav',
-            outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-            audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
-            sampleRate: 24000,
-            numberOfChannels: 1,
-            bitRate: 384000,
-          },
-          ios: {
-            extension: '.wav',
-            audioQuality: Audio.IOSAudioQuality.HIGH,
-            sampleRate: 24000,
-            numberOfChannels: 1,
-            bitRate: 384000,
-            linearPCMBitDepth: 16,
-            linearPCMIsBigEndian: false,
-            linearPCMIsFloat: false,
-          },
-          web: {
-            mimeType: 'audio/wav',
-            bitsPerSecond: 384000,
+        // First, clean up tracked recording
+        if (currentRecording) {
+          console.log('📍 Found tracked recording, forcing cleanup...');
+          try {
+            await currentRecording.stopAndUnloadAsync();
+          } catch (e) {
+            console.log('⚠️ Cleanup error (continuing):', e.message);
           }
-        });
-        console.log('✅ Recording prepared successfully');
-
-        console.log('▶️ Attempting to start recording...');
-        await recording.startAsync();
-        currentRecording = recording;
-        console.log('✅ recording.startAsync() completed');
+          currentRecording = null;
+        }
+        
+        // Second, try to create a dummy recording to clear any stuck state
+        console.log('🔧 Attempting to clear stuck recording state...');
+        try {
+          const dummyResult = await Audio.Recording.createAsync({
+            android: {
+              extension: '.wav',
+              outputFormat: Audio.AndroidOutputFormat.DEFAULT,
+              audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+              sampleRate: 16000,
+              numberOfChannels: 1,
+              bitRate: 128000,
+            },
+            ios: {
+              extension: '.wav',
+              audioQuality: Audio.IOSAudioQuality.MIN,
+              sampleRate: 16000,
+              numberOfChannels: 1,
+              bitRate: 128000,
+              linearPCMBitDepth: 16,
+              linearPCMIsBigEndian: false,
+              linearPCMIsFloat: false,
+            },
+            web: {
+              mimeType: 'audio/wav',
+              bitsPerSecond: 128000,
+            }
+          });
+          
+          console.log('🗑️ Dummy recording created, immediately stopping...');
+          await dummyResult.recording.stopAndUnloadAsync();
+          console.log('✅ Dummy recording cleaned up');
+        } catch (dummyError) {
+          console.log('ℹ️ No stuck recording to clear or already cleared');
+        }
+        
+        // Add delay to ensure system is ready
+        await new Promise(resolve => setTimeout(resolve, 200));
+        
+        console.log('📱 Creating new recording with createAsync...');
+        
+        let recording;
+        try {
+          // Now create the actual recording
+          const recordingResult = await Audio.Recording.createAsync(
+            {
+              android: {
+                extension: '.wav',
+                outputFormat: Audio.AndroidOutputFormat.DEFAULT,
+                audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+                sampleRate: 24000,
+                numberOfChannels: 1,
+                bitRate: 384000,
+              },
+              ios: {
+                extension: '.wav',
+                audioQuality: Audio.IOSAudioQuality.HIGH,
+                sampleRate: 24000,
+                numberOfChannels: 1,
+                bitRate: 384000,
+                linearPCMBitDepth: 16,
+                linearPCMIsBigEndian: false,
+                linearPCMIsFloat: false,
+              },
+              web: {
+                mimeType: 'audio/wav',
+                bitsPerSecond: 384000,
+              }
+            }
+            // Remove the second parameter - createAsync only takes recording options, not status callback
+          );
+          
+          console.log('✅ Recording created successfully');
+          recording = recordingResult.recording;
+          const status = recordingResult.status;
+          console.log('📊 Initial recording status:', status);
+          
+          // Now start the recording
+          console.log('▶️ Starting recording...');
+          await recording.startAsync();
+          currentRecording = recording;
+          console.log('✅ recording.startAsync() completed');
+          
+          // Clear the flag after successful creation
+          isCreatingRecording = false;
+        } catch (recordingError) {
+          console.error('❌ Failed to create/start recording:', recordingError);
+          currentRecording = null;
+          isCreatingRecording = false; // Clear flag on error
+          throw new Error(`Recording failed: ${recordingError.message}`);
+        }
         
         // Check recording status immediately after starting
         const immediateStatus = await recording.getStatusAsync();
@@ -607,6 +691,8 @@ export const createVoiceFlowchartSession = (
         
       } catch (error) {
         console.error('❌ Error starting voice recording:', error);
+        isCreatingRecording = false; // Always clear flag on error
+        currentRecording = null; // Ensure no orphaned recording
         callbacks.onError?.(error as Error);
       }
     },
@@ -1040,27 +1126,74 @@ export const createVoiceFlowchartSession = (
 
   let allAudioChunks: string[] = [];
 
-  const processAudioQueue = async () => {
-    // Only start processing when we have chunks and aren't already processing
-    if (isProcessingAudio || audioQueue.length === 0) return;
+  const detectSentenceEndings = (text: string) => {
+    // Look for sentence-ending punctuation followed by space or end of string
+    const sentenceEnders = /[.!?]+(\s+[A-Z]|\s*$)/g;
+    let match;
+    const positions = [];
     
-    // Start as soon as we have at least 1 chunk to minimize delay, or if we're done receiving
-    if (isReceivingAudio && audioQueue.length < 1) {
-      setTimeout(() => processAudioQueue(), 25); // Reduced from 100ms to 25ms
+    while ((match = sentenceEnders.exec(text)) !== null) {
+      positions.push(match.index + match[0].length - (match[1].length > 0 ? match[1].length - 1 : 0));
+    }
+    
+    return positions;
+  };
+
+  const processAudioQueue = async () => {
+    
+    // Don't process if already processing
+    if (isProcessingAudio) {
+      if (!isReceivingAudio && audioQueue.length > 0) {
+        // Store remaining chunks for later processing
+        allAudioChunks.push(...audioQueue);
+        audioQueue = [];
+        console.log(`🔊 Reception complete - ${allAudioChunks.length} chunks queued`);
+      } else {
+      }
       return;
     }
     
+    // Collect any new chunks from the queue
+    if (audioQueue.length > 0) {
+      allAudioChunks.push(...audioQueue);
+      audioQueue = [];
+    }
+    
+    // Start processing early when we have enough chunks
+    const MIN_CHUNKS_TO_START = 6; // Start after 6 chunks for balance between speed and smoothness
+    const isFirstPlayback = !hasStartedPlayingResponse;
+    
+    // First playback - wait for minimum chunks
+    if (isFirstPlayback && isReceivingAudio && allAudioChunks.length < MIN_CHUNKS_TO_START) {
+      console.log(`🔊 Collected ${allAudioChunks.length} audio chunks, need ${MIN_CHUNKS_TO_START} for early start`);
+      return;
+    }
+    
+    // If we have no chunks to process, skip
+    if (allAudioChunks.length === 0) {
+      console.log(`🔊 No audio chunks to process`);
+      return;
+    }
+    
+    // Process available chunks
+    const chunksToProcess = [...allAudioChunks];
+    allAudioChunks = [];
+    
+    if (isFirstPlayback) {
+      console.log(`🚀 EARLY START: Processing ${chunksToProcess.length} chunks`);
+      hasStartedPlayingResponse = true;
+    } else {
+      console.log(`🔊 CONTINUATION: Processing ${chunksToProcess.length} more chunks`);
+    }
+    
+    // Audio processing starts
     isProcessingAudio = true;
     
     try {
-      // Collect ALL available chunks (don't leave any behind)
-      allAudioChunks.push(...audioQueue);
-      audioQueue = [];
+      console.log(`🔊 Creating audio file from ${chunksToProcess.length} chunks`);
       
-      console.log(`🔊 Processing ALL ${allAudioChunks.length} audio chunks as continuous stream`);
-      
-      // Convert all chunks to PCM and combine into one seamless audio
-      const pcmDataArrays = allAudioChunks.map(chunk => new Uint8Array(base64ToArrayBuffer(chunk)));
+      // Convert chunks to PCM and combine into one seamless audio
+      const pcmDataArrays = chunksToProcess.map(chunk => new Uint8Array(base64ToArrayBuffer(chunk)));
       const totalLength = pcmDataArrays.reduce((acc, arr) => acc + arr.length, 0);
       
       // Create one continuous PCM buffer
@@ -1071,16 +1204,18 @@ export const createVoiceFlowchartSession = (
         offset += arr.length;
       }
       
-      // Only add silence at the very end if we're completely done
-      const silenceLength = !isReceivingAudio 
-        ? Math.floor(24000 * 2 * 0.5) // 0.5s at end
-        : 0;
+      // Optimize silence buffers for seamless playback
+      const leadingSilenceLength = Math.floor(24000 * 2 * 0.01); // 0.01s at start (minimal)
+      // Use minimal trailing silence for all audio to reduce gaps
+      const trailingSilenceLength = Math.floor(24000 * 2 * 0.05); // 0.05s at end (minimal for seamless playback)
       
-      const finalPCM = new Uint8Array(totalLength + silenceLength);
-      finalPCM.set(combinedPCM, 0);
-      if (silenceLength > 0) {
-        finalPCM.fill(0, totalLength);
-      }
+      const finalPCM = new Uint8Array(leadingSilenceLength + totalLength + trailingSilenceLength);
+      // Add minimal leading silence
+      finalPCM.fill(0, 0, leadingSilenceLength);
+      // Add audio content
+      finalPCM.set(combinedPCM, leadingSilenceLength);
+      // Add trailing silence
+      finalPCM.fill(0, leadingSilenceLength + totalLength);
       
       // Create WAV file with complete audio
       const wavHeader = createWAVHeader(finalPCM.length);
@@ -1101,54 +1236,91 @@ export const createVoiceFlowchartSession = (
         encoding: FileSystem.EncodingType.Base64,
       });
       
-      // Pre-create sound object while setting audio mode in parallel to minimize delay
-      const [{ sound }] = await Promise.all([
-        Audio.Sound.createAsync({ uri: fileUri }),
-        Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: false,
-        })
-      ]);
+      // Optimize audio setup for fastest playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: false,
+      });
       
+      // Use the same pattern as voiceChatService which has working callbacks - no custom options
+      const { sound } = await Audio.Sound.createAsync({ uri: fileUri });
+      
+      // Set up the callback IMMEDIATELY after creation, before any other operations
+      sound.setOnPlaybackStatusUpdate(async (status) => {
+        // Only log significant status changes
+        if (status.didJustFinish) {
+          console.log('🎵 Audio segment finished');
+        }
+        
+        if (status.isLoaded && status.didJustFinish) {
+          console.log('🔊 Audio playback completed - checking for remaining chunks');
+          
+          // Check if there are remaining chunks BEFORE cleanup for faster continuation
+          const totalRemainingChunks = allAudioChunks.length + audioQueue.length;
+          
+          // If we're still receiving audio, wait for it to complete
+          if (isReceivingAudio) {
+            console.log(`🔊 Audio finished but still receiving (${totalRemainingChunks} chunks buffered) - waiting for completion`);
+            // Clean up current audio
+            await sound.unloadAsync();
+            await FileSystem.deleteAsync(fileUri, { idempotent: true });
+            
+            // Reset state but don't clear hasStartedPlayingResponse
+            isPlaying = false;
+            currentSound = null;
+            isProcessingAudio = false;
+            // Don't process yet - wait for audio.done event
+          } else if (totalRemainingChunks > 0) {
+            console.log(`🔊 Audio finished, ${totalRemainingChunks} remaining chunks - processing immediately`);
+            // Reset state for next audio
+            isPlaying = false;
+            currentSound = null;
+            isProcessingAudio = false;
+            
+            // Start next audio IMMEDIATELY before cleanup
+            const nextAudioPromise = processAudioQueue();
+            
+            // Clean up previous audio in parallel
+            sound.unloadAsync().catch(e => console.log('Cleanup error:', e));
+            FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(e => console.log('File cleanup error:', e));
+            
+            // Wait for next audio to start
+            await nextAudioPromise;
+          } else {
+            // Response is complete - clean up
+            await sound.unloadAsync();
+            await FileSystem.deleteAsync(fileUri, { idempotent: true });
+            
+            console.log('🔇 AUDIO FINISHED - isPlaying set to FALSE (no remaining chunks)');
+            isPlaying = false;
+            currentSound = null;
+            isProcessingAudio = false;
+            hasStartedPlayingResponse = false;
+            callbacks.onResponseComplete?.();
+          }
+        }
+      });
+      
+      
+      // Now store globally and set state
       currentSound = sound;
       isPlaying = true;
       hasStartedPlayingResponse = true;
       
       console.log('🔊 STARTING AUDIO PLAYBACK - isPlaying set to TRUE');
-      console.log('🎯 Audio state before playAsync:', { isPlaying, currentSound: !!currentSound });
       
-      await sound.playAsync();
-      
-      console.log('🎵 Audio playback initiated - isPlaying should be TRUE');
-      console.log('🎯 Audio state after playAsync:', { isPlaying, currentSound: !!currentSound });
-      
-      // Clean up when playback finishes
-      sound.setOnPlaybackStatusUpdate(async (status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          await sound.unloadAsync();
-          await FileSystem.deleteAsync(fileUri, { idempotent: true });
-          
-          // Reset state
-          console.log('🔇 AUDIO FINISHED - isPlaying set to FALSE');
-          isPlaying = false;
-          currentSound = null;
-          isProcessingAudio = false;
-          
-          // Check if we're completely done
-          if (!isReceivingAudio && audioQueue.length === 0) {
-            // Truly finished
-            hasStartedPlayingResponse = false;
-            allAudioChunks = [];
-            callbacks.onResponseComplete?.();
-          } else {
-            // More chunks might have arrived, process them
-            allAudioChunks = [];
-            setTimeout(() => processAudioQueue(), 10); // Reduced from 50ms to 10ms
-          }
-        }
-      });
+      try {
+        await sound.playAsync();
+      } catch (playError) {
+        console.error('❌ Error starting audio playback:', playError);
+        isPlaying = false;
+        currentSound = null;
+        isProcessingAudio = false;
+        callbacks.onError?.(new Error(`Audio playback failed: ${playError.message}`));
+        return;
+      }
     } catch (error) {
       console.error('❌ Error processing audio:', error);
       isPlaying = false;
@@ -1175,23 +1347,69 @@ export const createVoiceFlowchartSession = (
           
         case 'response.created':
           console.log('🔍 DEBUG: New response created, ID:', message.response?.id);
+          // Reset sentence tracking for new response
+          currentTranscript = '';
+          sentenceChunkBoundaries = [];
           break;
           
         case 'response.text.delta':
-          // Skip text deltas - they may contain JSON mixed with conversation
+          // Use text deltas for immediate display - this is independent of audio processing
+          console.log('📝 TEXT DELTA (using for immediate display):', JSON.stringify(message.delta));
+          if (message.delta) {
+            callbacks.onResponse?.(message.delta);
+          }
           break;
           
         case 'response.text.done':
-          console.log('📝 AI TEXT RESPONSE (includes JSON):', message.text);
+          console.log('📝 AI TEXT RESPONSE (complete):', message.text);
           console.log('🔍 DEBUG: Text response length:', message.text?.length);
-          // Try to parse flowchart JSON from response (but don't use for chat display)
+          
+          // Use the complete text response for display since deltas might be empty
+          if (message.text) {
+            console.log('📝 Raw text content:', message.text);
+            
+            // Try extracting conversational text first
+            const conversationalText = extractConversationalText(message.text);
+            console.log('📝 Extracted conversational text:', conversationalText);
+            
+            if (conversationalText && conversationalText.trim()) {
+              console.log('📝 Displaying extracted text:', conversationalText.substring(0, 100) + '...');
+              callbacks.onResponse?.(conversationalText);
+            } else {
+              // Fallback: display the complete text if extraction fails
+              console.log('📝 Extraction failed, displaying complete text as fallback');
+              callbacks.onResponse?.(message.text);
+            }
+          }
+          
+          // Try to parse flowchart JSON from response
           tryParseFlowchartFromResponse(message.text);
           break;
           
         case 'response.audio_transcript.delta':
-          // Use audio transcript deltas for real-time conversation display
-          // This ensures chat matches exactly what is spoken
+          // Use audio transcript deltas for UI and sentence detection
+          console.log('🎤 AUDIO TRANSCRIPT DELTA (using for UI):', JSON.stringify(message.delta));
           if (message.delta) {
+            // Update running transcript
+            currentTranscript += message.delta;
+            
+            // Check for sentence endings
+            const sentenceEndings = detectSentenceEndings(currentTranscript);
+            const lastSentenceEnd = sentenceEndings[sentenceEndings.length - 1];
+            
+            // If we found a sentence ending and it's new
+            if (lastSentenceEnd && lastSentenceEnd > (sentenceChunkBoundaries[sentenceChunkBoundaries.length - 1] || 0)) {
+              console.log(`📝 SENTENCE DETECTED at position ${lastSentenceEnd}: "${currentTranscript.slice(0, lastSentenceEnd)}"`);
+              // Mark current chunk count as a sentence boundary
+              sentenceChunkBoundaries.push(audioQueue.length + allAudioChunks.length);
+              
+              // Process audio queue if we have enough chunks and a sentence boundary
+              if (!isProcessingAudio && (audioQueue.length + allAudioChunks.length) >= 6) {
+                console.log('🔊 Processing audio at sentence boundary');
+                processAudioQueue();
+              }
+            }
+            
             callbacks.onResponse?.(message.delta);
           }
           break;
@@ -1203,22 +1421,30 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.audio.delta':
-          // Handle audio response chunks
+          // Handle audio response chunks - wait for sentence boundaries
           if (message.delta) {
             audioQueue.push(message.delta);
             isReceivingAudio = true;
+            console.log(`🔊 Received audio chunk, queue now has ${audioQueue.length} chunks`);
             
-            // Start processing audio queue if not already processing
-            if (!isProcessingAudio) {
-              processAudioQueue();
-            }
+            // Don't immediately process - let sentence detection trigger processing
+            // This ensures audio segments align with natural sentence boundaries
           }
           break;
           
         case 'response.audio.done':
-          console.log('🔍 DEBUG: Collected', audioQueue.length, 'audio chunks');
+          console.log('🔍 DEBUG: Audio reception complete. Queue has', audioQueue.length, 'chunks');
           isReceivingAudio = false;
-          // Audio processing will continue until queue is empty
+          
+          // Always process remaining chunks at the end, regardless of sentence boundaries
+          if ((audioQueue.length > 0 || allAudioChunks.length > 0) && !isProcessingAudio) {
+            console.log('🔊 Processing remaining audio chunks at end of response (ignoring sentence boundaries)');
+            processAudioQueue();
+          }
+          
+          // Reset sentence tracking for next response
+          currentTranscript = '';
+          sentenceChunkBoundaries = [];
           break;
           
         case 'conversation.item.input_audio_transcription.delta':
