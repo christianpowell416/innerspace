@@ -7,7 +7,6 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { VoiceFlowchartCreator } from '@/components/VoiceFlowchartCreator';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { GlassHeader } from '@/components/ui/GlassHeader';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { FlowchartStructure } from '@/lib/types/flowchart';
@@ -83,16 +82,16 @@ export default function ChatScreen() {
 
   return (
     <GradientBackground style={styles.container}>
-      <GlassHeader>
-        <ThemedText type="title" style={styles.titleText}>Chat</ThemedText>
-        <Pressable 
-          style={styles.settingsButton}
-          onPress={() => router.push('/settings')}
-        >
-          <IconSymbol size={24} name="slider.horizontal.3" color={colorScheme === 'dark' ? '#fff' : '#000'} />
-        </Pressable>
-      </GlassHeader>
       <SafeAreaView style={styles.safeArea}>
+        <ThemedView style={styles.headerContainer} transparent>
+          <ThemedText style={styles.headerText}>Chat</ThemedText>
+          <Pressable 
+            style={styles.settingsButton}
+            onPress={() => router.push('/settings')}
+          >
+            <IconSymbol size={24} name="slider.horizontal.3" color={colorScheme === 'dark' ? '#fff' : '#000'} />
+          </Pressable>
+        </ThemedView>
         <ThemedView style={styles.contentContainer} transparent>
           <ThemedText type="subtitle">What would you like to discuss?</ThemedText>
           
@@ -134,9 +133,25 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    paddingTop: 80, // Account for taller glass header with buttons
+    paddingTop: 0,
   },
   container: {
+    flex: 1,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  headerText: {
+    fontSize: 42,
+    fontWeight: 'bold',
+    textAlign: 'left',
+    fontFamily: 'Georgia',
+    lineHeight: 50,
     flex: 1,
   },
   settingsButton: {
@@ -146,11 +161,6 @@ const styles = StyleSheet.create({
     height: 40,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  titleText: {
-    flex: 1,
-    textAlign: 'left',
-    marginLeft: 0, // Remove extra margin since no left spacer
   },
   contentContainer: {
     flex: 1,

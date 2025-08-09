@@ -81,10 +81,7 @@ export function LearningCarousel({ onArticlePress }: LearningCarouselProps) {
   return (
     <View style={styles.container}>
       <ThemedView style={styles.header} transparent>
-        <ThemedText type="subtitle" style={styles.sectionTitle}>Featured Learning</ThemedText>
-        <ThemedText type="default" style={styles.sectionSubtitle}>
-          Curated articles for your emotional growth journey
-        </ThemedText>
+        <ThemedText style={styles.sectionTitle}>Featured learning:</ThemedText>
       </ThemedView>
       
       <ScrollView
@@ -177,22 +174,26 @@ export function LearningCarousel({ onArticlePress }: LearningCarouselProps) {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 24,
+    marginBottom: 100,
   },
   header: {
     paddingHorizontal: 20,
-    marginBottom: 16,
+    marginTop: 32,
+    marginBottom: 2,
   },
   sectionTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 24,
+    fontFamily: 'Georgia',
+    fontWeight: 'normal',
+    marginTop: 0,
+    marginBottom: 0,
   },
   sectionSubtitle: {
     opacity: 0.7,
     fontSize: 14,
   },
   scrollContainer: {
+    marginTop: 8,
     paddingVertical: 8,
   },
   card: {

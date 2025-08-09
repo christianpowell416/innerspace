@@ -8,6 +8,7 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@/contexts/AuthContext';
+import { LearningCarousel } from '@/components/LearningCarousel';
 import Hypher from 'hypher';
 import english from 'hyphenation.en-us';
 
@@ -28,24 +29,34 @@ export default function HomeScreen() {
     }
   };
   
-  // Theme data with automatic hyphenation
+  // Theme data with automatic hyphenation and colors
   const themes = [
-    'Overwhelm with work responsibilities',
-    'Not having enough time', 
-    'Racing thoughts at bedtime'
+    { text: 'Overwhelm with work responsibilities', color: '#A1616B' }, // Darker muted rose - stress/urgency
+    { text: 'Not having enough time', color: '#B5935E' }, // Darker muted amber - pressure/anxiety
+    { text: 'Racing thoughts at bedtime', color: '#8B7BA8' }, // Darker muted purple - mental/sleep
+    { text: 'Speaking up', color: '#6B87B3' }, // Darker muted blue - communication/confidence
+    { text: 'Enforcing my boundaries', color: '#7A9F73' } // Darker muted green - growth/self-care
   ];
+
+  const handleArticlePress = (article: any) => {
+    // Handle article press - could navigate to article detail or show modal
+    console.log('Article pressed:', article.title);
+  };
 
   return (
     <GradientBackground style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <Pressable 
-          style={styles.profileButton}
-          onPress={() => router.push('/profile')}
+        <ScrollView 
+          style={styles.mainScrollView}
+          showsVerticalScrollIndicator={false}
         >
-          <IconSymbol size={24} name="person.circle" color={colorScheme === 'dark' ? '#fff' : '#000'} />
-        </Pressable>
-        
-        <ThemedView style={styles.welcomeContainer} transparent>
+          <ThemedView style={styles.welcomeContainer} transparent>
+            <Pressable 
+              style={styles.profileButton}
+              onPress={() => router.push('/profile')}
+            >
+              <IconSymbol size={36} name="person.circle" color={colorScheme === 'dark' ? '#fff' : '#000'} />
+            </Pressable>
           <ThemedText style={styles.dateText}>
             {new Date().toLocaleDateString('en-US', { 
               year: 'numeric', 
@@ -81,18 +92,24 @@ export default function HomeScreen() {
           {themes.map((theme, index) => (
             <View 
               key={index} 
-              style={[styles.themesCard, { borderColor: colorScheme === 'dark' ? '#444' : '#DDD' }]}
+              style={[
+                styles.themesCard, 
+                { 
+                  backgroundColor: theme.color,
+                  borderColor: theme.color
+                }
+              ]}
             >
-              <ThemedText style={styles.themesText}>
-                {getHyphenatedText(theme)}
+              <ThemedText style={[styles.themesText, { color: '#FFFFFF' }]}>
+                {getHyphenatedText(theme.text)}
               </ThemedText>
             </View>
           ))}
         </ScrollView>
         
-        <ThemedView style={styles.sphereContainer} transparent>
+          <LearningCarousel onArticlePress={handleArticlePress} />
           
-        </ThemedView>
+        </ScrollView>
       </SafeAreaView>
     </GradientBackground>
   );
@@ -106,28 +123,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  mainScrollView: {
+    flex: 1,
+  },
   profileButton: {
     position: 'absolute',
-    top: 80, // Moved down 20px more
-    right: 20,
+    top: 15,
+    right: 0,
     padding: 8,
     borderRadius: 8,
-    width: 40,
-    height: 40,
+    width: 60,
+    height: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1000,
   },
   welcomeContainer: {
     alignItems: 'flex-start',
     paddingTop: 20, // Moved down 20px
-  },
-  sphereContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 20,
   },
   welcomeText: {
     fontSize: 42,

@@ -7,7 +7,6 @@ import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { FlowchartViewer } from '@/components/FlowchartViewer';
 import { GradientBackground } from '@/components/ui/GradientBackground';
-import { GlassHeader } from '@/components/ui/GlassHeader';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { TextInputModal } from '@/components/TextInputModal';
@@ -754,11 +753,10 @@ export default function BodygraphScreen() {
 
   return (
     <GradientBackground style={styles.container}>
-      <GlassHeader>
-        <ThemedText type="title" style={styles.titleText}>Body</ThemedText>
-        <View style={styles.rightSpacer} />
-      </GlassHeader>
       <SafeAreaView style={styles.safeArea} edges={[]}>
+        <ThemedView style={styles.headerContainer} transparent>
+          <ThemedText style={styles.headerText}>Body</ThemedText>
+        </ThemedView>
         {/* AI Generate Button - Top Right */}
         {user && (
           <Pressable 
@@ -870,18 +868,23 @@ export default function BodygraphScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    paddingTop: 80, // Account for taller glass header with buttons
+    paddingTop: 0,
   },
   container: {
     flex: 1,
   },
-  titleText: {
-    flex: 1,
-    textAlign: 'left',
-    marginLeft: 0, // Remove extra margin since no left spacer
+  headerContainer: {
+    alignItems: 'flex-start',
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
   },
-  rightSpacer: {
-    width: 40, // Balance the header
+  headerText: {
+    fontSize: 42,
+    fontWeight: 'bold',
+    textAlign: 'left',
+    fontFamily: 'Georgia',
+    lineHeight: 50,
   },
   flowchartContainer: {
     flex: 1,

@@ -7,7 +7,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { GlassHeader } from '@/components/ui/GlassHeader';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { ConversationListItem } from '@/components/ConversationListItem';
 import { EmotionFilters, SortOption, SortDirection } from '@/components/EmotionFilters';
@@ -219,16 +218,16 @@ export default function ConversationsScreen() {
 
   return (
     <GradientBackground style={styles.container}>
-      <GlassHeader>
-        <ThemedText type="title" style={styles.titleText}>Conversations</ThemedText>
-        <TouchableOpacity 
-          style={styles.historyButton}
-          onPress={() => router.push('/conversations/history')}
-        >
-          <IconSymbol size={24} name="clock" color={colorScheme === 'dark' ? '#fff' : '#000'} />
-        </TouchableOpacity>
-      </GlassHeader>
       <SafeAreaView style={styles.safeArea}>
+        <ThemedView style={styles.headerContainer} transparent>
+          <ThemedText style={styles.headerText}>Conversations</ThemedText>
+          <TouchableOpacity 
+            style={styles.historyButton}
+            onPress={() => router.push('/conversations/history')}
+          >
+            <IconSymbol size={24} name="clock" color={colorScheme === 'dark' ? '#fff' : '#000'} />
+          </TouchableOpacity>
+        </ThemedView>
         
         <EmotionFilters 
           sortBy={sortBy}
@@ -284,15 +283,26 @@ export default function ConversationsScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    paddingTop: 80, // Account for taller glass header with buttons
+    paddingTop: 0,
   },
   container: {
     flex: 1,
   },
-  titleText: {
-    flex: 1,
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 20,
+    paddingHorizontal: 20,
+    paddingBottom: 10,
+  },
+  headerText: {
+    fontSize: 42,
+    fontWeight: 'bold',
     textAlign: 'left',
-    marginLeft: 0, // Remove extra margin since no left spacer
+    fontFamily: 'Georgia',
+    lineHeight: 50,
+    flex: 1,
   },
   historyButton: {
     padding: 8,
