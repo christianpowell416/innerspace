@@ -97,31 +97,42 @@ Build valid JSON following the EXACT structure from template1.json. This templat
 
 REFERENCE TEMPLATE: /assets/flowchart/templates/template1.json
 
-Required structure (match exactly):
+CRITICAL TEMPLATE COMPLIANCE REQUIREMENTS:
+1. **Exact Case Sensitivity**: Node types MUST be exactly "Need", "Self", "Manager", "Exile", "Firefighter" (capital first letter)
+2. **Required Fields**: Every node MUST have: id, label, type, description, x, y
+3. **Required Fields**: Every edge MUST have: from, to, type, label
+4. **Coordinate Bounds**: x and y coordinates must be numbers between 0-1000
+5. **Valid Edge Types**: ONLY use these exact emojis: "💚", "💔", "❌", "🚨"
+6. **Edge References**: from/to fields must reference actual node ids that exist
+
+EXACT REQUIRED STRUCTURE (copy this format exactly):
 {
   "nodes": [
     {
       "id": "descriptive_unique_id",
-      "label": "Display Name", 
-      "type": "Need|Self|Manager|Exile|Firefighter",
+      "label": "Display Name",
+      "type": "Need",
       "description": "Brief description of this element",
-      "x": number (coordinate),
-      "y": number (coordinate)
+      "x": 300.5,
+      "y": 150.2
     }
   ],
   "edges": [
     {
       "from": "source_node_id",
       "to": "target_node_id",
-      "type": "💚|💔|❌|🚨", 
+      "type": "💚",
       "label": ""
     }
   ]
 }
 
-CRITICAL: Use ONLY the node types and edge types defined in template1.json:
-- Node types: "Need", "Self", "Manager", "Exile", "Firefighter" 
-- Edge types: "💚", "💔", "❌", "🚨"
+VALIDATION RULES:
+- Node types: EXACTLY "Need", "Self", "Manager", "Exile", "Firefighter" (no variations)
+- Edge types: EXACTLY "💚", "💔", "❌", "🚨" (these specific emojis only)
+- All string fields must be non-empty except edge labels (which can be "")
+- Coordinates must be valid numbers within reasonable bounds (0-1000)
+- Edge from/to must reference existing node ids
 
 ## Quality Standards
 

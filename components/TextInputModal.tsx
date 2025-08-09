@@ -144,6 +144,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 16,
     textAlign: 'center',
+    fontFamily: 'Georgia',
   },
   input: {
     height: 44,
@@ -151,6 +152,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     marginBottom: 24,
+    fontFamily: 'Georgia',
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -171,6 +173,7 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 16,
     fontWeight: '500',
+    fontFamily: 'Georgia',
   },
   submitButton: {
     backgroundColor: '#007AFF',
@@ -182,6 +185,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Georgia',
   },
   submitButtonTextDisabled: {
     color: '#8E8E93',

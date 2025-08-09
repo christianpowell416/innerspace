@@ -399,6 +399,10 @@ export const createVoiceFlowchartSession = (
       try {
         console.log('🎤 Starting listening process...');
         
+        // Immediately signal listening start for instant UI feedback
+        isListening = true;
+        callbacks.onListeningStart?.();
+        
         // Interrupt any current AI response playback
         if (isPlaying && currentSound) {
           console.log('🛑🛑🛑 INTERRUPTING AI AUDIO PLAYBACK 🛑🛑🛑');
@@ -457,46 +461,40 @@ export const createVoiceFlowchartSession = (
         }
         
         // Ensure proper audio mode for recording
-        console.log('🔊 Resetting audio mode for recording...');
-        try {
-          await Audio.setAudioModeAsync({
-            allowsRecordingIOS: true,
-            playsInSilentModeIOS: true, // Must be true when allowsRecordingIOS is true on iOS
-            staysActiveInBackground: false,
-            shouldDuckAndroid: true,
-          });
-          console.log('✅ Audio mode reset for recording');
-        } catch (modeError) {
-          console.log('⚠️ Error resetting audio mode:', modeError.message);
+        // Skip redundant audio mode setting if we just set it above
+        if (!(isPlaying && currentSound)) {
+          console.log('🔊 Setting audio mode for recording...');
+          try {
+            await Audio.setAudioModeAsync({
+              allowsRecordingIOS: true,
+              playsInSilentModeIOS: true,
+              staysActiveInBackground: false,
+              shouldDuckAndroid: true,
+            });
+            console.log('✅ Audio mode set for recording');
+          } catch (modeError) {
+            console.log('⚠️ Error setting audio mode:', modeError.message);
+          }
         }
         
-        // Add longer delay after interrupting AI audio to allow audio system to settle
-        console.log('⏳ Waiting for audio system to settle after interruption...');
-        await new Promise(resolve => setTimeout(resolve, 800)); // Increased from 300ms to 800ms
-        console.log('✅ Audio system settled, proceeding with recording setup');
+        // Minimal delay only if we interrupted AI audio
+        if (isPlaying && currentSound) {
+          console.log('⏳ Brief pause after AI interruption...');
+          await new Promise(resolve => setTimeout(resolve, 100)); // Reduced from 800ms to 100ms
+          console.log('✅ Ready for recording');
+        }
         
-        console.log('🎤 Requesting microphone permissions...');
-        // Request microphone permissions using expo-audio
+        // Request microphone permissions (should be fast if already granted)
         const permissionStatus = await AudioModule.requestRecordingPermissionsAsync();
         if (!permissionStatus.granted) {
           throw new Error('Microphone permission not granted');
         }
-        console.log('✅ Microphone permission granted');
 
-        console.log('🔊 Setting audio mode for recording...');
-        // Set audio mode for recording
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-        });
-        console.log('✅ Audio mode set');
+        // Audio mode already set above - skip duplicate call
 
-        // Force complete cleanup of any recording state
-        console.log('🧹 Force cleaning recording system...');
-        
-        // First, clean up tracked recording
+        // Streamlined cleanup - only if we have an existing recording
         if (currentRecording) {
-          console.log('📍 Found tracked recording, forcing cleanup...');
+          console.log('🧹 Cleaning up existing recording...');
           try {
             await currentRecording.stopAndUnloadAsync();
           } catch (e) {
@@ -505,194 +503,55 @@ export const createVoiceFlowchartSession = (
           currentRecording = null;
         }
         
-        // Second, try to create a dummy recording to clear any stuck state
-        console.log('🔧 Attempting to clear stuck recording state...');
+        // Use the fastest recording setup possible
         try {
-          const dummyResult = await Audio.Recording.createAsync({
+          const recording = new Audio.Recording();
+          
+          // Minimal configuration for fastest startup
+          await recording.prepareToRecordAsync({
             android: {
               extension: '.wav',
               outputFormat: Audio.AndroidOutputFormat.DEFAULT,
               audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
               sampleRate: 16000,
               numberOfChannels: 1,
-              bitRate: 128000,
+              bitRate: 64000, // Even lower for speed
             },
             ios: {
               extension: '.wav',
-              audioQuality: Audio.IOSAudioQuality.MIN,
+              audioQuality: Audio.IOSAudioQuality.LOW, // Lowest for speed
               sampleRate: 16000,
               numberOfChannels: 1,
-              bitRate: 128000,
+              bitRate: 64000, // Even lower for speed
               linearPCMBitDepth: 16,
               linearPCMIsBigEndian: false,
               linearPCMIsFloat: false,
             },
             web: {
               mimeType: 'audio/wav',
-              bitsPerSecond: 128000,
+              bitsPerSecond: 64000,
             }
           });
           
-          console.log('🗑️ Dummy recording created, immediately stopping...');
-          await dummyResult.recording.stopAndUnloadAsync();
-          console.log('✅ Dummy recording cleaned up');
-        } catch (dummyError) {
-          console.log('ℹ️ No stuck recording to clear or already cleared');
-        }
-        
-        // Add delay to ensure system is ready
-        await new Promise(resolve => setTimeout(resolve, 200));
-        
-        console.log('📱 Creating new recording with createAsync...');
-        
-        let recording;
-        try {
-          // Now create the actual recording
-          const recordingResult = await Audio.Recording.createAsync(
-            {
-              android: {
-                extension: '.wav',
-                outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-                audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
-                sampleRate: 24000,
-                numberOfChannels: 1,
-                bitRate: 384000,
-              },
-              ios: {
-                extension: '.wav',
-                audioQuality: Audio.IOSAudioQuality.HIGH,
-                sampleRate: 24000,
-                numberOfChannels: 1,
-                bitRate: 384000,
-                linearPCMBitDepth: 16,
-                linearPCMIsBigEndian: false,
-                linearPCMIsFloat: false,
-              },
-              web: {
-                mimeType: 'audio/wav',
-                bitsPerSecond: 384000,
-              }
-            }
-            // Remove the second parameter - createAsync only takes recording options, not status callback
-          );
-          
-          console.log('✅ Recording created successfully');
-          recording = recordingResult.recording;
-          const status = recordingResult.status;
-          console.log('📊 Initial recording status:', status);
-          
-          // Now start the recording
-          console.log('▶️ Starting recording...');
           await recording.startAsync();
           currentRecording = recording;
-          console.log('✅ recording.startAsync() completed');
-          
-          // Clear the flag after successful creation
           isCreatingRecording = false;
         } catch (recordingError) {
           console.error('❌ Failed to create/start recording:', recordingError);
           currentRecording = null;
-          isCreatingRecording = false; // Clear flag on error
+          isCreatingRecording = false;
           throw new Error(`Recording failed: ${recordingError.message}`);
         }
         
-        // Check recording status immediately after starting
-        const immediateStatus = await recording.getStatusAsync();
-        console.log('📊 Recording status immediately after start:', {
-          isRecording: immediateStatus.isRecording,
-          canRecord: immediateStatus.canRecord,
-          durationMillis: immediateStatus.durationMillis,
-          isDoneRecording: immediateStatus.isDoneRecording
-        });
-        
-        if (!immediateStatus.isRecording) {
-          console.error('❌ RECORDING FAILED TO START - isRecording is false');
-          throw new Error('Recording failed to start');
-        }
-        
-        isListening = true;
         hasStartedPlayingResponse = false; // Reset flag for new recording session
-        callbacks.onListeningStart?.();
-        console.log('✅ All listening setup complete');
-        
-        // Monitor recording status continuously to detect unexpected stops
-        const startStatusMonitoring = () => {
-          let monitoringStartTime = Date.now();
-          let currentSession = currentRecording; // Capture the current recording for this monitoring session
-          
-          const monitorInterval = setInterval(async () => {
-            // Stop monitoring if recording is gone, not listening, user is stopping, or session changed
-            if (!currentRecording || !isListening || isUserStoppingRecording || currentRecording !== currentSession) {
-              clearInterval(monitorInterval);
-              return;
-            }
-            
-            try {
-              const status = await currentRecording.getStatusAsync();
-              const monitoringDuration = Date.now() - monitoringStartTime;
-              
-              // Only check for mismatch after recording has been running for a reasonable time
-              // and only if the recording shows it never started or has been stopped for a while
-              const hasBeenRunningLongEnough = monitoringDuration > 3000; // 3 seconds
-              const recordingNeverStarted = status.durationMillis === 0 && hasBeenRunningLongEnough;
-              const recordingStoppedUnexpectedly = !status.isRecording && hasBeenRunningLongEnough && status.durationMillis < monitoringDuration / 2;
-              
-              // Only trigger if user is not stopping and we detect a genuine failure
-              if (isListening && !isUserStoppingRecording && (recordingNeverStarted || recordingStoppedUnexpectedly)) {
-                console.error('🚨 STATE MISMATCH DETECTED: Recording failed to work properly');
-                console.log('📊 Recording failure details:', {
-                  monitoringDuration,
-                  hasBeenRunningLongEnough,
-                  recordingNeverStarted,
-                  recordingStoppedUnexpectedly,
-                  status: {
-                    isRecording: status.isRecording,
-                    durationMillis: status.durationMillis,
-                    canRecord: status.canRecord,
-                    isDoneRecording: status.isDoneRecording
-                  }
-                });
-                
-                // Fix the state mismatch
-                console.log('🧹 Attempting to clean up failed recording...');
-                try {
-                  await currentRecording.stopAndUnloadAsync();
-                  console.log('✅ Failed recording cleaned up');
-                } catch (cleanupError) {
-                  console.log('⚠️ Error cleaning up failed recording:', cleanupError.message);
-                }
-                
-                isListening = false;
-                currentRecording = null;
-                callbacks.onListeningStop?.();
-                clearInterval(monitorInterval);
-              }
-            } catch (error) {
-              console.error('❌ Error monitoring recording status:', error);
-              clearInterval(monitorInterval);
-            }
-          }, 2000); // Check every 2 seconds (less frequent)
-        };
-        
-        // Temporarily disable monitoring system - causing false positives
-        // startStatusMonitoring();
-        
-        // Also do the immediate check
-        setTimeout(async () => {
-          if (currentRecording) {
-            const delayedStatus = await currentRecording.getStatusAsync();
-            console.log('📊 Recording status 100ms after setup:', {
-              isRecording: delayedStatus.isRecording,
-              canRecord: delayedStatus.canRecord,
-              durationMillis: delayedStatus.durationMillis
-            });
-          }
-        }, 100);
+        console.log('✅ Recording started successfully');
         
       } catch (error) {
         console.error('❌ Error starting voice recording:', error);
         isCreatingRecording = false; // Always clear flag on error
         currentRecording = null; // Ensure no orphaned recording
+        isListening = false; // Reset listening state on error
+        callbacks.onListeningStop?.(); // Reset UI state
         callbacks.onError?.(error as Error);
       }
     },

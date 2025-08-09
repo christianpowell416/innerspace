@@ -872,21 +872,25 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 4,
+    fontFamily: 'Georgia',
   },
   infoType: {
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 8,
+    fontFamily: 'Georgia',
   },
   infoDescription: {
     fontSize: 12,
     lineHeight: 16,
+    fontFamily: 'Georgia',
   },
   editHint: {
     fontSize: 11,
     fontStyle: 'italic',
     marginTop: 8,
     textAlign: 'center',
+    fontFamily: 'Georgia',
   },
   connectModeIndicator: {
     position: 'absolute',
@@ -902,6 +906,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: 'Georgia',
   },
   dragModeIndicator: {
     position: 'absolute',
@@ -917,5 +922,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
+    fontFamily: 'Georgia',
   },
 });

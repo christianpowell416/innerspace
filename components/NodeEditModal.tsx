@@ -325,6 +325,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 20,
     textAlign: 'center',
+    fontFamily: 'Georgia',
   },
   formContainer: {
     marginBottom: 20,
@@ -336,12 +337,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 8,
+    fontFamily: 'Georgia',
   },
   input: {
     height: 44,
     borderRadius: 8,
     paddingHorizontal: 16,
     fontSize: 16,
+    fontFamily: 'Georgia',
   },
   textArea: {
     height: 80,
@@ -364,6 +367,7 @@ const styles = StyleSheet.create({
   typeOptionText: {
     fontSize: 14,
     fontWeight: '500',
+    fontFamily: 'Georgia',
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -384,6 +388,7 @@ const styles = StyleSheet.create({
     color: '#000000',
     fontSize: 16,
     fontWeight: '500',
+    fontFamily: 'Georgia',
   },
   deleteButton: {
     backgroundColor: '#FF3B30',
@@ -392,6 +397,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
+    fontFamily: 'Georgia',
   },
   connectButton: {
     backgroundColor: '#FF9500',
@@ -400,6 +406,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
+    fontFamily: 'Georgia',
   },
   submitButton: {
     backgroundColor: '#007AFF',
@@ -411,6 +418,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Georgia',
   },
   submitButtonTextDisabled: {
     color: '#8E8E93',
@@ -430,6 +438,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '500',
+    fontFamily: 'Georgia',
   },
   transcriptItem: {
     flexDirection: 'row',
@@ -450,11 +459,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     lineHeight: 18,
+    fontFamily: 'Georgia',
   },
   noTranscriptsText: {
     fontStyle: 'italic',
     textAlign: 'center',
     marginVertical: 12,
     fontSize: 14,
+    fontFamily: 'Georgia',
   },
 });

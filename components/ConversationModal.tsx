@@ -7,7 +7,7 @@ import { EmotionSliders } from './EmotionSliders';
 import { Emotion, getFrequencyColor, calculateEmotionScore } from '@/lib/types/emotion';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-interface BeliefModalProps {
+interface ConversationModalProps {
   emotion: Emotion | null;
   visible: boolean;
   onClose: () => void;
@@ -16,7 +16,7 @@ interface BeliefModalProps {
   onRelease?: (emotion: Emotion) => void;
 }
 
-export function BeliefModal({ emotion, visible, onClose, onEdit, onDelete, onRelease }: BeliefModalProps) {
+export function ConversationModal({ emotion, visible, onClose, onEdit, onDelete, onRelease }: ConversationModalProps) {
   const colorScheme = useColorScheme();
   const translateY = new Animated.Value(0);
   
@@ -29,8 +29,8 @@ export function BeliefModal({ emotion, visible, onClose, onEdit, onDelete, onRel
   
   const handleDelete = () => {
     Alert.alert(
-      "Delete Belief",
-      "Are you sure you want to delete this limiting belief?",
+      "Delete Conversation",
+      "Are you sure you want to delete this conversation?",
       [
         { text: "Cancel", style: "cancel" },
         { 
@@ -104,7 +104,7 @@ export function BeliefModal({ emotion, visible, onClose, onEdit, onDelete, onRel
             showsVerticalScrollIndicator={false}
           >
           <View style={styles.headerRow}>
-            <ThemedText type="title" style={styles.beliefTitle}>
+            <ThemedText type="title" style={styles.conversationTitle}>
               {emotion.limitingBeliefs}
             </ThemedText>
             <View style={[
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
-  beliefTitle: {
+  conversationTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     textAlign: 'left',

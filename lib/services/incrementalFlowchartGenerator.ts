@@ -24,6 +24,19 @@ class IncrementalFlowchartGenerator {
   private isAnalyzing = false;
 
   /**
+   * Load template1.json to get exact validation requirements
+   */
+  private loadTemplate(): any {
+    try {
+      const template = require('../../assets/flowchart/templates/template1.json');
+      return template;
+    } catch (error) {
+      console.error('❌ Error loading template1.json:', error);
+      return null;
+    }
+  }
+
+  /**
    * Generate analysis instructions from the centralized prompt file
    */
   private generateAnalysisInstructions(): string {
@@ -160,6 +173,10 @@ class IncrementalFlowchartGenerator {
         return;
       }
 
+      // Load template for exact structure reference
+      const template = this.loadTemplate();
+      const templateStructure = template?.structure ? JSON.stringify(template.structure, null, 2) : 'Template not available';
+      
       const analysisPrompt = `CONVERSATION TO ANALYZE:
 ${conversationSummary}
 
@@ -167,22 +184,21 @@ ${this.currentFlowchart ? `\nEXISTING FLOWCHART TO UPDATE:\n${JSON.stringify(thi
 
 Analyze this therapeutic conversation and ${this.currentFlowchart ? 'update the existing flowchart with any new' : 'create a complete flowchart representing the'} therapeutic elements, parts, needs, and relationships discussed.
 
-CRITICAL: Your response must be ONLY valid JSON matching EXACTLY the structure from /assets/flowchart/templates/template1.json:
+CRITICAL: Your response must be ONLY valid JSON matching EXACTLY the structure from template1.json shown below:
 
-REQUIRED FORMAT (from template1.json):
-{
-  "nodes": [
-    {"id": "descriptive_id", "label": "Display Name", "type": "Need|Self|Manager|Exile|Firefighter", "description": "Brief description", "x": 100, "y": 200}
-  ],
-  "edges": [
-    {"from": "source_id", "to": "target_id", "type": "💚|💔|❌|🚨", "label": ""}
-  ]
-}
+EXACT TEMPLATE STRUCTURE TO FOLLOW:
+${templateStructure}
 
-ONLY use these node types: Need, Self, Manager, Exile, Firefighter
-ONLY use these edge types: 💚, 💔, ❌, 🚨
+STRICT VALIDATION REQUIREMENTS:
+1. Node types: EXACTLY "Need", "Self", "Manager", "Exile", "Firefighter" (case-sensitive)
+2. Edge types: EXACTLY "💚", "💔", "❌", "🚨" (these specific emojis only)
+3. Required node fields: id, label, type, description, x, y (all required)
+4. Required edge fields: from, to, type, label (all required)
+5. Coordinates: Numbers between 0-1000
+6. Edge references: from/to must match existing node ids
+7. String fields: Non-empty except edge labels (can be "")
 
-Do not include any text explanation, markdown formatting, or code blocks. Respond with raw JSON only.`;
+OUTPUT FORMAT: Raw JSON only - no markdown, no code blocks, no explanations.`;
       
       console.log('📊 FLOWCHART AGENT: Analysis prompt:', analysisPrompt.substring(0, 500) + '...');
 
@@ -343,9 +359,27 @@ Do not include any text explanation, markdown formatting, or code blocks. Respon
   }
 
   /**
-   * Attempt to fix common flowchart structure issues
+   * Attempt to fix common flowchart structure issues to match template1.json exactly
    */
   private fixFlowchartStructure(data: any): any {
+    // Define template compliance requirements
+    const VALID_NODE_TYPES = ['Need', 'Self', 'Manager', 'Exile', 'Firefighter'];
+    const VALID_EDGE_TYPES = ['💚', '💔', '❌', '🚨'];
+    const TYPE_MAPPING: Record<string, string> = {
+      'need': 'Need',
+      'self': 'Self', 
+      'manager': 'Manager',
+      'exile': 'Exile',
+      'firefighter': 'Firefighter',
+      // Handle variations
+      'protector': 'Manager',
+      'part': 'Manager',
+      'vulnerable': 'Exile',
+      'wounded': 'Exile',
+      'reactive': 'Firefighter',
+      'emergency': 'Firefighter'
+    };
+    
     // If data is null or undefined, create minimal structure
     if (!data) {
       return { nodes: [], edges: [] };
@@ -375,50 +409,71 @@ Do not include any text explanation, markdown formatting, or code blocks. Respon
       data.edges = [];
     }
     
-    // Fix individual nodes
+    // Fix individual nodes to match template1.json structure
     data.nodes = data.nodes.map((node: any, index: number) => {
       const fixedNode = { ...node };
       
+      // Ensure all required fields exist
       if (!fixedNode.id) {
-        fixedNode.id = `node_${index}_${Date.now()}`;
+        fixedNode.id = `${fixedNode.type || 'node'}_${index}_${Date.now()}`.toLowerCase();
       }
       
       if (!fixedNode.label) {
-        fixedNode.label = `Node ${index + 1}`;
+        fixedNode.label = fixedNode.id || `Node ${index + 1}`;
       }
       
+      // Fix node type to match template exactly
       if (!fixedNode.type) {
-        fixedNode.type = 'need'; // Default type
+        fixedNode.type = 'Need'; // Default to Need
+      } else {
+        const lowerType = String(fixedNode.type).toLowerCase();
+        fixedNode.type = TYPE_MAPPING[lowerType] || 
+                         VALID_NODE_TYPES.find(t => t.toLowerCase() === lowerType) || 
+                         'Need';
       }
       
-      if (typeof fixedNode.x !== 'number') {
-        fixedNode.x = 100 + (index * 150); // Spread nodes horizontally
+      // Ensure description exists
+      if (!fixedNode.description) {
+        fixedNode.description = `${fixedNode.type} identified in conversation`;
       }
       
-      if (typeof fixedNode.y !== 'number') {
-        fixedNode.y = 100 + (index % 3) * 100; // Distribute vertically
+      // Fix coordinates to be valid numbers within bounds
+      if (typeof fixedNode.x !== 'number' || isNaN(fixedNode.x)) {
+        fixedNode.x = Math.min(900, 100 + (index * 150)); // Spread horizontally, max 900
+      } else {
+        fixedNode.x = Math.max(50, Math.min(950, fixedNode.x)); // Clamp to bounds
+      }
+      
+      if (typeof fixedNode.y !== 'number' || isNaN(fixedNode.y)) {
+        fixedNode.y = Math.min(800, 100 + (index % 4) * 150); // Distribute vertically, max 800
+      } else {
+        fixedNode.y = Math.max(50, Math.min(950, fixedNode.y)); // Clamp to bounds
       }
       
       return fixedNode;
     });
     
-    // Fix individual edges
+    // Fix individual edges to match template structure
     data.edges = data.edges.map((edge: any, index: number) => {
       const fixedEdge = { ...edge };
       
+      // Ensure from/to exist and reference valid nodes
       if (!fixedEdge.from) {
         fixedEdge.from = data.nodes[0]?.id || 'unknown';
       }
       
       if (!fixedEdge.to) {
-        fixedEdge.to = data.nodes[1]?.id || fixedEdge.from;
+        fixedEdge.to = data.nodes[Math.min(1, data.nodes.length - 1)]?.id || fixedEdge.from;
       }
       
-      if (!fixedEdge.type) {
-        fixedEdge.type = '💚'; // Default connection type
+      // Fix edge type to match template exactly
+      if (!fixedEdge.type || !VALID_EDGE_TYPES.includes(fixedEdge.type)) {
+        // Default edge type based on common IFS relationships
+        fixedEdge.type = '💚'; // Default to nurturing
       }
       
-      if (!fixedEdge.label) {
+      // Ensure label exists (can be empty string per template)
+      if (fixedEdge.label === undefined || fixedEdge.label === null) {
         fixedEdge.label = '';
       }
       
@@ -429,16 +484,23 @@ Do not include any text explanation, markdown formatting, or code blocks. Respon
   }
 
   /**
-   * Validate flowchart structure with detailed error reporting
+   * Validate flowchart structure with detailed error reporting against template1.json
    */
   private validateFlowchartWithDetails(data: any): {isValid: boolean, errors: string[]} {
     const errors: string[] = [];
+    
+    // Define exact template requirements from template1.json
+    const VALID_NODE_TYPES = ['Need', 'Self', 'Manager', 'Exile', 'Firefighter'];
+    const VALID_EDGE_TYPES = ['💚', '💔', '❌', '🚨'];
+    const REQUIRED_NODE_FIELDS = ['id', 'label', 'type', 'description', 'x', 'y'];
+    const REQUIRED_EDGE_FIELDS = ['from', 'to', 'type', 'label'];
     
     if (!data) {
       errors.push('Data is null or undefined');
       return {isValid: false, errors};
     }
     
+    // Validate nodes array
     if (!Array.isArray(data.nodes)) {
       errors.push('nodes is not an array');
     } else {
@@ -446,22 +508,72 @@ Do not include any text explanation, markdown formatting, or code blocks. Respon
         errors.push('nodes array is empty');
       } else {
         data.nodes.forEach((node: any, index: number) => {
-          if (!node.id) errors.push(`Node ${index} missing id`);
-          if (!node.label) errors.push(`Node ${index} missing label`);
-          if (!node.type) errors.push(`Node ${index} missing type`);
-          if (typeof node.x !== 'number') errors.push(`Node ${index} x coordinate is not a number`);
-          if (typeof node.y !== 'number') errors.push(`Node ${index} y coordinate is not a number`);
+          // Check required fields exist
+          REQUIRED_NODE_FIELDS.forEach(field => {
+            if (node[field] === undefined || node[field] === null) {
+              errors.push(`Node ${index} missing required field: ${field}`);
+            }
+          });
+          
+          // Validate node type against template
+          if (node.type && !VALID_NODE_TYPES.includes(node.type)) {
+            errors.push(`Node ${index} has invalid type "${node.type}". Must be one of: ${VALID_NODE_TYPES.join(', ')}`);
+          }
+          
+          // Validate coordinates are numbers
+          if (typeof node.x !== 'number' || isNaN(node.x)) {
+            errors.push(`Node ${index} x coordinate must be a valid number`);
+          }
+          if (typeof node.y !== 'number' || isNaN(node.y)) {
+            errors.push(`Node ${index} y coordinate must be a valid number`);
+          }
+          
+          // Validate coordinate bounds (reasonable flowchart area)
+          if (typeof node.x === 'number' && (node.x < 0 || node.x > 1000)) {
+            errors.push(`Node ${index} x coordinate ${node.x} is out of bounds (0-1000)`);
+          }
+          if (typeof node.y === 'number' && (node.y < 0 || node.y > 1000)) {
+            errors.push(`Node ${index} y coordinate ${node.y} is out of bounds (0-1000)`);
+          }
+          
+          // Validate string fields are not empty
+          if (node.id && typeof node.id === 'string' && node.id.trim() === '') {
+            errors.push(`Node ${index} id cannot be empty string`);
+          }
+          if (node.label && typeof node.label === 'string' && node.label.trim() === '') {
+            errors.push(`Node ${index} label cannot be empty string`);
+          }
         });
       }
     }
     
+    // Validate edges array
     if (!Array.isArray(data.edges)) {
       errors.push('edges is not an array');
     } else {
       data.edges.forEach((edge: any, index: number) => {
-        if (!edge.from) errors.push(`Edge ${index} missing from`);
-        if (!edge.to) errors.push(`Edge ${index} missing to`);
-        if (!edge.type) errors.push(`Edge ${index} missing type`);
+        // Check required fields exist
+        REQUIRED_EDGE_FIELDS.forEach(field => {
+          if (edge[field] === undefined || edge[field] === null) {
+            errors.push(`Edge ${index} missing required field: ${field}`);
+          }
+        });
+        
+        // Validate edge type against template
+        if (edge.type && !VALID_EDGE_TYPES.includes(edge.type)) {
+          errors.push(`Edge ${index} has invalid type "${edge.type}". Must be one of: ${VALID_EDGE_TYPES.join(', ')}`);
+        }
+        
+        // Validate from/to reference existing nodes
+        if (Array.isArray(data.nodes) && edge.from && edge.to) {
+          const nodeIds = data.nodes.map((n: any) => n.id);
+          if (!nodeIds.includes(edge.from)) {
+            errors.push(`Edge ${index} references non-existent node "${edge.from}" in from field`);
+          }
+          if (!nodeIds.includes(edge.to)) {
+            errors.push(`Edge ${index} references non-existent node "${edge.to}" in to field`);
+          }
+        }
       });
     }
     

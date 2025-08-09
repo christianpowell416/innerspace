@@ -1,6 +1,6 @@
 import { Stack } from 'expo-router';
 
-export default function BeliefsLayout() {
+export default function ConversationsLayout() {
   return (
     <Stack>
       <Stack.Screen 

@@ -188,6 +188,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     fontSize: 16,
     borderWidth: 1,
+    fontFamily: 'Georgia',
   },
   button: {
     height: 50,

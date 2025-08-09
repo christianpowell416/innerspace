@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { StyleSheet, FlatList, Alert, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, FlatList, Alert, TouchableOpacity, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,15 +7,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { BeliefListItem } from '@/components/BeliefListItem';
+import { GlassHeader } from '@/components/ui/GlassHeader';
+import { GradientBackground } from '@/components/ui/GradientBackground';
+import { ConversationListItem } from '@/components/ConversationListItem';
 import { EmotionFilters, SortOption, SortDirection } from '@/components/EmotionFilters';
-import { BeliefModal } from '@/components/BeliefModal';
+import { ConversationModal } from '@/components/ConversationModal';
 import { Emotion, calculateEmotionScore, convertToLegacyEmotion } from '@/lib/types/emotion';
 import { getEmotionsSorted, deleteEmotion, releaseEmotion, EmotionWithScore, subscribeToEmotions, setGlobalSyncCallback, clearGlobalSyncCallback } from '@/lib/services/emotions';
 import { useAuth } from '@/contexts/AuthContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
 
-export default function BeliefsListScreen() {
+export default function ConversationsScreen() {
   const { user, signOut } = useAuth();
+  const colorScheme = useColorScheme();
   const [sortBy, setSortBy] = useState<SortOption>('recent');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [selectedEmotion, setSelectedEmotion] = useState<Emotion | null>(null);
@@ -151,44 +155,44 @@ export default function BeliefsListScreen() {
     }
   };
 
-  const clearReleasedBeliefs = async () => {
+  const clearReleasedConversations = async () => {
     try {
-      await AsyncStorage.removeItem('releasedBeliefs');
-      Alert.alert('Success', 'Released beliefs cleared!');
+      await AsyncStorage.removeItem('releasedConversations');
+      Alert.alert('Success', 'Released conversations cleared!');
     } catch (error) {
-      console.error('Error clearing released beliefs:', error);
+      console.error('Error clearing released conversations:', error);
     }
   };
 
   const handleRelease = async (emotion: Emotion) => {
     if (!user) {
       // For non-authenticated users, still use AsyncStorage
-      const storeReleasedBelief = async () => {
+      const storeReleasedConversation = async () => {
         try {
           console.log('🔧 Releasing emotion (no auth):', emotion);
           
-          const existingReleased = await AsyncStorage.getItem('releasedBeliefs');
-          const releasedBeliefs = existingReleased ? JSON.parse(existingReleased) : [];
+          const existingReleased = await AsyncStorage.getItem('releasedConversations');
+          const releasedConversations = existingReleased ? JSON.parse(existingReleased) : [];
           
-          const releasedBelief = {
+          const releasedConversation = {
             ...emotion,
             releasedAt: new Date().toISOString()
           };
           
-          releasedBeliefs.push(releasedBelief);
-          await AsyncStorage.setItem('releasedBeliefs', JSON.stringify(releasedBeliefs));
+          releasedConversations.push(releasedConversation);
+          await AsyncStorage.setItem('releasedConversations', JSON.stringify(releasedConversations));
           
           // Remove from active emotions list
           setEmotions(prevEmotions => prevEmotions.filter(e => e.id !== emotion.id));
           
           Alert.alert('Success', 'Emotion released successfully!');
         } catch (error) {
-          console.error('Error storing released belief:', error);
+          console.error('Error storing released conversation:', error);
           Alert.alert('Error', 'Failed to release emotion. Please try again.');
         }
       };
       
-      storeReleasedBelief();
+      storeReleasedConversation();
       return;
     }
 
@@ -214,20 +218,17 @@ export default function BeliefsListScreen() {
   }, [emotions]);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ThemedView style={styles.container}>
-        <ThemedView style={styles.titleContainer}>
-          <ThemedText type="title" style={styles.centerTitle}>Beliefs</ThemedText>
-          <ThemedText type="default" style={styles.centerSubtitle}>
-            {sortedEmotions.length} total
-          </ThemedText>
-          <TouchableOpacity 
-            style={styles.historyButton}
-            onPress={() => router.push('/beliefs/history')}
-          >
-            <IconSymbol size={24} name="clock" color="#666" />
-          </TouchableOpacity>
-        </ThemedView>
+    <GradientBackground style={styles.container}>
+      <GlassHeader>
+        <ThemedText type="title" style={styles.titleText}>Conversations</ThemedText>
+        <TouchableOpacity 
+          style={styles.historyButton}
+          onPress={() => router.push('/conversations/history')}
+        >
+          <IconSymbol size={24} name="clock" color={colorScheme === 'dark' ? '#fff' : '#000'} />
+        </TouchableOpacity>
+      </GlassHeader>
+      <SafeAreaView style={styles.safeArea}>
         
         <EmotionFilters 
           sortBy={sortBy}
@@ -240,7 +241,7 @@ export default function BeliefsListScreen() {
           data={sortedEmotions}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <BeliefListItem emotion={item} onPress={handleEmotionPress} />
+            <ConversationListItem emotion={item} onPress={handleEmotionPress} />
           )}
           style={styles.list}
           contentContainerStyle={styles.listContent}
@@ -248,26 +249,26 @@ export default function BeliefsListScreen() {
         />
         
         {loading && (
-          <ThemedView style={styles.loadingContainer}>
-            <ThemedText>Loading beliefs...</ThemedText>
+          <ThemedView style={styles.loadingContainer} transparent>
+            <ThemedText>Loading conversations...</ThemedText>
           </ThemedView>
         )}
         
         {!loading && emotions.length === 0 && user && (
-          <ThemedView style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyText}>No beliefs yet</ThemedText>
-            <ThemedText style={styles.emptySubtext}>Add your first belief to get started</ThemedText>
+          <ThemedView style={styles.emptyContainer} transparent>
+            <ThemedText style={styles.emptyText}>No conversations yet</ThemedText>
+            <ThemedText style={styles.emptySubtext}>Start your first conversation to get started</ThemedText>
           </ThemedView>
         )}
         
         {!loading && emotions.length === 0 && !user && (
-          <ThemedView style={styles.emptyContainer}>
-            <ThemedText style={styles.emptyText}>Sign in to view your beliefs</ThemedText>
+          <ThemedView style={styles.emptyContainer} transparent>
+            <ThemedText style={styles.emptyText}>Sign in to view your conversations</ThemedText>
             <ThemedText style={styles.emptySubtext}>Create an account to save and track your emotional journey</ThemedText>
           </ThemedView>
         )}
         
-        <BeliefModal
+        <ConversationModal
           emotion={selectedEmotion}
           visible={modalVisible}
           onClose={handleModalClose}
@@ -275,38 +276,25 @@ export default function BeliefsListScreen() {
           onDelete={handleDelete}
           onRelease={handleRelease}
         />
-      </ThemedView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </GradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    paddingTop: 80, // Account for taller glass header with buttons
   },
   container: {
     flex: 1,
   },
-  titleContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
-    position: 'relative',
-  },
-  centerTitle: {
-    textAlign: 'center',
-    width: '100%',
-  },
-  centerSubtitle: {
-    marginTop: 4,
-    opacity: 0.7,
-    textAlign: 'center',
-    width: '100%',
+  titleText: {
+    flex: 1,
+    textAlign: 'left',
+    marginLeft: 0, // Remove extra margin since no left spacer
   },
   historyButton: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
     padding: 8,
     borderRadius: 8,
   },

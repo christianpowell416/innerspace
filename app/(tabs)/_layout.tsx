@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, Image } from 'react-native';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -16,23 +16,25 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        tabBarInactiveTintColor: colorScheme === 'dark' ? '#666' : '#999',
+        tabBarInactiveTintColor: colorScheme === 'dark' ? '#888' : '#888',
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarBackground: Platform.OS === 'ios' ? TabBarBackground : undefined,
         tabBarShowLabel: false,
         tabBarStyle: Platform.select({
           ios: {
-            // Use a transparent background on iOS to show the blur effect
+            // Glass effect on iOS
             position: 'absolute',
             paddingTop: 10,
             height: 90,
+            backgroundColor: 'transparent',
+            borderTopWidth: 0,
           },
           android: {
             paddingTop: 10,
-            backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
-            borderTopColor: colorScheme === 'dark' ? '#333' : '#E0E0E0',
-            borderTopWidth: 1,
+            backgroundColor: colorScheme === 'dark' ? 'rgba(60,60,60,0.85)' : 'rgba(255,255,255,0.9)',
+            borderTopColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+            borderTopWidth: 0.5,
             elevation: 8,
             height: 80,
           },
@@ -63,22 +65,27 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="sphere"
+        name="chat"
         options={{
-          title: 'Sphere',
+          title: 'Chat',
           tabBarIcon: ({ color, focused }) => (
             <ThemedView style={[
               styles.centerButton,
               { 
                 backgroundColor: focused 
-                  ? Colors[colorScheme ?? 'light'].tint 
+                  ? '#87CEEB' 
                   : colorScheme === 'dark' ? '#333' : '#E0E0E0'
               }
             ]}>
-              <IconSymbol 
-                size={30} 
-                name="globe" 
-                color={focused ? '#FFF' : color} 
+              <Image 
+                source={require('@/assets/images/Logo.png')}
+                style={[
+                  styles.logoIcon,
+                  { 
+                    tintColor: focused ? '#000' : color,
+                  }
+                ]}
+                resizeMode="contain"
               />
             </ThemedView>
           ),
@@ -95,10 +102,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="beliefs"
+        name="conversations"
         options={{
-          title: 'Beliefs',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="puzzlepiece.fill" color={color} />,
+          title: 'Conversations',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="bubble.left.and.bubble.right.fill" color={color} />,
         }}
       />
     </Tabs>
@@ -125,5 +132,9 @@ const styles = StyleSheet.create({
     top: -20,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  logoIcon: {
+    width: 45,
+    height: 45,
   },
 });

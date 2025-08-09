@@ -6,12 +6,12 @@ import { EmotionSliders } from './EmotionSliders';
 import { Emotion, getFrequencyColor, calculateEmotionScore } from '@/lib/types/emotion';
 import { useColorScheme } from '@/hooks/useColorScheme';
 
-interface BeliefListItemProps {
+interface ConversationListItemProps {
   emotion: Emotion;
   onPress?: (emotion: Emotion) => void;
 }
 
-export function BeliefListItem({ emotion, onPress }: BeliefListItemProps) {
+export function ConversationListItem({ emotion, onPress }: ConversationListItemProps) {
   const colorScheme = useColorScheme();
   const frequencyColor = getFrequencyColor(emotion.frequency);
   const emotionScore = calculateEmotionScore(emotion);

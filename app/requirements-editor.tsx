@@ -138,12 +138,14 @@ const styles = StyleSheet.create({
   closeButtonText: {
     fontSize: 18,
     fontWeight: 'bold',
+    fontFamily: 'Georgia',
   },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
     flex: 1,
     textAlign: 'center',
+    fontFamily: 'Georgia',
   },
   saveButton: {
     paddingHorizontal: 16,
@@ -179,5 +181,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     opacity: 0.7,
+    fontFamily: 'Georgia',
   },
 });
