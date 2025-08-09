@@ -5,7 +5,6 @@ import { router } from 'expo-router';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { GradientBackground } from '@/components/ui/GradientBackground';
-import { GlassHeader } from '@/components/ui/GlassHeader';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@/contexts/AuthContext';
@@ -91,18 +90,6 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
         
-        <View style={styles.statsContainer}>
-          <View style={[styles.statCard, { borderColor: colorScheme === 'dark' ? '#444' : '#DDD' }]}>
-            <ThemedText style={styles.statLabel}>Open loops</ThemedText>
-            <ThemedText style={styles.statNumber}>12</ThemedText>
-          </View>
-          
-          <View style={[styles.statCard, { borderColor: colorScheme === 'dark' ? '#444' : '#DDD' }]}>
-            <ThemedText style={styles.statLabel}>Closed loops</ThemedText>
-            <ThemedText style={styles.statNumber}>4</ThemedText>
-          </View>
-        </View>
-        
         <ThemedView style={styles.sphereContainer} transparent>
           
         </ThemedView>
@@ -155,6 +142,7 @@ const styles = StyleSheet.create({
     color: '#666',
     fontFamily: 'Georgia',
     marginTop: 8,
+    marginBottom: 6,
     paddingHorizontal: 20,
   },
   inflectionTitle: {
@@ -216,37 +204,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 28,
     flexWrap: 'wrap',
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 16,
-    paddingHorizontal: 20,
-  },
-  statCard: {
-    flex: 1,
-    paddingTop: 12,
-    paddingBottom: 24,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    backgroundColor: 'transparent',
-  },
-  statNumber: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    fontFamily: 'Georgia',
-    textAlign: 'center',
-    marginTop: 8,
-    marginVertical: 0,
-  },
-  statLabel: {
-    fontSize: 21,
-    fontFamily: 'Georgia',
-    opacity: 0.7,
-    textAlign: 'left',
-    alignSelf: 'flex-start',
-    marginBottom: 16,
   },
 });

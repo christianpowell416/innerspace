@@ -166,7 +166,7 @@ export default function SignInScreen() {
               onPress={handleSignUp}
             >
               <ThemedText style={styles.linkText}>
-                Don't have an account? Sign up
+                Don&apos;t have an account? Sign up
               </ThemedText>
             </TouchableOpacity>
           </ThemedView>
