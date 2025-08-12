@@ -1,4 +1,5 @@
 import { StyleSheet, View, Pressable, Text, ScrollView, TextInput, Animated } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -31,7 +32,7 @@ export default function ChatScreen() {
   const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const lastScrollTime = useRef(Date.now());
-  const velocityDecayTimer = useRef<NodeJS.Timeout | null>(null);
+  const velocityDecayTimer = useRef<number | null>(null);
 
   // Listen for new chat trigger
   useEffect(() => {
@@ -219,7 +220,7 @@ export default function ChatScreen() {
           }
           return decayedVelocity;
         });
-      }, 32); // 30fps decay - less frequent updates
+      }, 16); // 60fps decay - smooth updates
     } else if (inBounceState) {
       // Immediately start decaying velocity when in bounce state
       if (velocityDecayTimer.current) {
@@ -320,6 +321,7 @@ export default function ChatScreen() {
             </Pressable>
           </View>
         </Animated.View>
+        
         <View style={styles.headerContainer}>
           <Text style={{
             fontSize: 42,
@@ -329,6 +331,17 @@ export default function ChatScreen() {
             fontFamily: 'Georgia',
             lineHeight: 50
           }}>Loops</Text>
+          
+          {/* Gradient blur at bottom of header - hidden when search bar is active */}
+          {!isSearchBarRevealed && (
+            <LinearGradient
+              colors={[
+                colorScheme === 'dark' ? '#0a0a0a' : '#f8f8f8',
+                'transparent'
+              ]}
+              style={styles.headerGradientBlur}
+            />
+          )}
         </View>
 
         <ScrollView 
@@ -449,9 +462,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     paddingTop: -5,
     paddingHorizontal: 20,
-    paddingBottom: 10,
-    zIndex: 10,
+    paddingBottom: 15, // Increased by 5px
+    zIndex: 100,
     position: 'relative',
+    backgroundColor: 'rgba(0,0,0,0.01)', // Minimal background to create stacking context
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -464,7 +478,7 @@ const styles = StyleSheet.create({
     top: 115, // Position below header
     left: 0,
     right: 0,
-    zIndex: 1,
+    zIndex: 5,
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 10,
@@ -636,5 +650,25 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+  },
+  searchBarMask: {
+    position: 'absolute',
+    top: -120, // Cover the area where search bar appears
+    left: 0,
+    right: 0,
+    height: 80, // Height to cover search bar area
+    zIndex: 50, // Above search bar
+  },
+  gradientMask: {
+    flex: 1,
+    width: '100%',
+  },
+  headerGradientBlur: {
+    position: 'absolute',
+    bottom: -35, // Position it below the header container
+    left: 0,
+    right: 0,
+    height: 35, // 35px gradient blur
+    zIndex: 1,
   },
 });
