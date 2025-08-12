@@ -496,56 +496,55 @@ export default function ChatScreen() {
             const dynamicMargin = baseMargin + velocitySpread; // Less negative = more space
             
             return (
-              <Pressable 
+              <View 
                 key={conversation.id}
-                onPress={() => handleCardPress(conversation)}
-                style={({ pressed }) => [
-                  styles.card,
+                style={[
+                  styles.cardShadowContainer,
                   { 
-                    backgroundColor,
                     zIndex: index + 1,
                     marginTop: index === 0 ? 0 : dynamicMargin,
                     height: 350,
-                    opacity: pressed ? 0.95 : 1,
                   }
                 ]}
               >
-                <View style={styles.cardHeader}>
+                <BlurView
+                  intensity={60}
+                  tint={colorScheme === 'dark' ? 'dark' : 'light'}
+                  style={[
+                    styles.card,
+                    { 
+                      backgroundColor: `rgba(${Math.round(255 * lightness)}, ${Math.round(255 * lightness)}, ${Math.round(255 * lightness)}, 0.3)`,
+                      height: 350,
+                    }
+                  ]}
+                >
+                <Pressable 
+                  onPress={() => handleCardPress(conversation)}
+                  style={styles.cardPressable}
+                >
+                  <View style={styles.cardHeader}>
+                    <Text style={[
+                      styles.cardTitle,
+                      { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                    ]}>
+                      {conversation.title}
+                    </Text>
+                    <Text style={[
+                      styles.cardDate,
+                      { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                    ]}>
+                      {conversation.date}
+                    </Text>
+                  </View>
                   <Text style={[
-                    styles.cardTitle,
-                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                    styles.cardDescription,
+                    { color: colorScheme === 'dark' ? '#DDDDDD' : '#444444' }
                   ]}>
-                    {conversation.title}
+                    {conversation.description}
                   </Text>
-                  <Text style={[
-                    styles.cardDate,
-                    { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
-                  ]}>
-                    {conversation.date}
-                  </Text>
-                </View>
-                <Text style={[
-                  styles.cardDescription,
-                  { color: colorScheme === 'dark' ? '#DDDDDD' : '#444444' }
-                ]}>
-                  {conversation.description}
-                </Text>
-                {/* Create smooth gradient effect with more layers - from bottom to 3/4 up (262px) */}
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 0, height: 20, opacity: 1.0 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 20, height: 20, opacity: 1.0 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 40, height: 20, opacity: 0.98 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 60, height: 20, opacity: 0.96 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 80, height: 20, opacity: 0.94 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 100, height: 20, opacity: 0.92 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 120, height: 20, opacity: 0.9 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 140, height: 20, opacity: 0.85 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 160, height: 20, opacity: 0.8 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 180, height: 20, opacity: 0.75 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 200, height: 20, opacity: 0.65 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 220, height: 20, opacity: 0.5 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 240, height: 15, opacity: 0.3 }]} />
-                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 255, height: 7, opacity: 0.1 }]} />
-              </Pressable>
+                </Pressable>
+                </BlurView>
+              </View>
             );
           })}
         </Animated.ScrollView>
@@ -774,21 +773,24 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 20,
   },
-  card: {
+  cardShadowContainer: {
     borderRadius: 24,
-    padding: 20,
-    paddingBottom: 30,
-    height: 350,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 0,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.9,
+    shadowRadius: 25,
+    elevation: 25,
+  },
+  card: {
+    borderRadius: 24,
+    padding: 20,
+    paddingBottom: 30,
+    height: 350,
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.1)',
+    borderColor: 'rgba(0,0,0,0.3)',
     overflow: 'hidden',
   },
   cardText: {
@@ -828,6 +830,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
+  cardPressable: {
+    flex: 1,
+    padding: 10,
+    paddingBottom: 10,
+  },
+  cardBlurFade: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 24,
+  },
   searchBarMask: {
     position: 'absolute',
     top: -120, // Cover the area where search bar appears
@@ -862,8 +877,8 @@ const styles = StyleSheet.create({
   modalContainer: {
     position: 'absolute',
     top: 110, // Lowered by 50px from 60 to 110
-    left: 15, // 15px margin from left
-    right: 15, // 15px margin from right
+    left: 0, // Full width
+    right: 0, // Full width
     bottom: 0,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
