@@ -1,5 +1,6 @@
-import { StyleSheet, View, Pressable, Text, ScrollView, TextInput, Animated } from 'react-native';
+import { StyleSheet, View, Pressable, Text, ScrollView, TextInput, Animated, Modal, PanResponder, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -28,11 +29,16 @@ export default function ChatScreen() {
   const [scrollVelocity, setScrollVelocity] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
+  const [selectedCard, setSelectedCard] = useState<any>(null);
+  const [modalVisible, setModalVisible] = useState(false);
   const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const scrollViewPaddingTop = useRef(new Animated.Value(10)).current;
+  const scrollViewRef = useRef<any>(null);
   const lastScrollTime = useRef(Date.now());
   const velocityDecayTimer = useRef<number | null>(null);
+  const modalTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
+  const modalTopPosition = 80; // Position below the Loops header
 
   // Listen for new chat trigger
   useEffect(() => {
@@ -112,13 +118,13 @@ export default function ChatScreen() {
       id: 1,
       title: 'Work Stress Discussion',
       date: '12/8/24',
-      description: 'Explored feelings of overwhelm at work and discussed comprehensive coping strategies for managing deadlines and expectations. We worked on time management techniques, boundary setting with colleagues, and developing a healthier perspective on workplace pressures that have been affecting sleep and personal relationships.'
+      description: 'Explored feelings of overwhelm at work and discussed comprehensive coping strategies for managing deadlines and expectations. We worked on time management techniques, boundary setting with colleagues, and developing a healthier perspective on workplace pressures that have been affecting sleep and personal relationships. During our session, we delved deep into the root causes of workplace anxiety, examining how perfectionist tendencies and imposter syndrome contribute to chronic stress. We practiced several breathing techniques including box breathing and progressive muscle relaxation to help manage acute stress responses during high-pressure meetings. We also explored cognitive reframing exercises to challenge catastrophic thinking patterns that often emerge when facing tight deadlines. The conversation included practical strategies for communicating boundaries with supervisors and colleagues, including script development for saying no to additional responsibilities when already overloaded. We discussed the importance of creating physical and mental separation between work and personal life, establishing rituals to transition between work and home modes. Time blocking techniques were introduced to help prioritize important tasks while avoiding the trap of busywork that can create false urgency. We also addressed the impact of workplace stress on relationships, exploring how bringing work anxiety home affects family dynamics and romantic partnerships. Strategies for compartmentalization were practiced, along with methods for sharing work challenges with loved ones without overwhelming them. The session concluded with the development of a personalized stress management toolkit including daily check-ins, weekly reflection practices, and emergency protocols for particularly overwhelming days.'
     },
     {
       id: 2,
       title: 'Relationship Boundaries',
       date: '12/5/24',
-      description: 'Talked about setting healthy boundaries with family members and learning to say no without guilt. We practiced assertive communication techniques, explored childhood patterns that make boundary-setting difficult, and created specific scripts for challenging conversations with parents and siblings during the holiday season.'
+      description: 'Talked about setting healthy boundaries with family members and learning to say no without guilt. We practiced assertive communication techniques, explored childhood patterns that make boundary-setting difficult, and created specific scripts for challenging conversations with parents and siblings during the holiday season. Our exploration began with identifying the deep-rooted family dynamics that have made boundary-setting feel impossible or selfish. We traced these patterns back to childhood experiences where expressing needs or saying no was met with guilt, punishment, or emotional manipulation. Through role-playing exercises, we practiced different approaches to boundary-setting conversations, starting with low-stakes situations and gradually building confidence for more challenging interactions. We developed a framework for distinguishing between healthy compromise and unhealthy people-pleasing, examining how cultural and family expectations around loyalty and obligation can sometimes conflict with personal well-being. The session included extensive work on managing guilt responses that typically arise when setting boundaries, using cognitive behavioral techniques to challenge thoughts like "I\'m being selfish" or "I\'m disappointing everyone." We created detailed scripts for common boundary-setting scenarios including declining holiday invitations, limiting phone calls or visits, refusing to engage in family drama, and protecting personal time and space. Particular attention was paid to dealing with pushback and manipulation tactics that family members might use when boundaries are first introduced. We discussed the importance of consistency in maintaining boundaries and developed strategies for staying firm even when faced with tears, anger, or silent treatment. The conversation also covered how to communicate boundaries with compassion while still being clear and firm about expectations.'
     },
     {
       id: 3,
@@ -169,6 +175,99 @@ export default function ChatScreen() {
       description: 'Explored feelings of loneliness and difficulty maintaining meaningful friendships as an adult. We discussed the challenges of making connections outside of work environments, identified personal barriers to vulnerability in relationships, and created actionable steps for nurturing existing friendships while remaining open to new social opportunities and community involvement.'
     }
   ];
+
+  const handleCardPress = (card: any) => {
+    setSelectedCard(card);
+    setModalVisible(true);
+    
+    // Animate modal sliding up from bottom
+    Animated.timing(modalTranslateY, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const closeModal = () => {
+    // Animate modal sliding down
+    Animated.timing(modalTranslateY, {
+      toValue: Dimensions.get('window').height,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setModalVisible(false);
+      setSelectedCard(null);
+    });
+  };
+
+  // Create pan responder for swipe-down gesture (header)
+  const headerPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only respond to downward swipes
+        return gestureState.dy > 0;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Move modal with finger
+        if (gestureState.dy > 0) {
+          modalTranslateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // If swiped down more than 100px or with velocity, close modal
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          closeModal();
+        } else {
+          // Snap back to top
+          Animated.timing(modalTranslateY, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  // Track scroll position for content dismiss
+  const [scrollPosition, setScrollPosition] = useState(0);
+
+  // Create pan responder for content area dismissal
+  const contentPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only capture very fast, strong downward swipes at the top
+        const atTop = scrollPosition <= 10;
+        const fastDownwardSwipe = gestureState.dy > 50 && gestureState.vy > 2.0;
+        return atTop && fastDownwardSwipe;
+      },
+      onPanResponderGrant: () => {
+        // When we capture the gesture, immediately start moving the modal
+        console.log('Content pan responder activated');
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          modalTranslateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        console.log('Content gesture release:', { dy: gestureState.dy, vy: gestureState.vy });
+        if (gestureState.dy > 100 || gestureState.vy > 1.5) {
+          console.log('Closing modal from content');
+          closeModal();
+        } else {
+          console.log('Snapping back to top');
+          Animated.timing(modalTranslateY, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   const handleScroll = (event: any) => {
     const currentScrollY = event.nativeEvent.contentOffset.y;
@@ -351,6 +450,7 @@ export default function ChatScreen() {
         </Animated.View>
 
         <Animated.ScrollView 
+          ref={scrollViewRef}
           style={[styles.cardsContainer, { marginBottom: -155 }]}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
@@ -396,14 +496,20 @@ export default function ChatScreen() {
             const dynamicMargin = baseMargin + velocitySpread; // Less negative = more space
             
             return (
-              <View key={conversation.id} style={[
-                styles.card,
-                { 
-                  backgroundColor,
-                  zIndex: index + 1,
-                  marginTop: index === 0 ? 0 : dynamicMargin,
-                }
-              ]}>
+              <Pressable 
+                key={conversation.id}
+                onPress={() => handleCardPress(conversation)}
+                style={({ pressed }) => [
+                  styles.card,
+                  { 
+                    backgroundColor,
+                    zIndex: index + 1,
+                    marginTop: index === 0 ? 0 : dynamicMargin,
+                    height: 350,
+                    opacity: pressed ? 0.95 : 1,
+                  }
+                ]}
+              >
                 <View style={styles.cardHeader}>
                   <Text style={[
                     styles.cardTitle,
@@ -439,7 +545,7 @@ export default function ChatScreen() {
                 <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 220, height: 20, opacity: 0.5 }]} />
                 <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 240, height: 15, opacity: 0.3 }]} />
                 <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 255, height: 7, opacity: 0.1 }]} />
-              </View>
+              </Pressable>
             );
           })}
         </Animated.ScrollView>
@@ -450,6 +556,72 @@ export default function ChatScreen() {
         onClose={handleVoiceModalClose}
         onFlowchartCreated={handleFlowchartCreated}
       />
+
+      {/* Card Detail Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent={true}
+        animationType="none"
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <Pressable style={styles.modalBackdrop} onPress={closeModal} />
+          <Animated.View 
+            style={[
+              styles.modalContainer,
+              {
+                transform: [{ translateY: modalTranslateY }],
+              }
+            ]}
+          >
+            <BlurView
+              intensity={80}
+              tint={colorScheme === 'dark' ? 'dark' : 'light'}
+              style={styles.blurContainer}
+            >
+              {selectedCard && (
+                <>
+                  {/* Fixed Header - draggable */}
+                  <View 
+                    style={styles.modalHeader}
+                    {...headerPanResponder.panHandlers}
+                  >
+                    <Text style={[
+                      styles.modalTitle,
+                      { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                    ]}>
+                      {selectedCard.title}
+                    </Text>
+                    <Text style={[
+                      styles.modalDate,
+                      { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                    ]}>
+                      {selectedCard.date}
+                    </Text>
+                  </View>
+                  
+                  {/* Scrollable Content */}
+                  <View style={styles.modalScrollView} {...contentPanResponder.panHandlers}>
+                    <ScrollView 
+                      showsVerticalScrollIndicator={false}
+                      contentContainerStyle={styles.modalScrollContent}
+                      onScroll={(event) => setScrollPosition(event.nativeEvent.contentOffset.y)}
+                      scrollEventThrottle={16}
+                    >
+                      <Text style={[
+                        styles.modalDescription,
+                        { color: colorScheme === 'dark' ? '#DDDDDD' : '#444444' }
+                      ]}>
+                        {selectedCard.description}
+                      </Text>
+                    </ScrollView>
+                  </View>
+                </>
+              )}
+            </BlurView>
+          </Animated.View>
+        </View>
+      </Modal>
     </GradientBackground>
   );
 }
@@ -675,5 +847,75 @@ const styles = StyleSheet.create({
     right: 0,
     height: 35, // 35px gradient blur
     zIndex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalContainer: {
+    position: 'absolute',
+    top: 110, // Lowered by 50px from 60 to 110
+    left: 15, // 15px margin from left
+    right: 15, // 15px margin from right
+    bottom: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  blurContainer: {
+    flex: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 20,
+    paddingTop: 20, // Increased padding since no handle bar
+    paddingBottom: 15,
+    backgroundColor: 'transparent',
+  },
+  modalTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    flex: 1,
+    marginRight: 10,
+    fontFamily: 'Georgia',
+  },
+  modalDate: {
+    fontSize: 22,
+    fontWeight: 'normal',
+    fontFamily: 'Georgia',
+  },
+  modalDescription: {
+    fontSize: 20,
+    lineHeight: 30,
+    textAlign: 'left',
+    fontFamily: 'Georgia',
+    marginBottom: 40,
   },
 });
