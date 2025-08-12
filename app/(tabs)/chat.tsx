@@ -26,11 +26,11 @@ export default function ChatScreen() {
   const [lastScrollY, setLastScrollY] = useState(0);
   const [isSearchBarRevealed, setIsSearchBarRevealed] = useState(false);
   const [scrollVelocity, setScrollVelocity] = useState(0);
-  const [squishEffect, setSquishEffect] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
+  const scrollViewPaddingTop = useRef(new Animated.Value(10)).current;
   const lastScrollTime = useRef(Date.now());
   const velocityDecayTimer = useRef<number | null>(null);
 
@@ -205,17 +205,6 @@ export default function ChatScreen() {
               clearInterval(velocityDecayTimer.current);
               velocityDecayTimer.current = null;
             }
-            
-            // Start squish effect after velocity reaches zero
-            setSquishEffect(5); // 5px squish
-            setTimeout(() => {
-              setSquishEffect(prev => prev * 0.7); // Gradual release
-              setTimeout(() => {
-                setSquishEffect(prev => prev * 0.5);
-                setTimeout(() => setSquishEffect(0), 100); // Final release
-              }, 80);
-            }, 100);
-            
             return 0;
           }
           return decayedVelocity;
@@ -256,22 +245,39 @@ export default function ChatScreen() {
             toValue: 1,
             duration: 400,
             useNativeDriver: true,
+          }),
+          Animated.timing(scrollViewPaddingTop, {
+            toValue: 50,
+            duration: 200,
+            useNativeDriver: false, // Can't use native driver for non-transform properties
           })
         ]).start();
       }
     } else if (currentScrollY > 20 && isSearchBarRevealed) {
       // User has scrolled down from top while search bar is revealed - hide it
       setIsSearchBarRevealed(false);
+      // Ensure we start from the revealed position
+      searchBarTranslateY.setValue(-5);
+      searchBarOpacity.setValue(1);
+      scrollViewPaddingTop.setValue(50);
+      
+      // All animations start together
+      // Fade completes quickly (200ms) while slide continues (400ms)
       Animated.parallel([
         Animated.timing(searchBarTranslateY, {
           toValue: -60,
-          duration: 200,
+          duration: 400, // Slide takes 400ms
           useNativeDriver: true,
         }),
         Animated.timing(searchBarOpacity, {
           toValue: 0,
-          duration: 200,
+          duration: 200, // Fade completes in 200ms
           useNativeDriver: true,
+        }),
+        Animated.timing(scrollViewPaddingTop, {
+          toValue: 10,
+          duration: 400, // Match slide duration
+          useNativeDriver: false,
         })
       ]).start();
     }
@@ -283,6 +289,28 @@ export default function ChatScreen() {
   return (
     <GradientBackground style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
+        <View style={styles.headerContainer}>
+          <Text style={{
+            fontSize: 42,
+            fontWeight: 'bold',
+            color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+            textAlign: 'left',
+            fontFamily: 'Georgia',
+            lineHeight: 50
+          }}>Loops</Text>
+          
+          {/* Gradient blur at bottom of header - hidden when search bar is active */}
+          {!isSearchBarRevealed && (
+            <LinearGradient
+              colors={[
+                colorScheme === 'dark' ? '#0a0a0a' : '#f8f8f8',
+                'transparent'
+              ]}
+              style={styles.headerGradientBlur}
+            />
+          )}
+        </View>
+        
         <Animated.View style={[
           styles.searchContainerFixed,
           {
@@ -321,35 +349,13 @@ export default function ChatScreen() {
             </Pressable>
           </View>
         </Animated.View>
-        
-        <View style={styles.headerContainer}>
-          <Text style={{
-            fontSize: 42,
-            fontWeight: 'bold',
-            color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-            textAlign: 'left',
-            fontFamily: 'Georgia',
-            lineHeight: 50
-          }}>Loops</Text>
-          
-          {/* Gradient blur at bottom of header - hidden when search bar is active */}
-          {!isSearchBarRevealed && (
-            <LinearGradient
-              colors={[
-                colorScheme === 'dark' ? '#0a0a0a' : '#f8f8f8',
-                'transparent'
-              ]}
-              style={styles.headerGradientBlur}
-            />
-          )}
-        </View>
 
-        <ScrollView 
+        <Animated.ScrollView 
           style={[styles.cardsContainer, { marginBottom: -155 }]}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingTop: isSearchBarRevealed ? 50 : 10 }
+            { paddingTop: scrollViewPaddingTop }
           ]}
           onScroll={handleScroll}
           scrollEventThrottle={16}
@@ -387,8 +393,7 @@ export default function ChatScreen() {
             
             // Only apply bounce effect when not at scroll bounds
             const velocitySpread = atBounds ? 0 : Math.min(scrollVelocity * 3, 10);
-            const squishAmount = squishEffect; // Add squish compression
-            const dynamicMargin = baseMargin + velocitySpread - squishAmount; // Less negative = more space, more negative = squish
+            const dynamicMargin = baseMargin + velocitySpread; // Less negative = more space
             
             return (
               <View key={conversation.id} style={[
@@ -437,7 +442,7 @@ export default function ChatScreen() {
               </View>
             );
           })}
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
       
       <VoiceFlowchartCreator
