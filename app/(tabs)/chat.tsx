@@ -24,8 +24,14 @@ export default function ChatScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [lastScrollY, setLastScrollY] = useState(0);
   const [isSearchBarRevealed, setIsSearchBarRevealed] = useState(false);
+  const [scrollVelocity, setScrollVelocity] = useState(0);
+  const [squishEffect, setSquishEffect] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
+  const lastScrollTime = useRef(Date.now());
+  const velocityDecayTimer = useRef<NodeJS.Timeout | null>(null);
 
   // Listen for new chat trigger
   useEffect(() => {
@@ -37,6 +43,15 @@ export default function ChatScreen() {
       router.replace('/(tabs)/chat');
     }
   }, [newChat]);
+
+  // Cleanup velocity decay timer on unmount
+  useEffect(() => {
+    return () => {
+      if (velocityDecayTimer.current) {
+        clearInterval(velocityDecayTimer.current);
+      }
+    };
+  }, []);
   
   const handleButtonPress = (type: string) => {
     console.log(`${type} button pressed`);
@@ -156,6 +171,63 @@ export default function ChatScreen() {
 
   const handleScroll = (event: any) => {
     const currentScrollY = event.nativeEvent.contentOffset.y;
+    const currentTime = Date.now();
+    const timeDelta = currentTime - lastScrollTime.current;
+    
+    // Check if we're in a bounce state (scrolled beyond content bounds)
+    const maxScrollY = Math.max(0, contentHeight - scrollViewHeight);
+    const inBounceState = currentScrollY < 0 || currentScrollY > maxScrollY;
+    
+    // Only calculate velocity when not in bounce state
+    if (!inBounceState && timeDelta > 0 && timeDelta < 100) { // Ignore large time gaps
+      const scrollDelta = Math.abs(currentScrollY - lastScrollY);
+      const instantVelocity = scrollDelta / timeDelta;
+      const scaledVelocity = Math.min(instantVelocity * 50, 3); // Scale and cap velocity
+      
+      // Smooth velocity with momentum - blend current with previous
+      setScrollVelocity(prevVelocity => {
+        const smoothedVelocity = prevVelocity * 0.8 + scaledVelocity * 0.2; // More smoothing
+        return smoothedVelocity;
+      });
+      
+      // Clear any existing decay timer and start a new one
+      if (velocityDecayTimer.current) {
+        clearInterval(velocityDecayTimer.current);
+      }
+      
+      // Start decay timer to gradually reduce velocity when scrolling stops
+      velocityDecayTimer.current = setInterval(() => {
+        setScrollVelocity(prevVelocity => {
+          const decayedVelocity = prevVelocity * 0.92; // Slower, smoother decay
+          if (decayedVelocity < 0.02) { // Lower threshold for smoother finish
+            if (velocityDecayTimer.current) {
+              clearInterval(velocityDecayTimer.current);
+              velocityDecayTimer.current = null;
+            }
+            
+            // Start squish effect after velocity reaches zero
+            setSquishEffect(5); // 5px squish
+            setTimeout(() => {
+              setSquishEffect(prev => prev * 0.7); // Gradual release
+              setTimeout(() => {
+                setSquishEffect(prev => prev * 0.5);
+                setTimeout(() => setSquishEffect(0), 100); // Final release
+              }, 80);
+            }, 100);
+            
+            return 0;
+          }
+          return decayedVelocity;
+        });
+      }, 32); // 30fps decay - less frequent updates
+    } else if (inBounceState) {
+      // Immediately start decaying velocity when in bounce state
+      if (velocityDecayTimer.current) {
+        clearInterval(velocityDecayTimer.current);
+      }
+      setScrollVelocity(0); // Immediately stop bouncy effect
+    }
+    
     setScrollY(currentScrollY);
     
     // Pull-to-reveal search bar with sticky behavior
@@ -204,6 +276,7 @@ export default function ChatScreen() {
     }
     
     setLastScrollY(currentScrollY);
+    lastScrollTime.current = currentTime;
   };
 
   return (
@@ -268,10 +341,12 @@ export default function ChatScreen() {
           onScroll={handleScroll}
           scrollEventThrottle={16}
           bounces={true}
+          onContentSizeChange={(width, height) => setContentHeight(height)}
+          onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
         >
           {conversationData.map((conversation, index) => {
             // Calculate card's position on screen
-            // Each card is 350px tall with -210px margin, so effective spacing is 140px
+            // Each card is 350px tall with dynamic margin based on velocity
             const cardTop = index * 140; // Position of card relative to scroll content
             const cardCenter = cardTop + 175; // Center of the card (350/2 = 175)
             const screenCenter = scrollY + 400; // Approximate center of visible area
@@ -288,13 +363,27 @@ export default function ChatScreen() {
             const grayValue = Math.round(255 * Math.max(0.1, Math.min(0.9, lightness)));
             const backgroundColor = `rgb(${grayValue}, ${grayValue}, ${grayValue})`;
             
+            // Cards spread farther apart when scrolling fast (subtle bounce)
+            const baseMargin = -210;
+            
+            // Check if we're near scroll bounds to prevent stuttering
+            const maxScrollY = Math.max(0, contentHeight - scrollViewHeight);
+            const nearTop = scrollY < 50;
+            const nearBottom = scrollY > maxScrollY - 50;
+            const atBounds = nearTop || nearBottom;
+            
+            // Only apply bounce effect when not at scroll bounds
+            const velocitySpread = atBounds ? 0 : Math.min(scrollVelocity * 3, 10);
+            const squishAmount = squishEffect; // Add squish compression
+            const dynamicMargin = baseMargin + velocitySpread - squishAmount; // Less negative = more space, more negative = squish
+            
             return (
               <View key={conversation.id} style={[
                 styles.card,
                 { 
                   backgroundColor,
                   zIndex: index + 1,
-                  marginTop: index === 0 ? 0 : -210,
+                  marginTop: index === 0 ? 0 : dynamicMargin,
                 }
               ]}>
                 <View style={styles.cardHeader}>
