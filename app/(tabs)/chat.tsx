@@ -95,32 +95,62 @@ export default function ChatScreen() {
     {
       id: 1,
       title: 'Work Stress Discussion',
-      date: 'Dec 8',
-      description: 'Explored feelings of overwhelm at work and discussed coping strategies for managing deadlines and expectations.'
+      date: '12/8/24',
+      description: 'Explored feelings of overwhelm at work and discussed comprehensive coping strategies for managing deadlines and expectations. We worked on time management techniques, boundary setting with colleagues, and developing a healthier perspective on workplace pressures that have been affecting sleep and personal relationships.'
     },
     {
       id: 2,
       title: 'Relationship Boundaries',
-      date: 'Dec 5',
-      description: 'Talked about setting healthy boundaries with family members and learning to say no without guilt.'
+      date: '12/5/24',
+      description: 'Talked about setting healthy boundaries with family members and learning to say no without guilt. We practiced assertive communication techniques, explored childhood patterns that make boundary-setting difficult, and created specific scripts for challenging conversations with parents and siblings during the holiday season.'
     },
     {
       id: 3,
       title: 'Self-Confidence Building',
-      date: 'Dec 1',
-      description: 'Worked on identifying negative self-talk patterns and developing positive affirmations for daily practice.'
+      date: '12/1/24',
+      description: 'Worked on identifying negative self-talk patterns and developing positive affirmations for daily practice. We traced these patterns back to early experiences, created personalized confidence-building exercises, and established a morning routine that includes self-compassion practices and achievement recognition to boost overall self-worth.'
     },
     {
       id: 4,
       title: 'Anxiety Management',
-      date: 'Nov 28',
-      description: 'Discussed breathing techniques and mindfulness exercises to help manage anxiety during social situations.'
+      date: '11/28/24',
+      description: 'Discussed breathing techniques and mindfulness exercises to help manage anxiety during social situations. We explored the root causes of social anxiety, practiced grounding techniques using the 5-4-3-2-1 method, and developed a toolkit of discrete calming strategies that can be used in public without drawing attention to yourself.'
     },
     {
       id: 5,
       title: 'Career Transition',
-      date: 'Nov 25',
-      description: 'Explored fears around changing careers and identified steps to move toward a more fulfilling professional path.'
+      date: '11/25/24',
+      description: 'Explored fears around changing careers and identified steps to move toward a more fulfilling professional path. We addressed imposter syndrome, financial concerns about leaving stability, and created a detailed action plan with timelines for networking, skill development, and gradual transition strategies to minimize risk while pursuing meaningful work.'
+    },
+    {
+      id: 6,
+      title: 'Sleep and Rest Issues',
+      date: '11/22/24',
+      description: 'Discussed chronic sleep difficulties and their impact on daily functioning and emotional regulation. We examined lifestyle factors contributing to insomnia, developed a comprehensive sleep hygiene routine, and explored the connection between racing thoughts at bedtime and unresolved daily stressors that need processing and release.'
+    },
+    {
+      id: 7,
+      title: 'Grief Processing',
+      date: '11/18/24',
+      description: 'Worked through complicated grief following the recent loss of a close family member. We explored the non-linear nature of grief, discussed healthy ways to honor memories while moving forward, and addressed guilt about experiencing moments of joy during the mourning process and how to navigate family dynamics during this difficult time.'
+    },
+    {
+      id: 8,
+      title: 'Financial Stress',
+      date: '11/15/24',
+      description: 'Addressed anxiety and shame around money management and financial security concerns. We unpacked family patterns around money, developed practical budgeting strategies that feel sustainable, and worked on separating self-worth from net worth while creating realistic financial goals that align with personal values rather than societal expectations.'
+    },
+    {
+      id: 9,
+      title: 'Perfectionism Patterns',
+      date: '11/12/24',
+      description: 'Examined perfectionist tendencies and their impact on productivity and mental health. We identified triggers that activate all-or-nothing thinking, practiced embracing "good enough" in low-stakes situations, and developed strategies for breaking large tasks into manageable pieces while celebrating progress rather than only focusing on perfect outcomes.'
+    },
+    {
+      id: 10,
+      title: 'Social Connection',
+      date: '11/8/24',
+      description: 'Explored feelings of loneliness and difficulty maintaining meaningful friendships as an adult. We discussed the challenges of making connections outside of work environments, identified personal barriers to vulnerability in relationships, and created actionable steps for nurturing existing friendships while remaining open to new social opportunities and community involvement.'
     }
   ];
 
@@ -229,7 +259,7 @@ export default function ChatScreen() {
         </View>
 
         <ScrollView 
-          style={styles.cardsContainer}
+          style={[styles.cardsContainer, { marginBottom: -155 }]}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
@@ -241,19 +271,19 @@ export default function ChatScreen() {
         >
           {conversationData.map((conversation, index) => {
             // Calculate card's position on screen
-            // Each card is 320px tall with -170px margin, so effective spacing is 150px
-            const cardTop = index * 150; // Position of card relative to scroll content
-            const cardCenter = cardTop + 160; // Center of the card (320/2 = 160)
+            // Each card is 350px tall with -210px margin, so effective spacing is 140px
+            const cardTop = index * 140; // Position of card relative to scroll content
+            const cardCenter = cardTop + 175; // Center of the card (350/2 = 175)
             const screenCenter = scrollY + 400; // Approximate center of visible area
             
             // Calculate relative position (-1 to 1, where 0 is screen center)
             const relativePosition = Math.max(-1, Math.min(1, (cardCenter - screenCenter) / 400));
             
             // Create gradient effect based on screen position
-            // Cards at top of screen are lighter, cards at bottom are darker
+            // Cards at bottom of screen are darker, cards at top are darker than before
             const lightness = colorScheme === 'dark' 
-              ? 0.3 + (0.3 * -relativePosition) // Dark mode: 0.0 to 0.6
-              : 0.5 + (0.4 * -relativePosition); // Light mode: 0.1 to 0.9
+              ? 0.2 + (0.3 * -relativePosition) // Dark mode: 0.0 to 0.5 (darker range)
+              : 0.3 + (0.4 * -relativePosition); // Light mode: 0.0 to 0.7 (darker range)
             
             const grayValue = Math.round(255 * Math.max(0.1, Math.min(0.9, lightness)));
             const backgroundColor = `rgb(${grayValue}, ${grayValue}, ${grayValue})`;
@@ -264,7 +294,7 @@ export default function ChatScreen() {
                 { 
                   backgroundColor,
                   zIndex: index + 1,
-                  marginTop: index === 0 ? 0 : -170,
+                  marginTop: index === 0 ? 0 : -210,
                 }
               ]}>
                 <View style={styles.cardHeader}>
@@ -287,6 +317,21 @@ export default function ChatScreen() {
                 ]}>
                   {conversation.description}
                 </Text>
+                {/* Create smooth gradient effect with more layers - from bottom to 3/4 up (262px) */}
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 0, height: 20, opacity: 1.0 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 20, height: 20, opacity: 1.0 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 40, height: 20, opacity: 0.98 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 60, height: 20, opacity: 0.96 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 80, height: 20, opacity: 0.94 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 100, height: 20, opacity: 0.92 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 120, height: 20, opacity: 0.9 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 140, height: 20, opacity: 0.85 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 160, height: 20, opacity: 0.8 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 180, height: 20, opacity: 0.75 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 200, height: 20, opacity: 0.65 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 220, height: 20, opacity: 0.5 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 240, height: 15, opacity: 0.3 }]} />
+                <View style={[styles.gradientLayer, { backgroundColor: backgroundColor, bottom: 255, height: 7, opacity: 0.1 }]} />
               </View>
             );
           })}
@@ -447,12 +492,13 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: 20,
-    paddingBottom: 100,
+    paddingBottom: 20,
   },
   card: {
-    borderRadius: 12,
+    borderRadius: 24,
     padding: 20,
-    height: 320,
+    paddingBottom: 30,
+    height: 350,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -463,6 +509,7 @@ const styles = StyleSheet.create({
     elevation: 8,
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.1)',
+    overflow: 'hidden',
   },
   cardText: {
     fontSize: 16,
@@ -477,21 +524,28 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: 'bold',
     flex: 1,
     marginRight: 10,
     fontFamily: 'Georgia',
   },
   cardDate: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 21,
+    fontWeight: 'normal',
     fontFamily: 'Georgia',
   },
   cardDescription: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 18,
+    lineHeight: 24,
     textAlign: 'left',
     fontFamily: 'Georgia',
+    fontStyle: 'italic',
+    marginBottom: 15,
+  },
+  gradientLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
   },
 });
