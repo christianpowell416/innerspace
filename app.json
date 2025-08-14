@@ -10,9 +10,12 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "statusBarHidden": true,
       "infoPlist": {
         "NSMicrophoneUsageDescription": "This app uses the microphone for voice input and conversation with the AI therapist.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIStatusBarHidden": true,
+        "UIViewControllerBasedStatusBarAppearance": false
       }
     },
     "android": {

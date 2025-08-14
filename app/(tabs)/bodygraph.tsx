@@ -875,7 +875,7 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     alignItems: 'flex-start',
-    paddingTop: 20,
+    paddingTop: -5,
     paddingHorizontal: 20,
     paddingBottom: 10,
   },

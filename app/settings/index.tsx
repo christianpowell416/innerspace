@@ -39,7 +39,7 @@ export default function SettingsScreen() {
             <IconSymbol size={24} name="chevron.left" color={colorScheme === 'dark' ? '#fff' : '#000'} />
           </TouchableOpacity>
           <View style={styles.titleContainer}>
-            <ThemedText type="title" style={styles.title}>Chat Settings</ThemedText>
+            <ThemedText type="title" style={styles.title}>Loops Settings</ThemedText>
           </View>
           <View style={styles.rightSpacer} />
         </ThemedView>
@@ -95,7 +95,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 5,
+    paddingTop: -20,
     paddingBottom: 10,
   },
   backButton: {

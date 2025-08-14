@@ -43,6 +43,11 @@ export default function ChatScreen() {
     parts: new Animated.Value(0),
     needs: new Animated.Value(0),
   }).current;
+  const titleOpacity = useRef({
+    emotions: new Animated.Value(1),
+    parts: new Animated.Value(1),
+    needs: new Animated.Value(1),
+  }).current;
   const contentTranslateY = useRef(new Animated.Value(0)).current;
   const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
@@ -246,6 +251,22 @@ export default function ChatScreen() {
         duration: 400,
         useNativeDriver: true,
       }),
+      // Fade title text for non-expanded cards
+      Animated.timing(titleOpacity.emotions, {
+        toValue: cardType === 'emotions' ? 1 : 0.5,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(titleOpacity.parts, {
+        toValue: cardType === 'parts' ? 1 : 0.5,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(titleOpacity.needs, {
+        toValue: cardType === 'needs' ? 1 : 0.5,
+        duration: 400,
+        useNativeDriver: true,
+      }),
     ]).start();
   };
 
@@ -281,6 +302,22 @@ export default function ChatScreen() {
       // Slide content back up to original position
       Animated.timing(contentTranslateY, {
         toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      // Fade all title text back to normal
+      Animated.timing(titleOpacity.emotions, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(titleOpacity.parts, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(titleOpacity.needs, {
+        toValue: 1,
         duration: 400,
         useNativeDriver: true,
       }),
@@ -743,12 +780,15 @@ export default function ChatScreen() {
                       <View style={styles.squareCardsContainer}>
                         <View style={styles.squareCardsInner}>
                           <View style={styles.squareCardWrapper}>
-                            <Text style={[
+                            <Animated.Text style={[
                               styles.squareCardTitle,
-                              { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                              { 
+                                color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
+                                opacity: titleOpacity.emotions
+                              }
                             ]}>
                               Emotions
-                            </Text>
+                            </Animated.Text>
                             {/* Minimized card */}
                             <Animated.View style={[
                               styles.animatedCardContainer,
@@ -775,12 +815,15 @@ export default function ChatScreen() {
                           </View>
                           
                           <View style={styles.squareCardWrapper}>
-                            <Text style={[
+                            <Animated.Text style={[
                               styles.squareCardTitle,
-                              { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                              { 
+                                color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
+                                opacity: titleOpacity.parts
+                              }
                             ]}>
                               Parts
-                            </Text>
+                            </Animated.Text>
                             {/* Minimized card */}
                             <Animated.View style={[
                               styles.animatedCardContainer,
@@ -808,12 +851,15 @@ export default function ChatScreen() {
                           </View>
                           
                           <View style={styles.squareCardWrapper}>
-                            <Text style={[
+                            <Animated.Text style={[
                               styles.squareCardTitle,
-                              { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                              { 
+                                color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
+                                opacity: titleOpacity.needs
+                              }
                             ]}>
                               Needs
-                            </Text>
+                            </Animated.Text>
                             {/* Minimized card */}
                             <Animated.View style={[
                               styles.animatedCardContainer,
@@ -1261,7 +1307,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   squareCardTitle: {
-    fontSize: 16,
+    fontSize: 20,
     fontFamily: 'Georgia',
     fontWeight: '600',
     marginBottom: 8,
@@ -1307,7 +1353,7 @@ const styles = StyleSheet.create({
   },
   expandedCardView: {
     position: 'absolute',
-    top: 24, // Position below the title text (title + margin)
+    top: 27, // Perfect alignment with minimized cards
     left: 0,
     right: 0,
     zIndex: 100, // Higher z-index to appear above content text
@@ -1319,5 +1365,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    marginHorizontal: 2, // Adjust width to match minimized cards
   },
 });

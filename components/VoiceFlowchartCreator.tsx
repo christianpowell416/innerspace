@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { FlowchartStructure } from '@/lib/types/flowchart';
+import { getSelectedVoice, setSelectedVoice, getAllVoices, VoiceType } from '@/lib/services/voiceSettings';
 import { 
   createVoiceFlowchartSession, 
   VoiceFlowchartSession,
@@ -29,7 +30,6 @@ import {
   ConversationMessage, 
   IncrementalFlowchartCallbacks 
 } from '@/lib/services/incrementalFlowchartGenerator';
-import { getSelectedVoice, VoiceType } from '@/lib/services/voiceSettings';
 import * as DocumentPicker from 'expo-document-picker';
 
 interface VoiceFlowchartCreatorProps {
@@ -48,6 +48,8 @@ export function VoiceFlowchartCreator({
   
   const [isConnected, setIsConnected] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [selectedVoice, setSelectedVoiceState] = useState<VoiceType>('alloy');
   
   // Debug wrapper for setIsListening to track state changes
   const setIsListeningWithLogging = (value: boolean) => {
@@ -66,7 +68,6 @@ export function VoiceFlowchartCreator({
   const [isContinuousMode, setIsContinuousMode] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
-  const [selectedVoice, setSelectedVoice] = useState<VoiceType>('alloy'); // Will be loaded from settings
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
   const [isAIResponding, setIsAIResponding] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
@@ -135,13 +136,40 @@ export function VoiceFlowchartCreator({
   // Helper function to get node colors
   const getNodeColor = (type: string, isDark: boolean) => {
     const colors = {
-      'Self': isDark ? '#4CAF50' : '#81C784',
+      'Self': isDark ? '#2E7D32' : '#66BB6A',
       'Manager': isDark ? '#2196F3' : '#64B5F6', 
       'Firefighter': isDark ? '#FF5722' : '#FF8A65',
       'Exile': isDark ? '#9C27B0' : '#BA68C8',
       'Need': isDark ? '#FF9800' : '#FFB74D'
     };
     return colors[type as keyof typeof colors] || (isDark ? '#666666' : '#CCCCCC');
+  };
+
+  // Load voice settings
+  const loadVoiceSettingAndInitialize = async () => {
+    try {
+      const voice = await getSelectedVoice();
+      setSelectedVoiceState(voice);
+      console.log('✅ Loaded voice setting:', voice);
+      
+      // Add small delay to ensure any previous session cleanup is complete
+      setTimeout(() => {
+        initializeSession();
+      }, 500);
+    } catch (error) {
+      console.error('❌ Error loading voice setting:', error);
+    }
+  };
+
+  // Handle voice selection change
+  const handleVoiceChange = async (voice: VoiceType) => {
+    try {
+      setSelectedVoiceState(voice);
+      await setSelectedVoice(voice);
+      console.log('✅ Voice setting saved:', voice);
+    } catch (error) {
+      console.error('❌ Error saving voice setting:', error);
+    }
   };
 
   useEffect(() => {
@@ -198,15 +226,6 @@ export function VoiceFlowchartCreator({
     }
   }, [isListening, isAIResponding, colorPulseAnim]);
 
-  const loadVoiceSettingAndInitialize = async () => {
-    const voice = await getSelectedVoice();
-    setSelectedVoice(voice);
-    
-    // Add small delay to ensure any previous session cleanup is complete
-    setTimeout(() => {
-      initializeSession();
-    }, 500);
-  };
 
   // Setup incremental flowchart callbacks
   // These are COMPLETELY ISOLATED from the voice conversation system
@@ -623,7 +642,7 @@ export function VoiceFlowchartCreator({
             style={[
               styles.minimizedButton,
               { 
-                backgroundColor: isListening ? '#FF5722' : (isConnected ? '#4CAF50' : '#666666')
+                backgroundColor: isListening ? '#FF5722' : (isConnected ? '#2E7D32' : '#666666')
               }
             ]}
             onPress={() => setIsMinimized(false)}
@@ -668,6 +687,9 @@ export function VoiceFlowchartCreator({
         ]}>
         {/* Header */}
         <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+            Live Loops
+          </Text>
           <View style={styles.headerButtons}>
             <Pressable
               style={styles.minimizeButton}
@@ -693,7 +715,7 @@ export function VoiceFlowchartCreator({
             <Pressable
               style={[
                 styles.incrementalToggle,
-                { backgroundColor: showIncrementalFlowchart ? '#4CAF50' : (isDark ? '#333333' : '#E0E0E0') }
+                { backgroundColor: showIncrementalFlowchart ? '#2E7D32' : (isDark ? '#333333' : '#E0E0E0') }
               ]}
               onPress={() => setShowIncrementalFlowchart(!showIncrementalFlowchart)}
             >
@@ -884,7 +906,7 @@ export function VoiceFlowchartCreator({
                         ? ['#FF5722', '#BF360C']  // Red to much darker red when recording
                         : isAIResponding 
                           ? ['#2196F3', '#1565C0']  // Blue to darker blue when AI is responding
-                          : ['#4CAF50', '#4CAF50'], // Green stays the same when idle (no pulsing)
+                          : ['#2E7D32', '#2E7D32'], // Green stays the same when idle (no pulsing)
                     }),
                     borderRadius: 50,
                     opacity: isConnected ? 1 : 0.5
@@ -919,9 +941,19 @@ export function VoiceFlowchartCreator({
               )}
             </View>
 
-            {/* Right side placeholder for symmetry */}
+            {/* Settings Button - Bottom Right */}
             <View style={styles.rightControls}>
-              {/* Empty space for visual balance */}
+              {!showTextInput && (
+                <Pressable
+                  style={[
+                    styles.settingsButton,
+                    { backgroundColor: isDark ? '#333333' : '#E0E0E0' }
+                  ]}
+                  onPress={() => setShowVoiceSettings(true)}
+                >
+                  <IconSymbol size={20} name="slider.horizontal.3" color={isDark ? '#fff' : '#000'} />
+                </Pressable>
+              )}
             </View>
           </View>
 
@@ -934,7 +966,7 @@ export function VoiceFlowchartCreator({
               <Pressable
                 style={[
                   styles.textInputVoiceButton,
-                  { backgroundColor: '#4CAF50' }
+                  { backgroundColor: '#2E7D32' }
                 ]}
                 onPress={() => {
                   // Hide text input and clear it
@@ -996,6 +1028,67 @@ export function VoiceFlowchartCreator({
         </View>
       </View>
       </KeyboardAvoidingView>
+
+      {/* Voice Settings Modal */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showVoiceSettings}
+        onRequestClose={() => setShowVoiceSettings(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <BlurView intensity={50} style={styles.modalOverlay}>
+            <View style={[styles.voiceSettingsModal, { backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF' }]}>
+              {/* Settings Header */}
+              <View style={styles.settingsHeader}>
+                <Text style={[styles.settingsTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                  Voice Settings
+                </Text>
+                <Pressable
+                  style={styles.settingsCloseButton}
+                  onPress={() => setShowVoiceSettings(false)}
+                >
+                  <Text style={styles.settingsCloseText}>✕</Text>
+                </Pressable>
+              </View>
+
+              {/* Voice Selection */}
+              <View style={styles.voiceSettingsContent}>
+                <Text style={[styles.settingsSectionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                  Voice Assistant
+                </Text>
+                <Text style={[styles.settingsSectionDescription, { color: isDark ? '#CCCCCC' : '#666666' }]}>
+                  Choose the voice for your AI therapy companion
+                </Text>
+                
+                <View style={styles.voiceGrid}>
+                  {getAllVoices().map((voice) => (
+                    <Pressable
+                      key={voice}
+                      style={[
+                        styles.voiceButton,
+                        {
+                          backgroundColor: selectedVoice === voice 
+                            ? '#2E7D32' 
+                            : (isDark ? '#333333' : '#E0E0E0'),
+                        }
+                      ]}
+                      onPress={() => handleVoiceChange(voice)}
+                    >
+                      <Text style={[
+                        styles.voiceButtonText,
+                        { color: selectedVoice === voice ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
+                      ]}>
+                        {voice}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </View>
+          </BlurView>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -1003,21 +1096,23 @@ export function VoiceFlowchartCreator({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50,
+    paddingTop: 65,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#333333',
+    paddingTop: -5,
+    paddingBottom: 10,
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: 42,
+    fontWeight: 'bold',
+    textAlign: 'left',
     fontFamily: 'Georgia',
+    lineHeight: 50,
+    flex: 1,
   },
   closeButton: {
     width: 30,
@@ -1292,6 +1387,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  settingsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
   minimizeButton: {
     width: 30,
     height: 30,
@@ -1428,5 +1538,84 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '400',
     fontFamily: 'Georgia',
+  },
+  // Voice Settings Modal Styles
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  voiceSettingsModal: {
+    width: '85%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 0,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  settingsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333333',
+  },
+  settingsTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    fontFamily: 'Georgia',
+  },
+  settingsCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FF5722',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  settingsCloseText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    fontFamily: 'Georgia',
+  },
+  voiceSettingsContent: {
+    padding: 20,
+  },
+  settingsSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+    fontFamily: 'Georgia',
+  },
+  settingsSectionDescription: {
+    fontSize: 14,
+    marginBottom: 16,
+    fontFamily: 'Georgia',
+  },
+  voiceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  voiceButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  voiceButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    fontFamily: 'Georgia',
+    textTransform: 'capitalize',
   },
 });

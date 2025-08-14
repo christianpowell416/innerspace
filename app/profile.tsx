@@ -246,7 +246,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    paddingTop: 80, // Account for taller glass header with buttons
+    paddingTop: 55, // Moved up 25px from 80px
   },
   container: {
     flex: 1,

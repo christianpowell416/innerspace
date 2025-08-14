@@ -1,6 +1,7 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter, useSegments } from 'expo-router';
 import React from 'react';
-import { Platform, StyleSheet, Image } from 'react-native';
+import { Platform, StyleSheet, Image, View } from 'react-native';
+import { BlurView } from 'expo-blur';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
@@ -8,6 +9,28 @@ import TabBarBackground from '@/components/ui/TabBarBackground';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
 import { useColorScheme } from '@/hooks/useColorScheme';
+
+// Custom chat tab button component
+function ChatTabButton(props: any) {
+  const router = useRouter();
+  const segments = useSegments();
+  const isOnChatTab = segments[1] === 'chat';
+
+  const handlePress = () => {
+    if (isOnChatTab) {
+      // Already on chat tab, trigger a new chat
+      // We'll use a global event or navigation params to trigger new chat
+      router.push('/(tabs)/chat?newChat=true');
+    } else {
+      // Navigate to chat tab normally
+      router.push('/(tabs)/chat');
+    }
+  };
+
+  return (
+    <HapticTab {...props} onPress={handlePress} style={[props.style, styles.centerButtonContainer]} />
+  );
+}
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -19,7 +42,28 @@ export default function TabLayout() {
         tabBarInactiveTintColor: colorScheme === 'dark' ? '#888' : '#888',
         headerShown: false,
         tabBarButton: HapticTab,
-        tabBarBackground: Platform.OS === 'ios' ? TabBarBackground : undefined,
+        tabBarBackground: () => (
+          <BlurView
+            intensity={Platform.OS === 'ios' ? 90 : 80}
+            tint={colorScheme === 'dark' ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          >
+            <View 
+              style={[
+                StyleSheet.absoluteFill,
+                { 
+                  backgroundColor: colorScheme === 'dark' 
+                    ? 'rgba(30,30,30,0.2)' // Subtle dark overlay
+                    : 'rgba(255,255,255,0.4)', // Light white overlay
+                  borderTopWidth: 0.5,
+                  borderTopColor: colorScheme === 'dark' 
+                    ? 'rgba(255,255,255,0.1)' 
+                    : 'rgba(0,0,0,0.1)',
+                }
+              ]} 
+            />
+          </BlurView>
+        ),
         tabBarShowLabel: false,
         tabBarStyle: Platform.select({
           ios: {
@@ -32,15 +76,15 @@ export default function TabLayout() {
           },
           android: {
             paddingTop: 10,
-            backgroundColor: colorScheme === 'dark' ? 'rgba(60,60,60,0.85)' : 'rgba(255,255,255,0.9)',
-            borderTopColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
-            borderTopWidth: 0.5,
-            elevation: 8,
+            backgroundColor: 'transparent', // Transparent to show blur
+            borderTopWidth: 0,
+            elevation: 0, // Remove elevation to show blur properly
             height: 80,
           },
           default: {
             paddingTop: 10,
             height: 80,
+            backgroundColor: 'transparent',
           },
         }),
       }}>
@@ -60,45 +104,51 @@ export default function TabLayout() {
       <Tabs.Screen
         name="learn"
         options={{
-          title: 'Learn',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="book" color={color} />,
+          href: null, // Hide Learn tab
         }}
       />
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Chat',
+          title: 'Loops',
           tabBarIcon: ({ color, focused }) => (
-            <ThemedView style={[
-              styles.centerButton,
-              { 
-                backgroundColor: focused 
-                  ? '#87CEEB' 
-                  : colorScheme === 'dark' ? '#333' : '#E0E0E0'
-              }
-            ]}>
+            <BlurView
+              intensity={60}
+              tint={colorScheme === 'dark' ? 'dark' : 'light'}
+              style={[
+                styles.centerButton,
+                { 
+                  backgroundColor: focused 
+                    ? 'rgba(46, 125, 50, 0.6)' // Stronger green when focused
+                    : 'rgba(255, 255, 255, 0.3)', // White when not focused
+                  borderWidth: 3,
+                  borderColor: focused
+                    ? 'rgba(46, 125, 50, 0.5)'
+                    : colorScheme === 'dark'
+                      ? 'rgba(255, 255, 255, 0.2)'
+                      : 'rgba(0, 0, 0, 0.15)',
+                }
+              ]}
+            >
               <Image 
                 source={require('@/assets/images/Logo.png')}
                 style={[
                   styles.logoIcon,
                   { 
-                    tintColor: focused ? '#000' : color,
+                    tintColor: focused ? '#FFF' : colorScheme === 'dark' ? '#FFF' : '#000',
                   }
                 ]}
                 resizeMode="contain"
               />
-            </ThemedView>
+            </BlurView>
           ),
-          tabBarButton: (props) => (
-            <HapticTab {...props} style={[props.style, styles.centerButtonContainer]} />
-          ),
+          tabBarButton: ChatTabButton,
         }}
       />
       <Tabs.Screen
         name="bodygraph"
         options={{
-          title: 'Body',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="figure.stand" color={color} />,
+          href: null, // Hide Body tab
         }}
       />
       <Tabs.Screen
@@ -114,9 +164,9 @@ export default function TabLayout() {
 
 const styles = StyleSheet.create({
   centerButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -127,6 +177,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4.65,
     elevation: 8,
+    overflow: 'hidden',
   },
   centerButtonContainer: {
     top: -20,
@@ -134,7 +185,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoIcon: {
-    width: 45,
-    height: 45,
+    width: 80,
+    height: 80,
   },
 });

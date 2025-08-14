@@ -59,7 +59,7 @@ export default function RootLayout() {
             </Stack>
           </AuthGuard>
           <StatusBar 
-            style={colorScheme === 'dark' ? 'light' : 'dark'} 
+            hidden={true}
           />
         </ThemeProvider>
       </AuthProvider>

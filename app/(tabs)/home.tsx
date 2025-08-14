@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   },
   welcomeContainer: {
     alignItems: 'flex-start',
-    paddingTop: 20, // Moved down 20px
+    paddingTop: -5, // Moved up 25px from original 20px
   },
   welcomeText: {
     fontSize: 42,
