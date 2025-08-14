@@ -4,6 +4,7 @@ import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useEffect, useRef } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -31,6 +32,18 @@ export default function ChatScreen() {
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [expandedSquareCard, setExpandedSquareCard] = useState<string | null>(null);
+  const cardOpacity = useRef({
+    emotions: new Animated.Value(1),
+    parts: new Animated.Value(1),
+    needs: new Animated.Value(1),
+  }).current;
+  const expandedOpacity = useRef({
+    emotions: new Animated.Value(0),
+    parts: new Animated.Value(0),
+    needs: new Animated.Value(0),
+  }).current;
+  const contentTranslateY = useRef(new Animated.Value(0)).current;
   const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const scrollViewPaddingTop = useRef(new Animated.Value(10)).current;
@@ -200,6 +213,82 @@ export default function ChatScreen() {
     });
   };
 
+  const expandCard = (cardType: string) => {
+    setExpandedSquareCard(cardType);
+    
+    // Fade out all minimized cards, fade in the expanded view, and slide content down
+    Animated.parallel([
+      // Fade out all minimized cards
+      Animated.timing(cardOpacity.emotions, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity.parts, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity.needs, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      // Fade in expanded view
+      Animated.timing(expandedOpacity[cardType as keyof typeof expandedOpacity], {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      // Slide content down to make room for expanded card
+      Animated.timing(contentTranslateY, {
+        toValue: Dimensions.get('window').width - 40 - 110 + 1, // Height of expanded card minus minimized card height + small margin
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const collapseCard = () => {
+    if (!expandedSquareCard) return;
+    
+    const cardType = expandedSquareCard;
+    
+    // Fade out expanded view, fade in all minimized cards, and slide content back up
+    Animated.parallel([
+      // Fade out expanded view
+      Animated.timing(expandedOpacity[cardType as keyof typeof expandedOpacity], {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      // Fade in all minimized cards
+      Animated.timing(cardOpacity.emotions, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity.parts, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity.needs, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+      // Slide content back up to original position
+      Animated.timing(contentTranslateY, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setExpandedSquareCard(null);
+    });
+  };
+
   // Create pan responder for swipe-down gesture (header)
   const headerPanResponder = useRef(
     PanResponder.create({
@@ -238,10 +327,10 @@ export default function ChatScreen() {
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only capture very fast, strong downward swipes at the top
-        const atTop = scrollPosition <= 10;
-        const fastDownwardSwipe = gestureState.dy > 50 && gestureState.vy > 2.0;
-        return atTop && fastDownwardSwipe;
+        // Capture downward swipes when at the top
+        const atTop = scrollPosition <= 1;
+        const downwardSwipe = gestureState.dy > 10 && gestureState.vy > 0.2;
+        return atTop && downwardSwipe;
       },
       onPanResponderGrant: () => {
         // When we capture the gesture, immediately start moving the modal
@@ -334,6 +423,11 @@ export default function ChatScreen() {
       // If pulled down far enough, mark as revealed
       if (pullDistance >= 40) {
         setIsSearchBarRevealed(true);
+        // Double haptic feedback when search bar is revealed
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setTimeout(() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }, 100);
         Animated.parallel([
           Animated.timing(searchBarTranslateY, {
             toValue: -5,
@@ -355,6 +449,8 @@ export default function ChatScreen() {
     } else if (currentScrollY > 20 && isSearchBarRevealed) {
       // User has scrolled down from top while search bar is revealed - hide it
       setIsSearchBarRevealed(false);
+      // Single haptic feedback when search bar is hidden
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       // Ensure we start from the revealed position
       searchBarTranslateY.setValue(-5);
       searchBarOpacity.setValue(1);
@@ -468,18 +564,21 @@ export default function ChatScreen() {
             // Each card is 350px tall with dynamic margin based on velocity
             const cardTop = index * 140; // Position of card relative to scroll content
             const cardCenter = cardTop + 175; // Center of the card (350/2 = 175)
-            const screenCenter = scrollY + 400; // Approximate center of visible area
             
-            // Calculate relative position (-1 to 1, where 0 is screen center)
-            const relativePosition = Math.max(-1, Math.min(1, (cardCenter - screenCenter) / 400));
+            // Calculate card's position relative to viewport
+            const viewportHeight = 800; // Approximate viewport height
+            const cardPositionInViewport = cardCenter - scrollY;
+            
+            // Normalize position (0 = top of viewport, 1 = bottom of viewport)
+            const normalizedPosition = Math.max(0, Math.min(1, cardPositionInViewport / viewportHeight));
             
             // Create gradient effect based on screen position
-            // Cards at bottom of screen are darker, cards at top are darker than before
+            // Cards at top of viewport are lighter, cards at bottom are darker
             const lightness = colorScheme === 'dark' 
-              ? 0.2 + (0.3 * -relativePosition) // Dark mode: 0.0 to 0.5 (darker range)
-              : 0.3 + (0.4 * -relativePosition); // Light mode: 0.0 to 0.7 (darker range)
+              ? 0.95 - (0.5 * normalizedPosition) // Dark mode: 0.95 at top to 0.45 at bottom (lighter overall)
+              : 1.0 - (0.4 * normalizedPosition); // Light mode: 1.0 at top to 0.6 at bottom (lighter overall)
             
-            const grayValue = Math.round(255 * Math.max(0.1, Math.min(0.9, lightness)));
+            const grayValue = Math.round(255 * lightness);
             const backgroundColor = `rgb(${grayValue}, ${grayValue}, ${grayValue})`;
             
             // Cards spread farther apart when scrolling fast (subtle bounce)
@@ -513,7 +612,7 @@ export default function ChatScreen() {
                   style={[
                     styles.card,
                     { 
-                      backgroundColor: `rgba(${Math.round(255 * lightness)}, ${Math.round(255 * lightness)}, ${Math.round(255 * lightness)}, 0.3)`,
+                      backgroundColor: `rgba(${grayValue}, ${grayValue}, ${grayValue}, 0.2125)`,
                       height: 350,
                     }
                   ]}
@@ -600,19 +699,224 @@ export default function ChatScreen() {
                   </View>
                   
                   {/* Scrollable Content */}
-                  <View style={styles.modalScrollView} {...contentPanResponder.panHandlers}>
+                  <View style={styles.modalScrollView}>
                     <ScrollView 
                       showsVerticalScrollIndicator={false}
                       contentContainerStyle={styles.modalScrollContent}
-                      onScroll={(event) => setScrollPosition(event.nativeEvent.contentOffset.y)}
+                      onScroll={(event) => {
+                        const yOffset = event.nativeEvent.contentOffset.y;
+                        setScrollPosition(yOffset);
+                        
+                        // Only handle overscroll when pulling down from top
+                        if (yOffset < 0) {
+                          const translation = Math.abs(yOffset) * 1.5; // Amplify movement slightly
+                          modalTranslateY.setValue(translation);
+                        } else if (yOffset === 0) {
+                          // Reset position only when exactly at top
+                          modalTranslateY.setValue(0);
+                        }
+                      }}
+                      onScrollEndDrag={(event) => {
+                        const yOffset = event.nativeEvent.contentOffset.y;
+                        
+                        // Only process dismissal if we were overscrolling (pulling down from top)
+                        if (yOffset < 0) {
+                          const currentTranslation = Math.abs(yOffset) * 1.5;
+                          
+                          if (currentTranslation > 100) {
+                            // Use the same closeModal function for consistent animation
+                            closeModal();
+                          } else {
+                            // Snap back to original position
+                            Animated.timing(modalTranslateY, {
+                              toValue: 0,
+                              duration: 200,
+                              useNativeDriver: true,
+                            }).start();
+                          }
+                        }
+                      }}
                       scrollEventThrottle={16}
+                      bounces={true}
                     >
-                      <Text style={[
-                        styles.modalDescription,
-                        { color: colorScheme === 'dark' ? '#DDDDDD' : '#444444' }
-                      ]}>
-                        {selectedCard.description}
-                      </Text>
+                      {/* Three square cards at the top */}
+                      <View style={styles.squareCardsContainer}>
+                        <View style={styles.squareCardsInner}>
+                          <View style={styles.squareCardWrapper}>
+                            <Text style={[
+                              styles.squareCardTitle,
+                              { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                            ]}>
+                              Emotions
+                            </Text>
+                            {/* Minimized card */}
+                            <Animated.View style={[
+                              styles.animatedCardContainer,
+                              { 
+                                opacity: cardOpacity.emotions,
+                              }
+                            ]}>
+                              <Pressable
+                                onPress={() => expandCard('emotions')}
+                                style={[
+                                  styles.squareCard,
+                                  { 
+                                    backgroundColor: colorScheme === 'dark' 
+                                      ? 'rgba(255, 255, 255, 0.1)' 
+                                      : 'rgba(0, 0, 0, 0.05)',
+                                    borderColor: colorScheme === 'dark'
+                                      ? 'rgba(255, 255, 255, 0.2)'
+                                      : 'rgba(0, 0, 0, 0.1)',
+                                  }
+                                ]}
+                              >
+                              </Pressable>
+                            </Animated.View>
+                          </View>
+                          
+                          <View style={styles.squareCardWrapper}>
+                            <Text style={[
+                              styles.squareCardTitle,
+                              { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                            ]}>
+                              Parts
+                            </Text>
+                            {/* Minimized card */}
+                            <Animated.View style={[
+                              styles.animatedCardContainer,
+                              { 
+                                opacity: cardOpacity.parts,
+                              }
+                            ]}>
+                              <Pressable
+                                onPress={() => expandCard('parts')}
+                                style={[
+                                  styles.squareCard,
+                                  { 
+                                    backgroundColor: colorScheme === 'dark' 
+                                      ? 'rgba(255, 255, 255, 0.1)' 
+                                      : 'rgba(0, 0, 0, 0.05)',
+                                    borderColor: colorScheme === 'dark'
+                                      ? 'rgba(255, 255, 255, 0.2)'
+                                      : 'rgba(0, 0, 0, 0.1)',
+                                  }
+                                ]}
+                              >
+                              </Pressable>
+                            </Animated.View>
+                            
+                          </View>
+                          
+                          <View style={styles.squareCardWrapper}>
+                            <Text style={[
+                              styles.squareCardTitle,
+                              { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                            ]}>
+                              Needs
+                            </Text>
+                            {/* Minimized card */}
+                            <Animated.View style={[
+                              styles.animatedCardContainer,
+                              { 
+                                opacity: cardOpacity.needs,
+                              }
+                            ]}>
+                              <Pressable
+                                onPress={() => expandCard('needs')}
+                                style={[
+                                  styles.squareCard,
+                                  { 
+                                    backgroundColor: colorScheme === 'dark' 
+                                      ? 'rgba(255, 255, 255, 0.1)' 
+                                      : 'rgba(0, 0, 0, 0.05)',
+                                    borderColor: colorScheme === 'dark'
+                                      ? 'rgba(255, 255, 255, 0.2)'
+                                      : 'rgba(0, 0, 0, 0.1)',
+                                  }
+                                ]}
+                              >
+                              </Pressable>
+                            </Animated.View>
+                            
+                          </View>
+                        </View>
+                        
+                        {/* Expanded views - positioned at container level for full width */}
+                        <Animated.View style={[
+                          styles.expandedCardView,
+                          { opacity: expandedOpacity.emotions }
+                        ]}>
+                          <Pressable
+                            onPress={() => collapseCard()}
+                            style={[
+                              styles.expandedCard,
+                              { 
+                                backgroundColor: colorScheme === 'dark' 
+                                  ? 'rgba(255, 255, 255, 0.1)' 
+                                  : 'rgba(0, 0, 0, 0.05)',
+                                borderColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.2)'
+                                  : 'rgba(0, 0, 0, 0.1)',
+                              }
+                            ]}
+                          >
+                          </Pressable>
+                        </Animated.View>
+                        
+                        <Animated.View style={[
+                          styles.expandedCardView,
+                          { opacity: expandedOpacity.parts }
+                        ]}>
+                          <Pressable
+                            onPress={() => collapseCard()}
+                            style={[
+                              styles.expandedCard,
+                              { 
+                                backgroundColor: colorScheme === 'dark' 
+                                  ? 'rgba(255, 255, 255, 0.1)' 
+                                  : 'rgba(0, 0, 0, 0.05)',
+                                borderColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.2)'
+                                  : 'rgba(0, 0, 0, 0.1)',
+                              }
+                            ]}
+                          >
+                          </Pressable>
+                        </Animated.View>
+                        
+                        <Animated.View style={[
+                          styles.expandedCardView,
+                          { opacity: expandedOpacity.needs }
+                        ]}>
+                          <Pressable
+                            onPress={() => collapseCard()}
+                            style={[
+                              styles.expandedCard,
+                              { 
+                                backgroundColor: colorScheme === 'dark' 
+                                  ? 'rgba(255, 255, 255, 0.1)' 
+                                  : 'rgba(0, 0, 0, 0.05)',
+                                borderColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.2)'
+                                  : 'rgba(0, 0, 0, 0.1)',
+                              }
+                            ]}
+                          >
+                          </Pressable>
+                        </Animated.View>
+                        
+                      </View>
+                      
+                      <Animated.View style={{
+                        transform: [{ translateY: contentTranslateY }]
+                      }}>
+                        <Text style={[
+                          styles.modalDescription,
+                          { color: colorScheme === 'dark' ? '#DDDDDD' : '#444444' }
+                        ]}>
+                          {selectedCard.description}
+                        </Text>
+                      </Animated.View>
                     </ScrollView>
                   </View>
                 </>
@@ -780,9 +1084,9 @@ const styles = StyleSheet.create({
       width: 0,
       height: 0,
     },
-    shadowOpacity: 0.9,
-    shadowRadius: 25,
-    elevation: 25,
+    shadowOpacity: 1.0,
+    shadowRadius: 50,
+    elevation: 50,
   },
   card: {
     borderRadius: 24,
@@ -932,5 +1236,88 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     fontFamily: 'Georgia',
     marginBottom: 40,
+  },
+  squareCardsContainer: {
+    marginBottom: 25,
+    width: '100%',
+  },
+  squareCardsInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    position: 'relative',
+    overflow: 'visible', // Allow animated cards to overflow
+  },
+  squareCardWrapper: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  expandedCardOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 24,
+    zIndex: 10,
+    alignItems: 'center',
+  },
+  squareCardTitle: {
+    fontSize: 16,
+    fontFamily: 'Georgia',
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  squareCard: {
+    width: '100%',
+    maxWidth: 110,
+    aspectRatio: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+  },
+  expandedCard: {
+    width: '100%',
+    aspectRatio: 1,
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  squareCardLabel: {
+    fontSize: 14,
+    fontFamily: 'Georgia',
+    fontWeight: '500',
+  },
+  animatedCardContainer: {
+    width: '100%',
+    maxWidth: 110,
+    alignItems: 'center',
+    overflow: 'visible', // Allow content to overflow the container
+  },
+  expandedCardContent: {
+    fontSize: 16,
+    fontFamily: 'Georgia',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginTop: 10,
+  },
+  expandedCardView: {
+    position: 'absolute',
+    top: 24, // Position below the title text (title + margin)
+    left: 0,
+    right: 0,
+    zIndex: 100, // Higher z-index to appear above content text
+  },
+  expandedCard: {
+    width: '100%',
+    aspectRatio: 1, // Make it square (width = height)
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
