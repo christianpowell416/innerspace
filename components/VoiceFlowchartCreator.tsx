@@ -12,6 +12,8 @@ import {
   Platform,
   Animated,
   Image,
+  Dimensions,
+  AppState,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -50,6 +52,9 @@ export function VoiceFlowchartCreator({
   const [isListening, setIsListening] = useState(false);
   const [showVoiceSettings, setShowVoiceSettings] = useState(false);
   const [selectedVoice, setSelectedVoiceState] = useState<VoiceType>('alloy');
+  const modalTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
+  const recordingIndicatorOpacity = useRef(new Animated.Value(0)).current;
+  const [isProcessingUserInput, setIsProcessingUserInput] = useState(false);
   
   // Debug wrapper for setIsListening to track state changes
   const setIsListeningWithLogging = (value: boolean) => {
@@ -62,7 +67,11 @@ export function VoiceFlowchartCreator({
     type: 'user' | 'assistant', 
     text: string,
     id: string,
-    fadeAnim?: Animated.Value
+    fadeAnim?: Animated.Value,
+    words?: Array<{
+      text: string,
+      opacity: Animated.Value
+    }>
   }>>([]);
   const [textInput, setTextInput] = useState('');
   const [isContinuousMode, setIsContinuousMode] = useState(false);
@@ -86,8 +95,13 @@ export function VoiceFlowchartCreator({
 
   // Helper function to add user message with fade-in animation
   const addUserMessageWithAnimation = (text: string) => {
+    console.log('📝 Adding user message with animation:', text);
     const fadeAnim = new Animated.Value(0);
     const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    
+    // Stop processing state - text is about to appear
+    console.log('🛑 Stopping processing indicator');
+    setIsProcessingUserInput(false);
     
     setConversation(prev => {
       // Check for immediate duplicates
@@ -119,16 +133,39 @@ export function VoiceFlowchartCreator({
     });
   };
 
-  // Helper function to add assistant message without animation
+  // Helper function to create animated words for AI messages
+  const createAnimatedWords = (text: string) => {
+    // Split by spaces but preserve punctuation with words
+    return text.split(' ').filter(word => word.length > 0).map(word => ({
+      text: word + ' ', // Add space back to each word
+      opacity: new Animated.Value(0)
+    }));
+  };
+
+  // Helper function to add assistant message with word-by-word animation
   const addAssistantMessage = (text: string) => {
     const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    const words = createAnimatedWords(text);
     
     setConversation(prev => {
       const newMessage = { 
         type: 'assistant' as const, 
         text, 
-        id: messageId
+        id: messageId,
+        words
       };
+      
+      // Start word-by-word animation
+      words.forEach((word, index) => {
+        setTimeout(() => {
+          Animated.timing(word.opacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        }, index * 100); // 100ms delay between each word
+      });
+      
       return [...prev, newMessage];
     });
   };
@@ -172,6 +209,18 @@ export function VoiceFlowchartCreator({
     }
   };
 
+  // Handle modal close with animation
+  const handleClose = () => {
+    // Animate modal sliding down
+    Animated.timing(modalTranslateY, {
+      toValue: Dimensions.get('window').height,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      onClose();
+    });
+  };
+
   useEffect(() => {
     if (visible) {
       // Always start with voice mode (big green button)
@@ -179,6 +228,13 @@ export function VoiceFlowchartCreator({
       setShowWelcomeTooltip(false);
       
       loadVoiceSettingAndInitialize();
+      
+      // Animate modal sliding up from bottom
+      Animated.timing(modalTranslateY, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
       
       // Show welcome tooltip if this is a fresh conversation
       if (conversation.length === 0) {
@@ -190,10 +246,44 @@ export function VoiceFlowchartCreator({
       cleanupSession();
       setShowWelcomeTooltip(false);
       setShowTextInput(false); // Reset to voice mode when closing
+      // Reset modal position for next time
+      modalTranslateY.setValue(Dimensions.get('window').height);
     }
     
     return () => cleanupSession();
   }, [visible]);
+
+  // Handle app state changes to prevent UI issues when backgrounding/foregrounding
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: string) => {
+      console.log('📱 App state changed to:', nextAppState);
+      
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // App going to background - cleanup active sessions
+        if (visible && sessionRef.current) {
+          console.log('📱 App backgrounded - stopping recording and cleanup');
+          try {
+            if (isListening) {
+              sessionRef.current.stopListening();
+              setIsListeningWithLogging(false);
+            }
+            setIsProcessingUserInput(false);
+            setIsAIResponding(false);
+          } catch (error) {
+            console.warn('⚠️ Error during background cleanup:', error);
+          }
+        }
+      } else if (nextAppState === 'active') {
+        // App coming to foreground - ensure clean state
+        console.log('📱 App foregrounded - ensuring clean state');
+        setIsProcessingUserInput(false);
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    return () => subscription?.remove();
+  }, [visible, isListening]);
 
   // Debug effect to monitor button state
   useEffect(() => {
@@ -226,6 +316,29 @@ export function VoiceFlowchartCreator({
     }
   }, [isListening, isAIResponding, colorPulseAnim]);
 
+  // Recording indicator animation - only for user input, not AI responses
+  useEffect(() => {
+    if (isListening || isProcessingUserInput) {
+      // Start fade in/out animation
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(recordingIndicatorOpacity, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(recordingIndicatorOpacity, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      recordingIndicatorOpacity.stopAnimation();
+      recordingIndicatorOpacity.setValue(0);
+    }
+  }, [isListening, isProcessingUserInput, recordingIndicatorOpacity]);
 
   // Setup incremental flowchart callbacks
   // These are COMPLETELY ISOLATED from the voice conversation system
@@ -300,7 +413,11 @@ export function VoiceFlowchartCreator({
             if (isFinal) {
               console.log('📝 TRANSCRIPTION:', transcriptText);
               
-              // Immediately clear transcript
+              // Start processing indicator when we begin handling the transcript
+              console.log('🟡 Starting processing indicator for transcript');
+              setIsProcessingUserInput(true);
+              
+              // Reset transcript
               setTranscript('');
               
               // Set pending message to ensure it's added before response
@@ -328,52 +445,30 @@ export function VoiceFlowchartCreator({
             // Mark AI as responding when we start receiving response
             console.log('💬 AI Response started - Setting button to BLUE');
             setIsAIResponding(true);
+            // Ensure processing indicator is stopped when AI starts responding
+            setIsProcessingUserInput(false);
             
+            // Simply update conversation with the new text
             setConversation(prev => {
               const lastMessage = prev[prev.length - 1];
               
-              let newConversation;
               if (lastMessage && lastMessage.type === 'assistant') {
                 // Append to existing assistant message (streaming)
-                newConversation = [...prev.slice(0, -1), { 
+                const newText = lastMessage.text + response;
+                return [...prev.slice(0, -1), { 
                   type: 'assistant', 
-                  text: lastMessage.text + response,
-                  id: lastMessage.id // Keep the same ID for streaming updates
+                  text: newText,
+                  id: lastMessage.id
                 }];
               } else {
                 // Create new assistant message
                 const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-                newConversation = [...prev, { 
+                return [...prev, { 
                   type: 'assistant', 
                   text: response, 
                   id: messageId
                 }];
               }
-              
-              // Incremental flowchart generation disabled
-              // // Add complete assistant message to incremental flowchart generator (ISOLATED)
-              // // Only track complete messages when streaming finishes
-              // if (!lastMessage || lastMessage.type !== 'assistant') {
-              //   // This is a new assistant message
-              //   setTimeout(() => {
-              //     try {
-              //       // Wait a bit for streaming to complete, then add the full message
-              //       const fullMessage = newConversation[newConversation.length - 1]?.text;
-              //       if (fullMessage) {
-              //         const message: ConversationMessage = {
-              //           role: 'assistant', 
-              //           content: fullMessage,
-              //           timestamp: new Date()
-              //         };
-              //         incrementalFlowchartGenerator.addMessage(message, incrementalCallbacks);
-              //       }
-              //     } catch (analyzerError) {
-              //       // Silently handle analyzer errors - they won't affect voice conversation
-              //     }
-              //   }, 2000); // Wait 2 seconds for streaming to complete
-              // }
-              
-              return newConversation;
             });
           },
           onResponseComplete: () => {
@@ -407,9 +502,11 @@ export function VoiceFlowchartCreator({
 
   const cleanupSession = () => {
     if (isCleaningUp) {
+      console.log('🚫 Cleanup already in progress, skipping...');
       return; // Prevent multiple simultaneous cleanups
     }
     
+    console.log('🧹 Starting cleanup session...');
     setIsCleaningUp(true);
     
     if (sessionRef.current) {
@@ -426,12 +523,17 @@ export function VoiceFlowchartCreator({
     }
     
     // Reset incremental flowchart generator
-    incrementalFlowchartGenerator.reset();
+    try {
+      incrementalFlowchartGenerator.reset();
+    } catch (error) {
+      console.warn('⚠️ Error resetting incremental flowchart generator:', error);
+    }
     setIncrementalFlowchart(null);
     setAnalysisStatus('');
     
     setIsConnected(false);
     setIsListeningWithLogging(false);
+    setIsProcessingUserInput(false); // Reset processing state
     setConversation([]);
     setTranscript('');
     setRecordingDuration(0);
@@ -671,45 +773,42 @@ export function VoiceFlowchartCreator({
 
   return (
     <Modal
-      animationType="slide"
-      transparent={false}
+      animationType="none"
+      transparent={true}
       visible={visible}
       onRequestClose={onClose}
     >
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <View style={[
-          styles.container,
-          { backgroundColor: isDark ? '#000000' : '#FFFFFF' }
-        ]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-            Live Loops
-          </Text>
-          <View style={styles.headerButtons}>
-            <Pressable
-              style={styles.minimizeButton}
-              onPress={() => setIsMinimized(true)}
-            >
-              <Text style={styles.minimizeButtonText}>−</Text>
-            </Pressable>
-            <Pressable
-              style={styles.closeButton}
-              onPress={onClose}
-            >
-              <Text style={styles.closeButtonText}>✕</Text>
-            </Pressable>
-          </View>
-        </View>
-
-
-
-
-        {/* Incremental Flowchart Toggle */}
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={handleClose} />
+        <Animated.View 
+          style={[
+            styles.modalContainer,
+            {
+              transform: [{ translateY: modalTranslateY }],
+            }
+          ]}
+        >
+          <BlurView
+            intensity={80}
+            tint={colorScheme === 'dark' ? 'dark' : 'light'}
+            style={styles.blurContainer}
+          >
+            {/* Fixed Header - draggable */}
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
+                Live Loops
+              </Text>
+              <Pressable
+                style={styles.closeButton}
+                onPress={handleClose}
+              >
+                <Text style={styles.closeButtonText}>✕</Text>
+              </Pressable>
+            </View>
+            
+            {/* Content Container */}
+            <View style={styles.modalScrollView}>
+                {/* Incremental Flowchart Toggle */}
         {incrementalFlowchart && (
           <View style={styles.incrementalToggleSection}>
             <Pressable
@@ -785,58 +884,138 @@ export function VoiceFlowchartCreator({
             <Animated.View
               key={message.id}
               style={[
-                styles.messageBubbleContainer,
-                message.type === 'user' ? styles.userBubbleContainer : styles.assistantBubbleContainer,
+                styles.messageTextContainer,
                 message.type === 'user' && message.fadeAnim ? {
                   opacity: message.fadeAnim
                 } : {}
               ]}
             >
-              <View
-                style={[
-                  styles.messageContainer,
-                  message.type === 'user' 
-                    ? styles.userMessage 
-                    : [
-                        styles.assistantMessage,
-                        { backgroundColor: isDark ? '#2C2C2E' : '#E9E9EB' }
-                      ]
-                ]}
-              >
-                <Text style={[
-                  styles.messageText,
-                  { 
-                    color: message.type === 'user' 
-                      ? '#FFFFFF' 
-                      : (isDark ? '#FFFFFF' : '#1A1A1A'),
-                    fontWeight: message.type === 'assistant' ? '500' : 'normal'
-                  }
-                ]}>
-                  {message.text}
-                </Text>
-              </View>
-              
-              {/* Tail for user message (bottom right) */}
-              {message.type === 'user' && (
-                <View style={[
-                  styles.messageTail,
-                  styles.userTail,
-                  { borderLeftColor: '#0084FF' }
-                ]} />
-              )}
-              
-              {/* Tail for assistant message (bottom left) */}
-              {message.type === 'assistant' && (
-                <View style={[
-                  styles.messageTail,
-                  styles.assistantTail,
-                  { borderRightColor: isDark ? '#2C2C2E' : '#E9E9EB' }
-                ]} />
-              )}
+              <Text style={[
+                styles.messageText,
+                { 
+                  color: message.type === 'user' 
+                    ? (isDark ? '#CCCCCC' : '#555555') 
+                    : (isDark ? '#FFFFFF' : '#000000'),
+                  fontWeight: 'normal',
+                  textAlign: message.type === 'user' ? 'right' : 'left'
+                }
+              ]}>
+                {message.text}
+              </Text>
             </Animated.View>
           ))}
           
+          {/* Recording Indicator */}
+          {(isListening || isProcessingUserInput) && (
+            <View style={styles.messageTextContainer}>
+              <View style={[styles.recordingIndicatorContainer, { justifyContent: 'flex-end' }]}>
+                <Animated.View style={[
+                  styles.recordingIndicator,
+                  { 
+                    backgroundColor: isDark ? '#CCCCCC' : '#555555',
+                    opacity: recordingIndicatorOpacity
+                  }
+                ]}>
+                  <Text style={[
+                    styles.recordingText,
+                    { color: isDark ? '#000000' : '#FFFFFF' }
+                  ]}>
+                    ●
+                  </Text>
+                </Animated.View>
+              </View>
+            </View>
+          )}
+          
         </ScrollView>
+
+        {/* Square Cards Container - only show when text input is hidden */}
+        {!showTextInput && (
+          <View style={styles.squareCardsContainer}>
+            <View style={styles.squareCardsInner}>
+              <View style={styles.squareCardWrapper}>
+                <Text style={[
+                  styles.squareCardTitle,
+                  { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                ]}>
+                  Emotions
+                </Text>
+                <Pressable
+                  style={[
+                    styles.squareCard,
+                    { 
+                      backgroundColor: colorScheme === 'dark' 
+                        ? 'rgba(255, 255, 255, 0.1)' 
+                        : 'rgba(0, 0, 0, 0.05)',
+                      borderColor: colorScheme === 'dark'
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'rgba(0, 0, 0, 0.1)',
+                    }
+                  ]}
+                  onPress={() => {
+                    // Handle emotions card press
+                    console.log('Emotions card pressed');
+                  }}
+                >
+                </Pressable>
+              </View>
+              
+              <View style={styles.squareCardWrapper}>
+                <Text style={[
+                  styles.squareCardTitle,
+                  { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                ]}>
+                  Parts
+                </Text>
+                <Pressable
+                  style={[
+                    styles.squareCard,
+                    { 
+                      backgroundColor: colorScheme === 'dark' 
+                        ? 'rgba(255, 255, 255, 0.1)' 
+                        : 'rgba(0, 0, 0, 0.05)',
+                      borderColor: colorScheme === 'dark'
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'rgba(0, 0, 0, 0.1)',
+                    }
+                  ]}
+                  onPress={() => {
+                    // Handle parts card press
+                    console.log('Parts card pressed');
+                  }}
+                >
+                </Pressable>
+              </View>
+              
+              <View style={styles.squareCardWrapper}>
+                <Text style={[
+                  styles.squareCardTitle,
+                  { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                ]}>
+                  Needs
+                </Text>
+                <Pressable
+                  style={[
+                    styles.squareCard,
+                    { 
+                      backgroundColor: colorScheme === 'dark' 
+                        ? 'rgba(255, 255, 255, 0.1)' 
+                        : 'rgba(0, 0, 0, 0.05)',
+                      borderColor: colorScheme === 'dark'
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'rgba(0, 0, 0, 0.1)',
+                    }
+                  ]}
+                  onPress={() => {
+                    // Handle needs card press
+                    console.log('Needs card pressed');
+                  }}
+                >
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Controls - Transparent Container */}
         <View style={[
@@ -1026,8 +1205,10 @@ export function VoiceFlowchartCreator({
             </View>
           )}
         </View>
+            </View>
+          </BlurView>
+        </Animated.View>
       </View>
-      </KeyboardAvoidingView>
 
       {/* Voice Settings Modal */}
       <Modal
@@ -1036,8 +1217,8 @@ export function VoiceFlowchartCreator({
         visible={showVoiceSettings}
         onRequestClose={() => setShowVoiceSettings(false)}
       >
-        <View style={styles.modalOverlay}>
-          <BlurView intensity={50} style={styles.modalOverlay}>
+        <View style={styles.voiceModalOverlay}>
+          <BlurView intensity={50} style={styles.voiceModalOverlay}>
             <View style={[styles.voiceSettingsModal, { backgroundColor: isDark ? '#1A1A1A' : '#FFFFFF' }]}>
               {/* Settings Header */}
               <View style={styles.settingsHeader}>
@@ -1097,6 +1278,64 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 65,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  modalContainer: {
+    position: 'absolute',
+    top: 110,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  blurContainer: {
+    flex: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  modalScrollView: {
+    flex: 1,
+  },
+  modalScrollContent: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 15,
+    backgroundColor: 'transparent',
+  },
+  modalTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    flex: 1,
+    marginRight: 10,
+    fontFamily: 'Georgia',
   },
   header: {
     flexDirection: 'row',
@@ -1200,11 +1439,30 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     opacity: 0.8,
   },
+  messageTextContainer: {
+    marginVertical: 8,
+    paddingHorizontal: 20,
+  },
   messageText: {
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 19,
+    lineHeight: 24,
     fontWeight: '400',
     fontFamily: 'Georgia',
+  },
+  recordingIndicatorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  recordingIndicator: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordingText: {
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   transcriptText: {
     fontSize: 14,
@@ -1540,7 +1798,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Georgia',
   },
   // Voice Settings Modal Styles
-  modalOverlay: {
+  voiceModalOverlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1617,5 +1875,37 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     fontFamily: 'Georgia',
     textTransform: 'capitalize',
+  },
+  // Square Cards Styles
+  squareCardsContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 15,
+    paddingBottom: 15,
+  },
+  squareCardsInner: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  squareCardWrapper: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  squareCardTitle: {
+    fontSize: 20,
+    fontFamily: 'Georgia',
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  squareCard: {
+    width: '100%',
+    maxWidth: 110,
+    aspectRatio: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
   },
 });

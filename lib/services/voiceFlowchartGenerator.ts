@@ -1157,6 +1157,7 @@ export const createVoiceFlowchartSession = (
             currentSound = null;
             isProcessingAudio = false;
             hasStartedPlayingResponse = false;
+            
             callbacks.onResponseComplete?.();
           }
         }
@@ -1206,7 +1207,7 @@ export const createVoiceFlowchartSession = (
           
         case 'response.created':
           console.log('🔍 DEBUG: New response created, ID:', message.response?.id);
-          // Reset sentence tracking for new response
+          // Reset for new response
           currentTranscript = '';
           sentenceChunkBoundaries = [];
           break;
@@ -1284,7 +1285,10 @@ export const createVoiceFlowchartSession = (
           if (message.delta) {
             audioQueue.push(message.delta);
             isReceivingAudio = true;
-            console.log(`🔊 Received audio chunk, queue now has ${audioQueue.length} chunks`);
+            // Log less frequently to avoid spam
+            if (audioQueue.length % 10 === 0 || audioQueue.length === 1) {
+              console.log(`🔊 Received audio chunks: ${audioQueue.length} in queue`);
+            }
             
             // Don't immediately process - let sentence detection trigger processing
             // This ensures audio segments align with natural sentence boundaries
@@ -1301,8 +1305,8 @@ export const createVoiceFlowchartSession = (
             processAudioQueue();
           }
           
-          // Reset sentence tracking for next response
-          currentTranscript = '';
+          // Don't reset transcript here - audio is still playing
+          // Reset sentence boundaries for next response
           sentenceChunkBoundaries = [];
           break;
           
@@ -1346,6 +1350,8 @@ export const createVoiceFlowchartSession = (
         case 'response.done':
           console.log('🔍 DEBUG: Response completed, ID:', message.response?.id);
           hasActiveResponse = false;
+          // Don't reset currentTranscript here - audio is still playing!
+          // These will be reset when audio completes in onResponseComplete
           // Don't call onResponseComplete here - wait for audio to finish playing
           break;
           
