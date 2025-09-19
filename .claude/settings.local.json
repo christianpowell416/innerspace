@@ -38,7 +38,14 @@
       "Bash(git add:*)",
       "Bash(git push:*)",
       "Bash(git diff:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell:*)",
+      "Bash(ipconfig)",
+      "WebFetch(domain:docs.expo.dev)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebSearch",
+      "WebFetch(domain:learn.microsoft.com)"
     ],
     "deny": []
   }

@@ -1,7 +1,7 @@
 // Temporary local OpenAI service to bypass Supabase functions
 // This allows testing the voice chat while functions are being deployed
 
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'

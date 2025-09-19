@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type VoiceType = 'alloy' | 'ash' | 'ballad' | 'coral' | 'echo' | 'sage' | 'shimmer' | 'verse';
+export type VoiceType = 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' | 'marin' | 'cedar';
 
 const VOICE_SETTING_KEY = 'selectedVoice';
 const DEFAULT_VOICE: VoiceType = 'alloy';
@@ -27,10 +27,12 @@ export const setSelectedVoice = async (voice: VoiceType): Promise<void> => {
 };
 
 const isValidVoice = (voice: string): voice is VoiceType => {
-  const validVoices: VoiceType[] = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'];
+  const validVoices: VoiceType[] = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'marin', 'cedar'];
   return validVoices.includes(voice as VoiceType);
 };
 
 export const getAllVoices = (): VoiceType[] => {
-  return ['alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'];
+  const voices: VoiceType[] = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer', 'marin', 'cedar'];
+  // console.log('🎵 getAllVoices called, returning:', voices);
+  return voices;
 };

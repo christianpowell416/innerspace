@@ -1,5 +1,5 @@
 import { FlowchartStructure } from '../types/flowchart';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
 import { promptContent } from '../../assets/flowchart/prompt_instructions.js';
 import { requirementsContent } from '../../assets/flowchart/requirements.js';

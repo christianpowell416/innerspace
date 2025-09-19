@@ -165,7 +165,7 @@ export function FlowchartViewer({
     // For bounds calculation, use the maximum radius to ensure proper spacing
     // regardless of shape type
     const radius = maxNodeRadius || 50; // Fallback to 50 if maxNodeRadius not ready
-    console.log('📐 calculateNodeRadius returning:', radius, 'for node:', node.id);
+    // console.log('📐 calculateNodeRadius returning:', radius, 'for node:', node.id);
     return radius;
   };
 

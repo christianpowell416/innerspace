@@ -58,7 +58,7 @@ export function VoiceFlowchartCreator({
   
   // Debug wrapper for setIsListening to track state changes
   const setIsListeningWithLogging = (value: boolean) => {
-    console.log(`🔄 setIsListening: ${isListening} → ${value}`, new Error().stack?.split('\n')[2]);
+    // console.log(`🔄 setIsListening: ${isListening} → ${value}`, new Error().stack?.split('\n')[2]);
     setIsListening(value);
   };
   const [isLoading, setIsLoading] = useState(false);
@@ -74,7 +74,6 @@ export function VoiceFlowchartCreator({
     }>
   }>>([]);
   const [textInput, setTextInput] = useState('');
-  const [isContinuousMode, setIsContinuousMode] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
@@ -95,12 +94,12 @@ export function VoiceFlowchartCreator({
 
   // Helper function to add user message with fade-in animation
   const addUserMessageWithAnimation = (text: string) => {
-    console.log('📝 Adding user message with animation:', text);
+    // console.log('📝 Adding user message with animation:', text);
     const fadeAnim = new Animated.Value(0);
     const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
     
     // Stop processing state - text is about to appear
-    console.log('🛑 Stopping processing indicator');
+    // console.log('🛑 Stopping processing indicator');
     setIsProcessingUserInput(false);
     
     setConversation(prev => {
@@ -111,7 +110,7 @@ export function VoiceFlowchartCreator({
         lastMessage.text === text;
       
       if (isImmediateDuplicate) {
-        console.log('🚫 Skipping immediate duplicate user message:', text);
+        // console.log('🚫 Skipping immediate duplicate user message:', text);
         return prev;
       }
       
@@ -187,7 +186,7 @@ export function VoiceFlowchartCreator({
     try {
       const voice = await getSelectedVoice();
       setSelectedVoiceState(voice);
-      console.log('✅ Loaded voice setting:', voice);
+      // console.log('✅ Loaded voice setting:', voice);
       
       // Add small delay to ensure any previous session cleanup is complete
       setTimeout(() => {
@@ -203,7 +202,7 @@ export function VoiceFlowchartCreator({
     try {
       setSelectedVoiceState(voice);
       await setSelectedVoice(voice);
-      console.log('✅ Voice setting saved:', voice);
+      // console.log('✅ Voice setting saved:', voice);
     } catch (error) {
       console.error('❌ Error saving voice setting:', error);
     }
@@ -256,7 +255,7 @@ export function VoiceFlowchartCreator({
   // Handle app state changes to prevent UI issues when backgrounding/foregrounding
   useEffect(() => {
     const handleAppStateChange = (nextAppState: string) => {
-      console.log('📱 App state changed to:', nextAppState);
+      // console.log('📱 App state changed to:', nextAppState);
       
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         // App going to background - cleanup active sessions
@@ -288,7 +287,7 @@ export function VoiceFlowchartCreator({
   // Debug effect to monitor button state
   useEffect(() => {
     const color = isListening ? 'RED' : (isAIResponding ? 'BLUE' : 'GREEN');
-    console.log(`🎨 Button Color: ${color} (isListening=${isListening}, isAIResponding=${isAIResponding})`);
+    // console.log(`🎨 Button Color: ${color} (isListening=${isListening}, isAIResponding=${isAIResponding})`);
   }, [isListening, isAIResponding]);
 
   // Color pulse animation for recording or AI responding states
@@ -372,11 +371,11 @@ export function VoiceFlowchartCreator({
     try {
       setIsLoading(true);
       
-      // Load the flowchart template
-      const template = await loadFlowchartTemplate();
+      // Skip flowchart template loading for now
+      // const template = await loadFlowchartTemplate();
       
-      // Generate instructions from the centralized prompt file
-      const sessionInstructions = await generateVoiceInstructions(template);
+      // Generate instructions from the centralized prompt file with null template
+      const sessionInstructions = await generateVoiceInstructions(null);
       
       const session = createVoiceFlowchartSession(
         {
@@ -395,15 +394,15 @@ export function VoiceFlowchartCreator({
             setIsListeningWithLogging(false);
           },
           onListeningStart: () => {
-            console.log('🎤 VOICE: Started recording');
-            console.log('🔵 Button State: isListening=true, isAIResponding=false → RED');
+            // console.log('🎤 VOICE: Started recording');
+            // console.log('🔵 Button State: isListening=true, isAIResponding=false → RED');
             setIsListeningWithLogging(true);
             // Clear AI responding state when we start listening for user input
             setIsAIResponding(false);
           },
           onListeningStop: () => {
-            console.log('🛑 VOICE: Stopped recording');
-            console.log('🔵 Button State: isListening=false, isAIResponding=true → BLUE');
+            // console.log('🛑 VOICE: Stopped recording');
+            // console.log('🔵 Button State: isListening=false, isAIResponding=true → BLUE');
             setIsListeningWithLogging(false);
             setIsAIResponding(true); // Set AI responding immediately when recording stops
             // Clear any lingering transcript when recording stops
@@ -502,11 +501,11 @@ export function VoiceFlowchartCreator({
 
   const cleanupSession = () => {
     if (isCleaningUp) {
-      console.log('🚫 Cleanup already in progress, skipping...');
+      // console.log('🚫 Cleanup already in progress, skipping...');
       return; // Prevent multiple simultaneous cleanups
     }
     
-    console.log('🧹 Starting cleanup session...');
+    // console.log('🧹 Starting cleanup session...');
     setIsCleaningUp(true);
     
     if (sessionRef.current) {
@@ -553,11 +552,11 @@ export function VoiceFlowchartCreator({
   };
 
 
+  
   const handleTapToTalk = () => {
     // IMMEDIATE haptic feedback for tactile response
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     
-    console.log('🚨🚨🚨 HANDLE_TAP_TO_TALK_CALLED 🚨🚨🚨');
     console.log('🎤 handleTapToTalk called', {
       isListening,
       isAIResponding, 
@@ -673,17 +672,6 @@ export function VoiceFlowchartCreator({
     }
   };
 
-  const toggleContinuousMode = () => {
-    if (sessionRef.current && isConnected) {
-      if (isContinuousMode) {
-        sessionRef.current.stopContinuousListening();
-        setIsContinuousMode(false);
-      } else {
-        sessionRef.current.startContinuousListening();
-        setIsContinuousMode(true);
-      }
-    }
-  };
 
 
   const handleSendText = () => {
@@ -796,7 +784,7 @@ export function VoiceFlowchartCreator({
             {/* Fixed Header - draggable */}
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
-                Live Loops
+                Live Loop
               </Text>
               <Pressable
                 style={styles.closeButton}
@@ -1066,7 +1054,7 @@ export function VoiceFlowchartCreator({
                       { backgroundColor: isDark ? '#333333' : '#000000' }
                     ]}>
                       <Text style={styles.welcomeTooltipText}>
-                        Tap to begin conversation
+                        Tap to toggle recording
                       </Text>
                       <View style={styles.tooltipArrowContainer}>
                         <View style={[

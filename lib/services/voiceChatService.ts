@@ -1,6 +1,6 @@
-import { Audio } from 'expo-av'
-import * as FileSystem from 'expo-file-system'
-import { AudioModule } from 'expo-audio'
+import AudioModule from 'expo-audio/build/AudioModule'
+import { setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio'
+import * as FileSystem from 'expo-file-system/legacy'
 import { localOpenAIService } from './localOpenAIService'
 import { elevenLabsService, ELEVENLABS_VOICES } from './elevenLabsService'
 
@@ -22,8 +22,8 @@ interface VoiceChatCallbacks {
 }
 
 export class VoiceChatService {
-  private recording: Audio.Recording | null = null
-  private audioPlayer: Audio.Sound | null = null
+  private recording: any | null = null
+  private audioPlayer: any | null = null
   private abortController: AbortController | null = null
   private audioQueue: Array<{audio: string, format: string}> = []
   private isPlaying = false
@@ -41,7 +41,7 @@ export class VoiceChatService {
 
   async requestPermissions(): Promise<boolean> {
     try {
-      const permissionStatus = await AudioModule.requestRecordingPermissionsAsync()
+      const permissionStatus = await requestRecordingPermissionsAsync()
       return permissionStatus.granted
     } catch (error) {
       console.error('Permission request failed:', error)
@@ -57,25 +57,29 @@ export class VoiceChatService {
       }
 
       // Configure audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        interruptionMode: 'duckOthers',
+        interruptionModeAndroid: 'duckOthers',
+        shouldPlayInBackground: false,
+        shouldRouteThroughEarpiece: false,
       })
 
       // Create and start recording
-      const recording = new Audio.Recording()
+      const recording = new AudioModule.AudioRecorder({})
       await recording.prepareToRecordAsync({
         android: {
           extension: '.wav',
-          outputFormat: Audio.AndroidOutputFormat.DEFAULT,
-          audioEncoder: Audio.AndroidAudioEncoder.DEFAULT,
+          outputFormat: 'default',
+          audioEncoder: 'default',
           sampleRate: 16000, // Whisper works well with 16kHz
           numberOfChannels: 1,
           bitRate: 128000,
         },
         ios: {
           extension: '.wav',
-          audioQuality: Audio.IOSAudioQuality.HIGH,
+          audioQuality: 96, // HIGH quality
           sampleRate: 16000,
           numberOfChannels: 1,
           bitRate: 128000,
@@ -89,7 +93,7 @@ export class VoiceChatService {
         }
       })
 
-      await recording.startAsync()
+      recording.record()
       this.recording = recording
       console.log('Recording started')
     } catch (error) {
@@ -104,8 +108,8 @@ export class VoiceChatService {
         return null
       }
 
-      await this.recording.stopAndUnloadAsync()
-      const uri = this.recording.getURI()
+      await this.recording.stop()
+      const uri = this.recording.uri
       this.recording = null
 
       if (!uri) {
@@ -365,11 +369,13 @@ export class VoiceChatService {
     
     try {
       // Set audio mode for playback
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
-        shouldDuckAndroid: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        interruptionMode: 'duckOthers',
+        interruptionModeAndroid: 'duckOthers',
+        shouldRouteThroughEarpiece: false,
       })
       console.log('🔧 Audio mode set for playback')
 
@@ -405,8 +411,8 @@ export class VoiceChatService {
 
         // Play the audio
         console.log('▶️ Creating sound from file...')
-        const { sound } = await Audio.Sound.createAsync({ uri: fileUri })
-        await sound.playAsync()
+        const sound = new AudioModule.AudioPlayer({ uri: fileUri }, 500, false)
+        sound.play()
         
         // Wait for playback to complete
         await new Promise((resolve) => {
@@ -418,7 +424,7 @@ export class VoiceChatService {
         })
 
         // Clean up
-        await sound.unloadAsync()
+        sound.remove()
         await FileSystem.deleteAsync(fileUri, { idempotent: true })
       }
     } catch (error) {
@@ -575,11 +581,11 @@ export class VoiceChatService {
   async cleanup(): Promise<void> {
     this.cancelStream()
     if (this.recording) {
-      await this.recording.stopAndUnloadAsync()
+      await this.recording.stop()
       this.recording = null
     }
     if (this.audioPlayer) {
-      await this.audioPlayer.unloadAsync()
+      this.audioPlayer.remove()
       this.audioPlayer = null
     }
   }

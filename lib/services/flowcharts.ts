@@ -1,7 +1,7 @@
 import { supabase } from '../supabase';
 import { Database } from '../database.types';
 import { FlowchartStructure } from '../types/flowchart';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform, Alert } from 'react-native';
 
