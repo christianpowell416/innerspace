@@ -1,8 +1,7 @@
-import { File } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system/legacy';
 import AudioModule from 'expo-audio/build/AudioModule';
-import { RecordingOptions, RecordingPresets } from 'expo-audio';
 import { setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
+import { RecordingOptions, RecordingPresets } from 'expo-audio';
 import { FlowchartStructure } from '../types/flowchart';
 import { voiceConversationInstructions } from '../../assets/flowchart/voice_conversation_instructions.js';
 
@@ -207,7 +206,7 @@ ${templateSection}${finalInstructions.trim()}`;
   } catch (error) {
     console.error('❌ Error generating voice instructions:', error);
     // Use system prompt from centralized file as fallback
-    return extractSystemPromptFromCentralFile();
+    return extractSystemPromptFromVoiceInstructions();
   }
 };
 
@@ -264,11 +263,15 @@ export const createVoiceFlowchartSession = (
   let isUserStoppingRecording = false; // Flag to prevent monitoring from interfering with user stops
   let currentTranscript = ''; // Track transcript as it builds
   let sentenceChunkBoundaries: number[] = []; // Track which chunks end sentences
+  let audioStreamingInterval: NodeJS.Timeout | null = null; // For streaming audio chunks
+  let lastAudioStreamPosition = 0; // Track last streamed position
   
   // Seamless audio streaming variables (working implementation)
   let streamingAudioBuffer: Uint8Array[] = [];
-  let streamingPlayer: AudioModule.AudioPlayer | null = null;
+  let streamingPlayer: any | null = null;
   let isProcessingAudio = false;
+  let recordingStartTime: number | null = null;
+  let recordingStopTime: number | null = null;
 
   const session: VoiceFlowchartSession = {
     connect: async () => {
@@ -299,12 +302,12 @@ export const createVoiceFlowchartSession = (
           clearTimeout(connectionTimeout);
           isConnected = true;
           
-          // Session configuration with audio support
+          // Session configuration with audio support (August 2025 specifications)
           const sessionConfig = {
             type: 'session.update',
             session: {
               modalities: ['text', 'audio'],
-              instructions: config.sessionInstructions || extractSystemPromptFromCentralFile(),
+              instructions: config.sessionInstructions || extractSystemPromptFromVoiceInstructions(),
               voice: config.voice || 'alloy',
               input_audio_format: 'pcm16',
               output_audio_format: 'pcm16',
@@ -317,7 +320,10 @@ export const createVoiceFlowchartSession = (
                 prefix_padding_ms: 300,
                 silence_duration_ms: 500
               } : null,
-              temperature: config.temperature || 0.7
+              // Official August 2025 temperature specification (0.6-1.2 range, 0.8 default)
+              temperature: config.temperature || 0.8,
+              // Official max response tokens specification (1-4096 or "inf")
+              max_response_output_tokens: config.maxTokens || 4096
             }
           };
           
@@ -366,7 +372,7 @@ export const createVoiceFlowchartSession = (
 
     disconnect: () => {
       console.log('🔌 Disconnect called - cleaning up all resources');
-      
+
       if (websocket) {
         websocket.close();
         websocket = null;
@@ -380,6 +386,13 @@ export const createVoiceFlowchartSession = (
         currentRecording.stop().catch(e => console.log('⚠️ Error unloading recording:', e.message));
         currentRecording = null;
       }
+      if (audioStreamingInterval) {
+        clearInterval(audioStreamingInterval);
+        audioStreamingInterval = null;
+      }
+
+      // No intervals to stop in event-driven approach
+
       isConnected = false;
       isListening = false;
       isPlaying = false;
@@ -391,7 +404,11 @@ export const createVoiceFlowchartSession = (
       isUserStoppingRecording = false;
       currentTranscript = '';
       sentenceChunkBoundaries = [];
-      
+      lastAudioStreamPosition = 0;
+      recordingStartTime = null;
+      recordingStopTime = null;
+      audioSegmentCount = 0; // Reset progressive counter
+
       console.log('✅ Disconnect cleanup complete');
     },
 
@@ -444,6 +461,7 @@ export const createVoiceFlowchartSession = (
         hasStartedPlayingResponse = false;
         currentTranscript = '';
         sentenceChunkBoundaries = [];
+        audioSegmentCount = 0; // Reset progressive counter
         
         // Cancel any active response from the API and clear audio queue
         if (hasActiveResponse && websocket) {
@@ -500,7 +518,7 @@ export const createVoiceFlowchartSession = (
         }
         
         // Request microphone permissions (should be fast if already granted)
-        const permissionStatus = await AudioModule.requestRecordingPermissionsAsync();
+        const permissionStatus = await requestRecordingPermissionsAsync();
         if (!permissionStatus.granted) {
           throw new Error('Microphone permission not granted');
         }
@@ -522,7 +540,7 @@ export const createVoiceFlowchartSession = (
         try {
           // Configure real-time recording for streaming to Realtime API
           const recording = new AudioModule.AudioRecorder({});
-          
+
           // Optimized configuration for real-time streaming (24kHz matching API)
           await recording.prepareToRecordAsync({
             extension: '.wav',
@@ -545,12 +563,70 @@ export const createVoiceFlowchartSession = (
               bitsPerSecond: 384000,
             }
           });
-          
+
           // Start recording for continuous streaming
           recording.record();
           currentRecording = recording;
-          
-          
+          lastAudioStreamPosition = 0;
+          recordingStartTime = Date.now();
+          console.log('🎤 [LATENCY] Recording started at:', new Date().toISOString());
+
+          // Start streaming audio chunks to Realtime API every 100ms
+          audioStreamingInterval = setInterval(async () => {
+            if (currentRecording && isListening && websocket && isConnected) {
+              try {
+                // Get current recording URI
+                const uri = currentRecording.uri;
+                if (uri) {
+                  // Check if file exists and has content
+                  const fileInfo = await FileSystem.getInfoAsync(uri);
+                  if (!fileInfo.exists || fileInfo.size === 0) {
+                    return; // File not ready yet
+                  }
+
+                  // Read the audio file as it's being recorded
+                  const audioData = await FileSystem.readAsStringAsync(uri, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
+
+                  // Convert base64 to binary and extract PCM
+                  const binaryString = atob(audioData);
+                  const bytes = new Uint8Array(binaryString.length);
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                  }
+
+                  // Skip WAV header (44 bytes) to get raw PCM
+                  const pcmStart = 44;
+                  if (bytes.length > pcmStart && bytes.length > lastAudioStreamPosition) {
+                    // Get only the new audio data since last stream
+                    const newPcmData = bytes.slice(Math.max(pcmStart, lastAudioStreamPosition));
+
+                    // Convert to base64 for transmission
+                    let binaryStr = '';
+                    for (let i = 0; i < newPcmData.length; i++) {
+                      binaryStr += String.fromCharCode(newPcmData[i]);
+                    }
+                    const pcmBase64 = btoa(binaryStr);
+
+                    // Stream the audio chunk to Realtime API
+                    const audioAppendMessage = {
+                      type: 'input_audio_buffer.append',
+                      audio: pcmBase64
+                    };
+                    websocket.send(JSON.stringify(audioAppendMessage));
+
+                    lastAudioStreamPosition = bytes.length;
+                    // console.log(`📡 Streamed ${newPcmData.length} bytes of PCM audio`);
+                  }
+                }
+              } catch (streamError) {
+                // Ignore streaming errors - recording may still be initializing
+                // console.log('⚠️ Audio streaming error (continuing):', streamError.message);
+              }
+            }
+          }, 100); // Stream every 100ms for low latency
+
           // console.log('📡 Started real-time audio streaming to Realtime API');
           isCreatingRecording = false;
         } catch (recordingError) {
@@ -574,199 +650,126 @@ export const createVoiceFlowchartSession = (
     },
 
     stopListening: async () => {
-      // console.log('🛑 stopListening called (REALTIME STREAMING)', {
-      //   hasWebsocket: !!websocket,
-      //   isConnected,
-      //   hasCurrentRecording: !!currentRecording,
-      //   isListening
-      // });
-      
+      console.log('🛑 stopListening called (REALTIME STREAMING)');
+
       if (!websocket || !isConnected || !currentRecording || !isListening) {
-        // console.log('⚠️ stopListening aborted - missing requirements or already stopped');
+        console.log('⚠️ stopListening aborted - missing requirements or already stopped');
         return;
       }
-      
+
       // Prevent double-stopping
       if (!isListening) {
-        // console.log('⚠️ Already stopped listening - ignoring duplicate stop call');
+        console.log('⚠️ Already stopped listening - ignoring duplicate stop call');
         return;
       }
-      
+
       // Set flags immediately to prevent race conditions
       isListening = false;
-      isUserStoppingRecording = true; // Prevent monitoring from interfering
-      
+      isUserStoppingRecording = true;
+
+      // Stop the audio streaming interval
+      if (audioStreamingInterval) {
+        clearInterval(audioStreamingInterval);
+        audioStreamingInterval = null;
+      }
+
       try {
-        // Get recording status before stopping
-        const status = currentRecording.getStatus();
-        const apiReportedDuration = status.durationMillis || 0;
-        
-        // console.log(`📊 Recording status before stop:`, {
-        //   isRecording: status.isRecording,
-        //   isDoneRecording: status.isDoneRecording,
-        //   durationMillis: status.durationMillis,
-        //   canRecord: status.canRecord
-        // });
-        
+        // Stop the recording
+        console.log('⏹️ [LATENCY] Stopping recording at:', new Date().toISOString());
         const result = await currentRecording.stop();
         const uri = currentRecording.uri;
-        
-        // console.log(`📊 Stop result:`, {
-        //   uri: uri,
-        //   status: result?.status,
-        //   durationMillis: result?.durationMillis
-        // });
-        
+        console.log('✅ [LATENCY] Recording stopped at:', new Date().toISOString());
+
+        // Stream any remaining audio to the Realtime API
         if (uri) {
-          // Get file info
-          const file = new File(uri);
-          const fileInfo = file.info();
-          
-          // Use the duration from the stop result if available, otherwise use API reported duration
-          const actualDuration = result?.durationMillis ?? apiReportedDuration;
-          
-          // Check if we have a substantial audio file - prioritize file size over duration
-          // since duration might be unreliable immediately after stopping
-          const hasSubstantialAudio = fileInfo.exists && fileInfo.size > 3000;
-          const hasMinimumDuration = actualDuration >= 50 || actualDuration === 0; // Allow 0ms duration as it might be a timing issue
-          
-          
-          if (hasSubstantialAudio && hasMinimumDuration) {
-            // Read the audio file as base64
-            const wavBase64 = await FileSystem.readAsStringAsync(uri, {
+          try {
+            const finalAudioData = await FileSystem.readAsStringAsync(uri, {
               encoding: FileSystem.EncodingType.Base64,
             });
-            
-            // Check if audio contains actual speech content
-            const audioHasSpeech = await checkAudioForSpeechContent(wavBase64);
-            if (!audioHasSpeech) {
-              console.log('🔇 No speech detected in audio, skipping transcription');
-              // Reset AI responding state since no transcription will happen
-              callbacks.onResponseComplete?.();
-              return;
+
+            // Convert base64 to binary
+            const binaryString = atob(finalAudioData);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
             }
-            
-            // First transcribe locally to show user message immediately
-            
-            try {
-              // Create a temporary file for Whisper API
-              const tempUri = `${FileSystem.documentDirectory}temp_audio_${Date.now()}.wav`;
-              await FileSystem.writeAsStringAsync(tempUri, wavBase64, {
-                encoding: FileSystem.EncodingType.Base64,
-              });
 
-              // Use local transcription
-              const transcriptionResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
-                },
-                body: (() => {
-                  const formData = new FormData();
-                  formData.append('file', {
-                    uri: tempUri,
-                    type: 'audio/wav',
-                    name: 'audio.wav'
-                  } as any);
-                  formData.append('model', 'whisper-1');
-                  formData.append('language', 'en'); // Force English language
-                  return formData;
-                })(),
-              });
+            // Skip WAV header (44 bytes) to get raw PCM
+            const pcmStart = 44;
+            if (bytes.length > Math.max(pcmStart, lastAudioStreamPosition)) {
+              // Get the final chunk of audio
+              const finalPcmData = bytes.slice(Math.max(pcmStart, lastAudioStreamPosition));
 
-              // Clean up temp file
-              await FileSystem.deleteAsync(tempUri, { idempotent: true });
-
-              if (transcriptionResponse.ok) {
-                const transcriptionResult = await transcriptionResponse.json();
-                const userText = transcriptionResult.text;
-                
-                console.log(`📝 TRANSCRIPTION: "${userText}"`);
-                
-                // Only check for completely empty transcriptions
-                if (!userText || userText.trim().length === 0) {
-                  // console.log(`🚫 Filtered out empty transcription`);
-                  return;
-                }
-                
-                // Immediately show the user's message in the UI
-                callbacks.onTranscript?.(userText, true);
-                
-                // Wait a bit for UI to update, then send text message for response
-                setTimeout(() => {
-                  
-                  // Send as text message to Realtime API
-                  const textMessage = {
-                    type: 'conversation.item.create',
-                    item: {
-                      type: 'message', 
-                      role: 'user',
-                      content: [{
-                        type: 'input_text',
-                        text: userText
-                      }]
-                    }
-                  };
-                  
-                  websocket.send(JSON.stringify(textMessage));
-                  
-                  // Request response
-                  const responseMessage = {
-                    type: 'response.create',
-                    response: {
-                      modalities: ['text', 'audio']
-                    }
-                  };
-                  websocket.send(JSON.stringify(responseMessage));
-                  hasActiveResponse = true;
-                }, 300);
-                
-              } else {
-                const errorText = await transcriptionResponse.text();
-                
-                // Check if it's the "audio too short" error
-                try {
-                  const errorData = JSON.parse(errorText);
-                  if (errorData.error?.code === 'audio_too_short') {
-                    // Don't show error to user for very short audio - just ignore it
-                    // This handles quick taps or interruption gestures gracefully
-                    return;
-                  }
-                } catch (parseError) {
-                  // If we can't parse the error, fall through to general error handling
-                }
-                
-                callbacks.onError?.(new Error(`Transcription failed: ${transcriptionResponse.status}`));
+              // Convert to base64 for transmission
+              let binaryStr = '';
+              for (let i = 0; i < finalPcmData.length; i++) {
+                binaryStr += String.fromCharCode(finalPcmData[i]);
               }
-            } catch (transcriptionError) {
-              console.error('❌ Local transcription error:', transcriptionError);
-              callbacks.onError?.(transcriptionError as Error);
+              const pcmBase64 = btoa(binaryStr);
+
+              const audioAppendMessage = {
+                type: 'input_audio_buffer.append',
+                audio: pcmBase64
+              };
+              websocket.send(JSON.stringify(audioAppendMessage));
+              console.log(`📡 Sent final ${finalPcmData.length} bytes of PCM audio`);
             }
-          } else {
-            callbacks.onError?.(new Error('Recording too short. Please hold the button longer while speaking.'));
-          }
-          
-          // Clean up audio file
-          try {
-            await FileSystem.deleteAsync(uri, { idempotent: true });
-          } catch (cleanupError) {
-            console.warn('⚠️ Could not clean up audio file:', cleanupError);
+
+            // Commit the audio buffer to trigger transcription and response
+            const commitTime = Date.now();
+            console.log('📤 [LATENCY] Committing audio buffer at:', new Date().toISOString());
+            const commitMessage = {
+              type: 'input_audio_buffer.commit'
+            };
+            websocket.send(JSON.stringify(commitMessage));
+            console.log('✅ [LATENCY] Audio buffer committed at:', new Date().toISOString());
+
+            if (recordingStopTime) {
+              const stopToCommitDelay = commitTime - recordingStopTime;
+              console.log('⏱️ [LATENCY] Stop to commit delay:', stopToCommitDelay + 'ms');
+            }
+
+            // Request a response from the API
+            console.log('🚀 [LATENCY] Requesting response at:', new Date().toISOString());
+            const responseMessage = {
+              type: 'response.create',
+              response: {
+                modalities: ['text', 'audio']
+              }
+            };
+            websocket.send(JSON.stringify(responseMessage));
+            hasActiveResponse = true;
+            console.log('✅ [LATENCY] Response requested at:', new Date().toISOString());
+
+            // Clean up audio file
+            try {
+              await FileSystem.deleteAsync(uri, { idempotent: true });
+            } catch (cleanupError) {
+              console.warn('⚠️ Could not clean up audio file:', cleanupError);
+            }
+          } catch (finalStreamError) {
+            console.error('❌ Error sending final audio chunk:', finalStreamError);
           }
         }
-        
+
         currentRecording = null;
-        isUserStoppingRecording = false; // Reset flag after stop is complete
-        // isListening already set to false above to prevent race conditions
+        lastAudioStreamPosition = 0;
+        isUserStoppingRecording = false;
         callbacks.onListeningStop?.();
-        
+
       } catch (error) {
         console.error('❌ Error stopping voice recording:', error);
-        
+
         // Ensure cleanup happens even if stopping fails
+        if (audioStreamingInterval) {
+          clearInterval(audioStreamingInterval);
+          audioStreamingInterval = null;
+        }
         currentRecording = null;
         isListening = false;
-        isUserStoppingRecording = false; // Reset flag even on error
-        
+        lastAudioStreamPosition = 0;
+        isUserStoppingRecording = false;
+
         callbacks.onError?.(error as Error);
       }
     },
@@ -869,8 +872,19 @@ export const createVoiceFlowchartSession = (
         
         // Stop current audio playback
         if (currentSound) {
-          currentSound.pause();
-          currentSound.remove();
+          try {
+            if (currentSound.pause) {
+              currentSound.pause();
+            }
+            if (currentSound.remove) {
+              const removeResult = currentSound.remove();
+              if (removeResult && typeof removeResult.catch === 'function') {
+                removeResult.catch(() => {});
+              }
+            }
+          } catch (error) {
+            console.log('⚠️ Audio stop error:', error);
+          }
           currentSound = null;
         }
         
@@ -898,12 +912,12 @@ export const createVoiceFlowchartSession = (
   const createWAVHeader = (dataLength: number, sampleRate: number = 24000): ArrayBuffer => {
     const buffer = new ArrayBuffer(44);
     const view = new DataView(buffer);
-    
+
     // "RIFF" chunk descriptor
     view.setUint32(0, 0x52494646, false); // "RIFF"
     view.setUint32(4, dataLength + 36, true); // file size - 8
     view.setUint32(8, 0x57415645, false); // "WAVE"
-    
+
     // "fmt " sub-chunk
     view.setUint32(12, 0x666d7420, false); // "fmt "
     view.setUint32(16, 16, true); // sub-chunk size
@@ -913,12 +927,30 @@ export const createVoiceFlowchartSession = (
     view.setUint32(28, sampleRate * 2, true); // byte rate
     view.setUint16(32, 2, true); // block align
     view.setUint16(34, 16, true); // bits per sample
-    
+
     // "data" sub-chunk
     view.setUint32(36, 0x64617461, false); // "data"
     view.setUint32(40, dataLength, true); // data size
-    
+
     return buffer;
+  };
+
+  const createWavFile = (pcmData: Uint8Array, sampleRate: number = 24000, channels: number = 1): string => {
+    const wavHeader = createWAVHeader(pcmData.length, sampleRate);
+    const wavHeaderArray = new Uint8Array(wavHeader);
+    const fullWavData = new Uint8Array(wavHeaderArray.length + pcmData.length);
+    fullWavData.set(wavHeaderArray, 0);
+    fullWavData.set(pcmData, wavHeaderArray.length);
+
+    // Convert to string in chunks to avoid stack overflow
+    let binaryString = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < fullWavData.length; i += chunkSize) {
+      const chunk = fullWavData.slice(i, i + chunkSize);
+      binaryString += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+
+    return btoa(binaryString);
   };
 
   const base64ToArrayBuffer = (base64: string): ArrayBuffer => {
@@ -962,112 +994,15 @@ export const createVoiceFlowchartSession = (
     }
   };
 
-  // Simple audio streaming - process one segment at a time (NO LOOPS)
-  const processStreamingAudio = async () => {
-    if (streamingAudioBuffer.length === 0) {
-      console.log('🎵 No chunks to process');
-      isProcessingAudio = false;
-      return;
-    }
-    
-    if (isProcessingAudio) {
-      console.log('🎵 Already processing audio, skipping');
-      return;
-    }
+  // Event-driven audio processing (no intervals)
+  let audioQueue: Uint8Array[] = []; // Continuous audio buffer for gapless playback
+  let isAudioQueuePlaying = false;
 
-    isProcessingAudio = true;
-    
-    try {
-      // Take only available chunks (no waiting)
-      const processChunks = [...streamingAudioBuffer];
-      streamingAudioBuffer = [];
-      
-      console.log(`🎵 Processing ${processChunks.length} chunks for seamless playback`);
-      
-      // Combine chunks into a single buffer
-      const totalLength = processChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-      const combinedBuffer = new Uint8Array(totalLength);
-      
-      let offset = 0;
-      for (const chunk of processChunks) {
-        combinedBuffer.set(chunk, offset);
-        offset += chunk.length;
-      }
-      
-      // Create WAV header for the combined audio
-      const wavHeader = createWAVHeader(combinedBuffer.length, 24000);
-      const wavHeaderArray = new Uint8Array(wavHeader);
-      
-      // Combine header and audio data
-      const fullWavData = new Uint8Array(wavHeaderArray.length + combinedBuffer.length);
-      fullWavData.set(wavHeaderArray, 0);
-      fullWavData.set(combinedBuffer, wavHeaderArray.length);
-      
-      // Convert to base64 for file creation
-      const base64Audio = btoa(String.fromCharCode(...fullWavData));
-      
-      // Create temporary file for seamless playback
-      const fileUri = FileSystem.documentDirectory + `streaming_audio_${Date.now()}.wav`;
-      await FileSystem.writeAsStringAsync(fileUri, base64Audio, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      
-      // Set up audio mode for playback
-      await setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-        shouldPlayInBackground: false,
-        interruptionMode: 'duckOthers',
-        interruptionModeAndroid: 'duckOthers',
-        shouldRouteThroughEarpiece: false,
-      });
-      
-      // Create audio player with optimized settings for streaming
-      const sound = new AudioModule.AudioPlayer({ uri: fileUri }, 100, false);
-      
-      // Set up completion callback for next segment
-      sound.addListener('playbackStatusUpdate', async (status) => {
-        if (status.didJustFinish) {
-          // console.log('🎵 Streaming audio segment finished - checking for continuation');
-          
-          // Reset current sound and processing state
-          isPlaying = false;
-          currentSound = null;
-          isProcessingAudio = false;
-          
-          // Clean up audio file
-          try {
-            await sound.remove();
-            await FileSystem.deleteAsync(fileUri, { idempotent: true });
-          } catch (cleanupError) {
-            console.log('⚠️ Cleanup error:', cleanupError);
-          }
-          
-          // Check if more audio is available
-          if (streamingAudioBuffer.length > 0) {
-            // console.log(`🔄 Continuing with ${streamingAudioBuffer.length} more chunks`);
-            // Process remaining audio chunks
-            setTimeout(() => processStreamingAudio(), 50);
-          } else if (!isReceivingAudio) {
-            // All audio complete
-            // console.log('✅ All streaming audio complete');
-            callbacks.onResponseComplete?.();
-          }
-        }
-      });
-      
-      // Start playback
-      currentSound = sound;
-      isPlaying = true;
-      sound.play();
-      
-      // console.log('🎵 Started seamless streaming audio playback');
-      
-    } catch (error) {
-      console.error('❌ Streaming audio error:', error);
-      isProcessingAudio = false;
-    }
-  };
+  // Simple direct audio processing
+  let audioSegmentCount = 0;
+
+
+  // No more interval-based processing - using event-driven approach
 
   const detectSentenceEndings = (text: string) => {
     // Look for sentence-ending punctuation followed by space or end of string
@@ -1098,7 +1033,11 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.created':
-          // console.log('🔍 DEBUG: New response created, ID:', message.response?.id);
+          console.log('🚀 [LATENCY] Response created at:', new Date().toISOString());
+          if (recordingStopTime) {
+            const responseCreationDelay = Date.now() - recordingStopTime;
+            console.log('⏱️ [LATENCY] Stop to response creation delay:', responseCreationDelay + 'ms');
+          }
           // Reset for new response
           currentTranscript = '';
           sentenceChunkBoundaries = [];
@@ -1144,7 +1083,14 @@ export const createVoiceFlowchartSession = (
           } else {
             // console.log('📝 Skipping text response - audio transcript will be used');
           }
-          
+
+          // Add latency logging for AI text response completion
+          const textDoneTime = Date.now();
+          if (recordingStartTime) {
+            const totalLatency = textDoneTime - recordingStartTime;
+            console.log(`🤖 [LATENCY] AI TEXT RESPONSE completed in ${totalLatency}ms from recording start`);
+          }
+
           // Try to parse flowchart JSON from response
           tryParseFlowchartFromResponse(message.text);
           break;
@@ -1173,16 +1119,20 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.audio_transcript.done':
-          // console.log('🎤 ACTUAL VOICE SPOKEN:', message.transcript);
-          // console.log('🔍 DEBUG: Audio transcript length:', message.transcript?.length);
-          
+          console.log('🤖 [LATENCY] AI RESPONSE audio transcript done at:', new Date().toISOString());
+          if (recordingStopTime) {
+            const audioTranscriptDelay = Date.now() - recordingStopTime;
+            console.log('⏱️ [LATENCY] Stop to AI RESPONSE transcript delay:', audioTranscriptDelay + 'ms');
+          }
+
           // Send the complete transcript to UI now that it's finished
           if (currentTranscript && currentTranscript.trim()) {
-            // console.log(`📝 SENDING COMPLETE TRANSCRIPT TO UI: "${currentTranscript}"`);
+            console.log('💬 [LATENCY] Calling onResponse (AI RESPONSE transcript) at:', new Date().toISOString());
+            console.log('🤖 [LATENCY] AI RESPONSE transcript text:', JSON.stringify(currentTranscript.substring(0, 100) + '...'));
             callbacks.onResponse?.(currentTranscript);
           } else if (message.transcript && message.transcript.trim()) {
-            // Fallback to message transcript if currentTranscript is empty
-            // console.log(`📝 SENDING MESSAGE TRANSCRIPT TO UI: "${message.transcript}"`);;
+            console.log('💬 [LATENCY] Calling onResponse (AI RESPONSE fallback) at:', new Date().toISOString());
+            console.log('🤖 [LATENCY] AI RESPONSE fallback text:', JSON.stringify(message.transcript.substring(0, 100) + '...'));
             callbacks.onResponse?.(message.transcript);
           }
           break;
@@ -1196,36 +1146,165 @@ export const createVoiceFlowchartSession = (
             for (let i = 0; i < binaryString.length; i++) {
               chunkBuffer[i] = binaryString.charCodeAt(i);
             }
-            
+
             streamingAudioBuffer.push(chunkBuffer);
             isReceivingAudio = true;
-            
-            // Minimal logging for audio buffering
-            // if (streamingAudioBuffer.length % 5 === 0 || streamingAudioBuffer.length === 1) {
-            //   console.log(`🔊 Streaming audio chunks: ${streamingAudioBuffer.length} buffered`);
-            // }
-            
-            // Start streaming playback after optimal buffering for seamless playback
-            if (!isProcessingAudio && !isPlaying && streamingAudioBuffer.length >= 8) {
-              // console.log('🎵 Starting streaming audio with sufficient buffer for seamless playback');
-              // Start processing directly (the function handles all audio in a loop)
-              processStreamingAudio();
+
+            // Process audio directly when we have enough chunks
+            if (!isProcessingAudio && !isPlaying && streamingAudioBuffer.length >= 50) {
+              console.log('🎵 Processing 50 audio chunks directly');
+
+              audioSegmentCount++;
+              isProcessingAudio = true;
+
+              const chunks = streamingAudioBuffer.splice(0, 50);
+
+              // Convert chunks to audio file
+              const combinedBuffer = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+              let offset = 0;
+              for (const chunk of chunks) {
+                combinedBuffer.set(chunk, offset);
+                offset += chunk.length;
+              }
+
+              const wavFile = createWavFile(combinedBuffer, 24000, 1);
+              const audioUri = `${FileSystem.documentDirectory}streaming_audio_segment_${audioSegmentCount}.wav`;
+
+              FileSystem.writeAsStringAsync(audioUri, wavFile, {
+                encoding: FileSystem.EncodingType.Base64,
+              }).then(async () => {
+                // Set audio mode for playback through loudspeaker
+                await setAudioModeAsync({
+                  allowsRecording: false,
+                  playsInSilentMode: true,
+                  shouldPlayInBackground: false,
+                  interruptionMode: 'duckOthers',
+                  interruptionModeAndroid: 'duckOthers',
+                  shouldRouteThroughEarpiece: false,
+                });
+
+                const sound = new AudioModule.AudioPlayer({ uri: audioUri }, 100, false);
+
+                isPlaying = true;
+                await sound.play();
+
+                sound.addListener('playbackStatusUpdate', (status) => {
+                  if (status.didJustFinish) {
+                    console.log(`🎵 Segment ${audioSegmentCount} finished`);
+
+                    try {
+                      sound.remove();
+                    } catch (e) {
+                      console.log('⚠️ Sound cleanup error:', e.message);
+                    }
+                    isProcessingAudio = false;
+                    isPlaying = false;
+                    currentSound = null;
+
+                    // Check if we're done
+                    if (streamingAudioBuffer.length === 0 && !isReceivingAudio) {
+                      console.log('✅ Audio complete');
+                      audioSegmentCount = 0;
+                      callbacks.onResponseComplete?.();
+                    }
+
+                    // Cleanup temp file
+                    setTimeout(() => {
+                      FileSystem.deleteAsync(audioUri).catch(() => {});
+                    }, 5000);
+                  }
+                });
+
+                currentSound = sound;
+                console.log(`🎵 Playing segment ${audioSegmentCount} (${chunks.length} chunks)`);
+              }).catch((error) => {
+                console.error('❌ Error processing audio:', error);
+                isProcessingAudio = false;
+                isPlaying = false;
+              });
             }
+
+            // Enhanced logging for debugging audio cutoff
+            if (streamingAudioBuffer.length % 3 === 0 || streamingAudioBuffer.length === 1) {
+              console.log(`🔊 Audio chunk ${streamingAudioBuffer.length} received (${binaryString.length} bytes)`);
+            }
+
           }
           break;
           
         case 'response.audio.done':
-          // console.log('🔍 DEBUG: Audio reception complete. Buffer has', streamingAudioBuffer.length, 'chunks');
+          console.log(`🔍 AUDIO DONE: Reception complete. Buffer has ${streamingAudioBuffer.length} chunks`);
           isReceivingAudio = false;
-          
-          // Process any remaining buffered audio for seamless completion
+
+          // Process any remaining buffered audio
           if (streamingAudioBuffer.length > 0 && !isProcessingAudio && !isPlaying) {
-            // console.log('🎵 Processing final streaming audio chunks');
-            // Start processing directly (the function handles all audio in a loop)
-            processStreamingAudio();
+            console.log(`🎵 Processing final ${streamingAudioBuffer.length} audio chunks`);
+
+            audioSegmentCount++;
+            isProcessingAudio = true;
+
+            const chunks = streamingAudioBuffer.splice(0, streamingAudioBuffer.length);
+
+            const combinedBuffer = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+            let offset = 0;
+            for (const chunk of chunks) {
+              combinedBuffer.set(chunk, offset);
+              offset += chunk.length;
+            }
+
+            const wavFile = createWavFile(combinedBuffer, 24000, 1);
+            const audioUri = `${FileSystem.documentDirectory}streaming_audio_final_${audioSegmentCount}.wav`;
+
+            FileSystem.writeAsStringAsync(audioUri, wavFile, {
+              encoding: FileSystem.EncodingType.Base64,
+            }).then(async () => {
+              // Set audio mode for final playback through loudspeaker
+              await setAudioModeAsync({
+                allowsRecording: false,
+                playsInSilentMode: true,
+                shouldPlayInBackground: false,
+                interruptionMode: 'duckOthers',
+                interruptionModeAndroid: 'duckOthers',
+                shouldRouteThroughEarpiece: false,
+              });
+
+              const sound = new AudioModule.AudioPlayer({ uri: audioUri }, 100, false);
+
+              isPlaying = true;
+              await sound.play();
+
+              sound.addListener('playbackStatusUpdate', (status) => {
+                if (status.didJustFinish) {
+                  console.log('✅ Final audio segment complete');
+
+                  try {
+                    sound.remove();
+                  } catch (e) {
+                    console.log('⚠️ Sound cleanup error:', e.message);
+                  }
+                  isProcessingAudio = false;
+                  isPlaying = false;
+                  currentSound = null;
+                  audioSegmentCount = 0;
+
+                  callbacks.onResponseComplete?.();
+
+                  setTimeout(() => {
+                    FileSystem.deleteAsync(audioUri).catch(() => {});
+                  }, 5000);
+                }
+              });
+
+              currentSound = sound;
+              console.log(`🎵 Playing final segment (${chunks.length} chunks)`);
+            }).catch((error) => {
+              console.error('❌ Error processing final audio:', error);
+              isProcessingAudio = false;
+              isPlaying = false;
+              callbacks.onResponseComplete?.();
+            });
           } else if (!isProcessingAudio && !isPlaying) {
-            // No audio to play, complete immediately
-            // console.log('✅ No final audio to process - response complete');
+            console.log('✅ No final audio to process - response complete');
             callbacks.onResponseComplete?.();
           }
           
@@ -1241,8 +1320,15 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'conversation.item.input_audio_transcription.completed':
-          // Final transcription from real-time API
+          // Final transcription from real-time API (USER INPUT)
+          console.log('🎤 [LATENCY] USER INPUT transcription completed at:', new Date().toISOString());
+          if (recordingStopTime) {
+            const transcriptionDelay = Date.now() - recordingStopTime;
+            console.log('⏱️ [LATENCY] Stop to USER INPUT transcription delay:', transcriptionDelay + 'ms');
+          }
           if (message.transcript) {
+            console.log('💬 [LATENCY] Calling onTranscript (USER INPUT) at:', new Date().toISOString());
+            console.log('📝 [LATENCY] USER INPUT transcript text:', JSON.stringify(message.transcript));
             callbacks.onTranscript?.(message.transcript, true);
           }
           break;
@@ -1268,6 +1354,7 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'input_audio_buffer.committed':
+          console.log('✅ [LATENCY] Audio buffer committed (server confirmed) at:', new Date().toISOString());
           break;
           
         case 'response.done':
