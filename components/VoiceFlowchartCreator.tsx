@@ -1205,6 +1205,75 @@ export function VoiceFlowchartCreator({
           
         </ScrollView>
 
+        {/* Conditional Text Input - positioned above controls */}
+        {showTextInput && (
+          <View style={[
+            styles.textInputContainer,
+            {
+              paddingHorizontal: 20,
+              paddingVertical: 10,
+              backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+            }
+          ]}>
+            <Pressable
+              style={[
+                styles.textInputVoiceButton,
+                { backgroundColor: '#2E7D32' }
+              ]}
+              onPress={() => {
+                // Hide text input and clear it
+                setShowTextInput(false);
+                setTextInput('');
+
+                // Immediately start voice recording
+                if (sessionRef.current && isConnected) {
+                  console.log('🎤 Text input voice button - immediately starting recording');
+                  handleTapToTalk();
+                }
+              }}
+            >
+              <Image
+                source={require('@/assets/images/Logo.png')}
+                style={[
+                  styles.textInputVoiceButtonLogo,
+                  { tintColor: '#FFF' }
+                ]}
+                resizeMode="contain"
+              />
+            </Pressable>
+            <View style={styles.textInputWithButton}>
+              <TextInput
+                ref={textInputRef}
+                style={[
+                  styles.textInput,
+                  {
+                    backgroundColor: 'transparent',
+                    color: isDark ? '#FFFFFF' : '#000000',
+                    borderColor: isDark ? '#555555' : '#C7C7CC',
+                    borderWidth: 1
+                  }
+                ]}
+                placeholder="Type your message..."
+                placeholderTextColor={isDark ? '#888888' : '#666666'}
+                value={textInput}
+                onChangeText={setTextInput}
+                multiline
+                editable={isConnected}
+                autoFocus={true}
+              />
+              <Pressable
+                style={[
+                  styles.sendButton,
+                  { opacity: (isConnected && textInput.trim()) ? 1 : 0.5 }
+                ]}
+                onPress={handleSendText}
+                disabled={!isConnected || !textInput.trim()}
+              >
+                <Text style={styles.sendButtonText}>↑</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Controls - Transparent Container */}
         <View style={[
@@ -1325,74 +1394,6 @@ export function VoiceFlowchartCreator({
             </View>
           </View>
 
-          {/* Conditional Text Input */}
-          {showTextInput && (
-            <View style={[
-              styles.textInputContainer,
-              { paddingBottom: 10 } // Override the large bottom padding when keyboard is visible
-            ]}>
-              <Pressable
-                style={[
-                  styles.textInputVoiceButton,
-                  { backgroundColor: '#2E7D32' }
-                ]}
-                onPress={() => {
-                  // Hide text input and clear it
-                  setShowTextInput(false);
-                  setTextInput('');
-                  
-                  // Immediately start voice recording
-                  if (sessionRef.current && isConnected) {
-                    console.log('🎤 Text input voice button - immediately starting recording');
-                    handleTapToTalk();
-                  }
-                }}
-              >
-                <Image 
-                  source={require('@/assets/images/Logo.png')}
-                  style={[
-                    styles.textInputVoiceButtonLogo,
-                    { tintColor: '#FFF' }
-                  ]}
-                  resizeMode="contain"
-                />
-              </Pressable>
-              <View style={styles.textInputWithButton}>
-                <TextInput
-                  ref={textInputRef}
-                  style={[
-                    styles.textInput,
-                    {
-                      backgroundColor: 'transparent',
-                      color: isDark ? '#FFFFFF' : '#000000',
-                      borderColor: isDark ? '#555555' : '#C7C7CC',
-                      borderWidth: 1
-                    }
-                  ]}
-                  placeholder="Type your message..."
-                  placeholderTextColor={isDark ? '#888888' : '#666666'}
-                  value={textInput}
-                  onChangeText={setTextInput}
-                  multiline
-                  editable={isConnected}
-                />
-                <Pressable
-                  style={[
-                    styles.sendButton,
-                    { opacity: (isConnected && textInput.trim()) ? 1 : 0.5 }
-                  ]}
-                  onPress={handleSendText}
-                  disabled={!isConnected || !textInput.trim()}
-                >
-                  <IconSymbol 
-                    size={18} 
-                    name="arrow.up" 
-                    color="#FFFFFF" 
-                  />
-                </Pressable>
-              </View>
-            </View>
-          )}
         </View>
             </View>
           </BlurView>
@@ -1578,59 +1579,8 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
   },
-  messageBubbleContainer: {
-    marginVertical: 2,
-    position: 'relative',
-  },
-  userBubbleContainer: {
-    alignItems: 'flex-end',
-    marginLeft: '15%',
-  },
-  assistantBubbleContainer: {
-    alignItems: 'flex-start',
-    marginRight: '15%',
-  },
-  messageContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 18,
-    maxWidth: '85%',
-  },
-  userMessage: {
-    backgroundColor: '#0084FF',
-  },
-  assistantMessage: {
-    backgroundColor: '#E9E9EB', // Light mode default, overridden in component
-  },
-  messageTail: {
-    position: 'absolute',
-    bottom: 0,
-    width: 0,
-    height: 0,
-    borderStyle: 'solid',
-  },
-  userTail: {
-    right: -6,
-    borderWidth: 8,
-    borderColor: 'transparent',
-    borderTopWidth: 12,
-    borderBottomWidth: 0,
-  },
-  assistantTail: {
-    left: -6,
-    borderWidth: 8,
-    borderColor: 'transparent',
-    borderTopWidth: 12,
-    borderBottomWidth: 0,
-  },
-  transcriptMessage: {
-    backgroundColor: '#FFF3CD',
-    alignSelf: 'flex-end',
-    opacity: 0.8,
-  },
   messageTextContainer: {
     marginVertical: 8,
-    paddingHorizontal: 20,
   },
   messageText: {
     fontSize: 19,

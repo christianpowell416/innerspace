@@ -70,7 +70,7 @@ const checkAudioForSpeechContent = async (wavBase64: string): Promise<boolean> =
                      avgAmplitude > MIN_AVG_AMPLITUDE &&
                      activityRatio > MIN_ACTIVITY_RATIO;
     
-    // console.log(`🎵 Audio analysis: max=${maxAmplitude}, avg=${avgAmplitude.toFixed(1)}, rms=${rmsAmplitude.toFixed(1)}, activity=${(activityRatio*100).toFixed(1)}%, hasSpeech=${hasSpeech}`);
+    console.log(`🎵 Audio analysis: max=${maxAmplitude}, avg=${avgAmplitude.toFixed(1)}, rms=${rmsAmplitude.toFixed(1)}, activity=${(activityRatio*100).toFixed(1)}%, hasSpeech=${hasSpeech}`);
     
     return hasSpeech;
   } catch (error) {
@@ -1284,6 +1284,7 @@ export const createVoiceFlowchartSession = (
         case 'conversation.item.input_audio_transcription.delta':
           // Partial transcription as user speaks - show real-time transcription
           if (message.delta) {
+            console.log('🎵 Real-time transcription:', message.delta);
             callbacks.onTranscript?.(message.delta, false);
           }
           break;
@@ -1291,17 +1292,20 @@ export const createVoiceFlowchartSession = (
         case 'conversation.item.input_audio_transcription.completed':
           // Final transcription from real-time API (USER INPUT)
           if (message.transcript) {
+            console.log('✅ Final transcription completed:', message.transcript);
             callbacks.onTranscript?.(message.transcript, true);
           }
           break;
           
         case 'input_audio_buffer.speech_started':
+          console.log('🎤 Speech detected by Realtime API - user started speaking');
           if (isContinuousMode) {
             callbacks.onListeningStart?.();
           }
           break;
           
         case 'input_audio_buffer.speech_stopped':
+          console.log('🔇 Speech ended by Realtime API - user stopped speaking');
           if (isContinuousMode) {
             // Commit the audio buffer when speech stops
             const commitMessage = {
