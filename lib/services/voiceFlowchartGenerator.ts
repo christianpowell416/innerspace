@@ -270,8 +270,6 @@ export const createVoiceFlowchartSession = (
   let streamingAudioBuffer: Uint8Array[] = [];
   let streamingPlayer: any | null = null;
   let isProcessingAudio = false;
-  let recordingStartTime: number | null = null;
-  let recordingStopTime: number | null = null;
 
   const session: VoiceFlowchartSession = {
     connect: async () => {
@@ -405,8 +403,6 @@ export const createVoiceFlowchartSession = (
       currentTranscript = '';
       sentenceChunkBoundaries = [];
       lastAudioStreamPosition = 0;
-      recordingStartTime = null;
-      recordingStopTime = null;
       audioSegmentCount = 0; // Reset progressive counter
 
       console.log('✅ Disconnect cleanup complete');
@@ -568,8 +564,6 @@ export const createVoiceFlowchartSession = (
           recording.record();
           currentRecording = recording;
           lastAudioStreamPosition = 0;
-          recordingStartTime = Date.now();
-          console.log('🎤 [LATENCY] Recording started at:', new Date().toISOString());
 
           // Start streaming audio chunks to Realtime API every 100ms
           audioStreamingInterval = setInterval(async () => {
@@ -675,10 +669,8 @@ export const createVoiceFlowchartSession = (
 
       try {
         // Stop the recording
-        console.log('⏹️ [LATENCY] Stopping recording at:', new Date().toISOString());
         const result = await currentRecording.stop();
         const uri = currentRecording.uri;
-        console.log('✅ [LATENCY] Recording stopped at:', new Date().toISOString());
 
         // Stream any remaining audio to the Realtime API
         if (uri) {
@@ -716,21 +708,12 @@ export const createVoiceFlowchartSession = (
             }
 
             // Commit the audio buffer to trigger transcription and response
-            const commitTime = Date.now();
-            console.log('📤 [LATENCY] Committing audio buffer at:', new Date().toISOString());
             const commitMessage = {
               type: 'input_audio_buffer.commit'
             };
             websocket.send(JSON.stringify(commitMessage));
-            console.log('✅ [LATENCY] Audio buffer committed at:', new Date().toISOString());
-
-            if (recordingStopTime) {
-              const stopToCommitDelay = commitTime - recordingStopTime;
-              console.log('⏱️ [LATENCY] Stop to commit delay:', stopToCommitDelay + 'ms');
-            }
 
             // Request a response from the API
-            console.log('🚀 [LATENCY] Requesting response at:', new Date().toISOString());
             const responseMessage = {
               type: 'response.create',
               response: {
@@ -739,7 +722,6 @@ export const createVoiceFlowchartSession = (
             };
             websocket.send(JSON.stringify(responseMessage));
             hasActiveResponse = true;
-            console.log('✅ [LATENCY] Response requested at:', new Date().toISOString());
 
             // Clean up audio file
             try {
@@ -1001,6 +983,182 @@ export const createVoiceFlowchartSession = (
   // Simple direct audio processing
   let audioSegmentCount = 0;
 
+  // Helper function to process next audio segment
+  const processNextSegment = () => {
+    if (isProcessingAudio || isPlaying) {
+      return;
+    }
+
+    // Need at least 100 chunks OR all remaining chunks if not receiving
+    if (streamingAudioBuffer.length < 100 && isReceivingAudio) {
+      return;
+    }
+
+    if (streamingAudioBuffer.length === 0) {
+      return;
+    }
+
+    // Determine how many chunks to process
+    const chunksToProcess = streamingAudioBuffer.length >= 100 ? 100 : streamingAudioBuffer.length;
+
+    console.log(`🎵 Processing next segment: ${chunksToProcess} chunks (${streamingAudioBuffer.length} available)`);
+    audioSegmentCount++;
+    isProcessingAudio = true;
+
+    const chunks = streamingAudioBuffer.splice(0, chunksToProcess);
+
+    // Convert chunks to audio file
+    const combinedBuffer = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      combinedBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const wavFile = createWavFile(combinedBuffer, 24000, 1);
+    const audioUri = `${FileSystem.documentDirectory}streaming_audio_segment_${audioSegmentCount}.wav`;
+
+    FileSystem.writeAsStringAsync(audioUri, wavFile, {
+      encoding: FileSystem.EncodingType.Base64,
+    }).then(async () => {
+      // Set audio mode for playback through loudspeaker
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        interruptionMode: 'duckOthers',
+        interruptionModeAndroid: 'duckOthers',
+        shouldRouteThroughEarpiece: false,
+      });
+
+      const sound = new AudioModule.AudioPlayer({ uri: audioUri }, 100, false);
+
+      isPlaying = true;
+      await sound.play();
+
+      sound.addListener('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) {
+          console.log(`🎵 Segment ${audioSegmentCount} finished`);
+
+          try {
+            sound.remove();
+          } catch (e) {
+            console.log('⚠️ Sound cleanup error:', e.message);
+          }
+          isProcessingAudio = false;
+          isPlaying = false;
+          currentSound = null;
+
+          // Check if we need to continue or complete
+          if (streamingAudioBuffer.length === 0 && !isReceivingAudio) {
+            console.log('✅ Audio complete');
+            audioSegmentCount = 0;
+            callbacks.onResponseComplete?.();
+          } else if (streamingAudioBuffer.length >= 100) {
+            // Continue with next segment
+            console.log(`🔄 Continuing with next segment (${streamingAudioBuffer.length} chunks)`);
+            setTimeout(() => processNextSegment(), 100);
+          } else if (!isReceivingAudio && streamingAudioBuffer.length > 0) {
+            // Final segment with remaining chunks (less than 100)
+            console.log(`🎵 Processing final segment with ${streamingAudioBuffer.length} chunks`);
+            setTimeout(() => processFinalSegment(), 100);
+          } else {
+            console.log(`⏳ Waiting for more chunks (have ${streamingAudioBuffer.length}, need 100)`);
+          }
+
+          // Cleanup temp file
+          setTimeout(() => {
+            FileSystem.deleteAsync(audioUri).catch(() => {});
+          }, 5000);
+        }
+      });
+
+      currentSound = sound;
+      console.log(`🎵 Playing segment ${audioSegmentCount} (${chunks.length} chunks)`);
+    }).catch((error) => {
+      console.error('❌ Error processing audio segment:', error);
+      isProcessingAudio = false;
+      isPlaying = false;
+    });
+  };
+
+  // Helper function to process final audio segment (any number of chunks)
+  const processFinalSegment = () => {
+    if (isProcessingAudio || isPlaying || streamingAudioBuffer.length === 0) {
+      return;
+    }
+
+    console.log(`🎵 Processing final segment: ${streamingAudioBuffer.length} chunks (all remaining)`);
+    audioSegmentCount++;
+    isProcessingAudio = true;
+
+    const chunks = streamingAudioBuffer.splice(0, streamingAudioBuffer.length); // Take all remaining chunks
+
+    // Convert chunks to audio file
+    const combinedBuffer = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) {
+      combinedBuffer.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    const wavFile = createWavFile(combinedBuffer, 24000, 1);
+    const audioUri = `${FileSystem.documentDirectory}streaming_audio_final_${audioSegmentCount}.wav`;
+
+    FileSystem.writeAsStringAsync(audioUri, wavFile, {
+      encoding: FileSystem.EncodingType.Base64,
+    }).then(async () => {
+      // Set audio mode for playback through loudspeaker
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        interruptionMode: 'duckOthers',
+        interruptionModeAndroid: 'duckOthers',
+        shouldRouteThroughEarpiece: false,
+      });
+
+      const sound = new AudioModule.AudioPlayer({ uri: audioUri }, 100, false);
+
+      isPlaying = true;
+      await sound.play();
+
+      sound.addListener('playbackStatusUpdate', (status) => {
+        if (status.didJustFinish) {
+          console.log(`🎵 Final segment ${audioSegmentCount} finished`);
+
+          try {
+            sound.remove();
+          } catch (e) {
+            console.log('⚠️ Sound cleanup error:', e.message);
+          }
+          isProcessingAudio = false;
+          isPlaying = false;
+          currentSound = null;
+
+          // Final segment is complete - trigger completion
+          console.log('✅ Final audio segment complete - audio done');
+          audioSegmentCount = 0;
+          callbacks.onResponseComplete?.();
+
+          // Cleanup temp file
+          setTimeout(() => {
+            FileSystem.deleteAsync(audioUri).catch(() => {});
+          }, 5000);
+        }
+      });
+
+      currentSound = sound;
+      console.log(`🎵 Playing final segment ${audioSegmentCount} (${chunks.length} chunks)`);
+    }).catch((error) => {
+      console.error('❌ Error processing final audio segment:', error);
+      isProcessingAudio = false;
+      isPlaying = false;
+      audioSegmentCount = 0;
+      callbacks.onResponseComplete?.();
+    });
+  };
+
 
   // No more interval-based processing - using event-driven approach
 
@@ -1033,11 +1191,6 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.created':
-          console.log('🚀 [LATENCY] Response created at:', new Date().toISOString());
-          if (recordingStopTime) {
-            const responseCreationDelay = Date.now() - recordingStopTime;
-            console.log('⏱️ [LATENCY] Stop to response creation delay:', responseCreationDelay + 'ms');
-          }
           // Reset for new response
           currentTranscript = '';
           sentenceChunkBoundaries = [];
@@ -1084,12 +1237,6 @@ export const createVoiceFlowchartSession = (
             // console.log('📝 Skipping text response - audio transcript will be used');
           }
 
-          // Add latency logging for AI text response completion
-          const textDoneTime = Date.now();
-          if (recordingStartTime) {
-            const totalLatency = textDoneTime - recordingStartTime;
-            console.log(`🤖 [LATENCY] AI TEXT RESPONSE completed in ${totalLatency}ms from recording start`);
-          }
 
           // Try to parse flowchart JSON from response
           tryParseFlowchartFromResponse(message.text);
@@ -1119,20 +1266,10 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.audio_transcript.done':
-          console.log('🤖 [LATENCY] AI RESPONSE audio transcript done at:', new Date().toISOString());
-          if (recordingStopTime) {
-            const audioTranscriptDelay = Date.now() - recordingStopTime;
-            console.log('⏱️ [LATENCY] Stop to AI RESPONSE transcript delay:', audioTranscriptDelay + 'ms');
-          }
-
           // Send the complete transcript to UI now that it's finished
           if (currentTranscript && currentTranscript.trim()) {
-            console.log('💬 [LATENCY] Calling onResponse (AI RESPONSE transcript) at:', new Date().toISOString());
-            console.log('🤖 [LATENCY] AI RESPONSE transcript text:', JSON.stringify(currentTranscript.substring(0, 100) + '...'));
             callbacks.onResponse?.(currentTranscript);
           } else if (message.transcript && message.transcript.trim()) {
-            console.log('💬 [LATENCY] Calling onResponse (AI RESPONSE fallback) at:', new Date().toISOString());
-            console.log('🤖 [LATENCY] AI RESPONSE fallback text:', JSON.stringify(message.transcript.substring(0, 100) + '...'));
             callbacks.onResponse?.(message.transcript);
           }
           break;
@@ -1150,78 +1287,11 @@ export const createVoiceFlowchartSession = (
             streamingAudioBuffer.push(chunkBuffer);
             isReceivingAudio = true;
 
-            // Process audio directly when we have enough chunks
-            if (!isProcessingAudio && !isPlaying && streamingAudioBuffer.length >= 50) {
-              console.log('🎵 Processing 50 audio chunks directly');
-
-              audioSegmentCount++;
-              isProcessingAudio = true;
-
-              const chunks = streamingAudioBuffer.splice(0, 50);
-
-              // Convert chunks to audio file
-              const combinedBuffer = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-              let offset = 0;
-              for (const chunk of chunks) {
-                combinedBuffer.set(chunk, offset);
-                offset += chunk.length;
+            // Process audio when we have enough chunks (100 or when done receiving)
+            if (!isProcessingAudio && !isPlaying) {
+              if (streamingAudioBuffer.length >= 100 || (!isReceivingAudio && streamingAudioBuffer.length > 0)) {
+                processNextSegment();
               }
-
-              const wavFile = createWavFile(combinedBuffer, 24000, 1);
-              const audioUri = `${FileSystem.documentDirectory}streaming_audio_segment_${audioSegmentCount}.wav`;
-
-              FileSystem.writeAsStringAsync(audioUri, wavFile, {
-                encoding: FileSystem.EncodingType.Base64,
-              }).then(async () => {
-                // Set audio mode for playback through loudspeaker
-                await setAudioModeAsync({
-                  allowsRecording: false,
-                  playsInSilentMode: true,
-                  shouldPlayInBackground: false,
-                  interruptionMode: 'duckOthers',
-                  interruptionModeAndroid: 'duckOthers',
-                  shouldRouteThroughEarpiece: false,
-                });
-
-                const sound = new AudioModule.AudioPlayer({ uri: audioUri }, 100, false);
-
-                isPlaying = true;
-                await sound.play();
-
-                sound.addListener('playbackStatusUpdate', (status) => {
-                  if (status.didJustFinish) {
-                    console.log(`🎵 Segment ${audioSegmentCount} finished`);
-
-                    try {
-                      sound.remove();
-                    } catch (e) {
-                      console.log('⚠️ Sound cleanup error:', e.message);
-                    }
-                    isProcessingAudio = false;
-                    isPlaying = false;
-                    currentSound = null;
-
-                    // Check if we're done
-                    if (streamingAudioBuffer.length === 0 && !isReceivingAudio) {
-                      console.log('✅ Audio complete');
-                      audioSegmentCount = 0;
-                      callbacks.onResponseComplete?.();
-                    }
-
-                    // Cleanup temp file
-                    setTimeout(() => {
-                      FileSystem.deleteAsync(audioUri).catch(() => {});
-                    }, 5000);
-                  }
-                });
-
-                currentSound = sound;
-                console.log(`🎵 Playing segment ${audioSegmentCount} (${chunks.length} chunks)`);
-              }).catch((error) => {
-                console.error('❌ Error processing audio:', error);
-                isProcessingAudio = false;
-                isPlaying = false;
-              });
             }
 
             // Enhanced logging for debugging audio cutoff
@@ -1239,70 +1309,7 @@ export const createVoiceFlowchartSession = (
           // Process any remaining buffered audio
           if (streamingAudioBuffer.length > 0 && !isProcessingAudio && !isPlaying) {
             console.log(`🎵 Processing final ${streamingAudioBuffer.length} audio chunks`);
-
-            audioSegmentCount++;
-            isProcessingAudio = true;
-
-            const chunks = streamingAudioBuffer.splice(0, streamingAudioBuffer.length);
-
-            const combinedBuffer = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.length, 0));
-            let offset = 0;
-            for (const chunk of chunks) {
-              combinedBuffer.set(chunk, offset);
-              offset += chunk.length;
-            }
-
-            const wavFile = createWavFile(combinedBuffer, 24000, 1);
-            const audioUri = `${FileSystem.documentDirectory}streaming_audio_final_${audioSegmentCount}.wav`;
-
-            FileSystem.writeAsStringAsync(audioUri, wavFile, {
-              encoding: FileSystem.EncodingType.Base64,
-            }).then(async () => {
-              // Set audio mode for final playback through loudspeaker
-              await setAudioModeAsync({
-                allowsRecording: false,
-                playsInSilentMode: true,
-                shouldPlayInBackground: false,
-                interruptionMode: 'duckOthers',
-                interruptionModeAndroid: 'duckOthers',
-                shouldRouteThroughEarpiece: false,
-              });
-
-              const sound = new AudioModule.AudioPlayer({ uri: audioUri }, 100, false);
-
-              isPlaying = true;
-              await sound.play();
-
-              sound.addListener('playbackStatusUpdate', (status) => {
-                if (status.didJustFinish) {
-                  console.log('✅ Final audio segment complete');
-
-                  try {
-                    sound.remove();
-                  } catch (e) {
-                    console.log('⚠️ Sound cleanup error:', e.message);
-                  }
-                  isProcessingAudio = false;
-                  isPlaying = false;
-                  currentSound = null;
-                  audioSegmentCount = 0;
-
-                  callbacks.onResponseComplete?.();
-
-                  setTimeout(() => {
-                    FileSystem.deleteAsync(audioUri).catch(() => {});
-                  }, 5000);
-                }
-              });
-
-              currentSound = sound;
-              console.log(`🎵 Playing final segment (${chunks.length} chunks)`);
-            }).catch((error) => {
-              console.error('❌ Error processing final audio:', error);
-              isProcessingAudio = false;
-              isPlaying = false;
-              callbacks.onResponseComplete?.();
-            });
+            processNextSegment();
           } else if (!isProcessingAudio && !isPlaying) {
             console.log('✅ No final audio to process - response complete');
             callbacks.onResponseComplete?.();
@@ -1321,14 +1328,7 @@ export const createVoiceFlowchartSession = (
           
         case 'conversation.item.input_audio_transcription.completed':
           // Final transcription from real-time API (USER INPUT)
-          console.log('🎤 [LATENCY] USER INPUT transcription completed at:', new Date().toISOString());
-          if (recordingStopTime) {
-            const transcriptionDelay = Date.now() - recordingStopTime;
-            console.log('⏱️ [LATENCY] Stop to USER INPUT transcription delay:', transcriptionDelay + 'ms');
-          }
           if (message.transcript) {
-            console.log('💬 [LATENCY] Calling onTranscript (USER INPUT) at:', new Date().toISOString());
-            console.log('📝 [LATENCY] USER INPUT transcript text:', JSON.stringify(message.transcript));
             callbacks.onTranscript?.(message.transcript, true);
           }
           break;
@@ -1354,7 +1354,6 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'input_audio_buffer.committed':
-          console.log('✅ [LATENCY] Audio buffer committed (server confirmed) at:', new Date().toISOString());
           break;
           
         case 'response.done':
