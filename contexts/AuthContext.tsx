@@ -30,6 +30,56 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
+// Development auto-login configuration
+// Set credentials in .env.local file: EXPO_PUBLIC_DEV_EMAIL and EXPO_PUBLIC_DEV_PASSWORD
+const DEV_EMAIL = process.env.EXPO_PUBLIC_DEV_EMAIL || '';
+const DEV_PASSWORD = process.env.EXPO_PUBLIC_DEV_PASSWORD || '';
+const DEV_AUTO_LOGIN = __DEV__ && DEV_EMAIL && DEV_PASSWORD; // Auto-enable if credentials are provided
+
+// Helper function for dev auto-login
+const performDevAutoLogin = async () => {
+  if (!DEV_EMAIL || !DEV_PASSWORD) {
+    console.log('⚠️ DEV MODE: No auto-login credentials provided in .env.local');
+    console.log('💡 TIP: Add EXPO_PUBLIC_DEV_EMAIL and EXPO_PUBLIC_DEV_PASSWORD to .env.local');
+    return null;
+  }
+
+  console.log('🚀 DEV MODE: Attempting auto-login with:', DEV_EMAIL);
+  console.log('🔐 DEV MODE: Password length:', DEV_PASSWORD.length, 'chars');
+
+  // Debug: Check if password is being read correctly
+  if (DEV_PASSWORD.includes('^')) {
+    console.log('⚠️ DEV MODE: Password contains special characters');
+  }
+
+  try {
+    // Try to sign in with provided credentials
+    const { data: authData, error } = await supabase.auth.signInWithPassword({
+      email: DEV_EMAIL.trim(),
+      password: DEV_PASSWORD.trim(),
+    });
+
+    if (error) {
+      console.error('❌ DEV MODE: Auto-login failed:', error.message);
+      console.log('💡 TIP: Make sure the account exists and credentials are correct in .env.local');
+
+      // Try with hardcoded credentials as a fallback test
+      if (DEV_EMAIL === 'christianpowell416@gmail.com') {
+        console.log('🔄 DEV MODE: Trying alternative login method...');
+        // You can temporarily hardcode and test here if needed
+      }
+
+      return null;
+    }
+
+    console.log('✅ DEV MODE: Auto-login successful!');
+    return authData.session;
+  } catch (err) {
+    console.error('❌ DEV MODE: Unexpected error during auto-login:', err);
+    return null;
+  }
+};
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -37,25 +87,94 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
 
-  // Load initial session
+  // Load initial session with dev auto-login
   useEffect(() => {
     const getInitialSession = async () => {
+      console.log('🔍 Checking for existing session...');
+
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          try {
-            const userProfile = await getUserProfile();
-            setProfile(userProfile);
-          } catch (error) {
-            console.error('Error loading user profile:', error);
+        const { data: { session: existingSession } } = await supabase.auth.getSession();
+        console.log('📋 Existing session:', existingSession ? 'Found' : 'Not found');
+
+        // Force auto-login in development mode
+        if (DEV_AUTO_LOGIN) {
+          console.log('🚀 DEV MODE: Auto-login enabled');
+
+          // Even if there's a session, check if it's valid
+          if (existingSession) {
+            console.log('🔄 DEV MODE: Session exists, validating...');
+            // Try to get user to validate session
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              console.log('✅ DEV MODE: Session is valid for:', user.email);
+              setSession(existingSession);
+              setUser(user);
+
+              // Load profile
+              try {
+                const userProfile = await getUserProfileForUser(user);
+                setProfile(userProfile);
+              } catch (profileError) {
+                console.error('Error loading profile:', profileError);
+                setProfile(null);
+              }
+
+              setLoading(false);
+              return;
+            } else {
+              console.log('⚠️ DEV MODE: Session invalid, clearing and re-logging...');
+              await supabase.auth.signOut();
+            }
+          }
+
+          // Perform auto-login
+          const autoSession = await performDevAutoLogin();
+          if (autoSession) {
+            setSession(autoSession);
+            setUser(autoSession.user);
+
+            // Load profile
+            try {
+              const userProfile = await getUserProfileForUser(autoSession.user);
+              setProfile(userProfile);
+            } catch (profileError) {
+              console.error('Error loading profile after auto-login:', profileError);
+              setProfile(null);
+            }
+          } else {
+            console.log('⚠️ DEV MODE: Auto-login failed, proceeding without session');
+            setSession(null);
+            setUser(null);
+            setProfile(null);
+          }
+        } else {
+          // Normal session handling when auto-login is disabled
+          setSession(existingSession);
+          setUser(existingSession?.user ?? null);
+
+          if (existingSession?.user) {
+            try {
+              const userProfile = await getUserProfile();
+              setProfile(userProfile);
+            } catch (error) {
+              console.error('Error loading user profile:', error);
+              setProfile(null);
+            }
           }
         }
       } catch (error) {
-        console.error('Error getting initial session:', error);
+        console.error('❌ Error in getInitialSession:', error);
+
+        // If there's an error but dev mode is on, try auto-login anyway
+        if (DEV_AUTO_LOGIN) {
+          const autoSession = await performDevAutoLogin();
+          if (autoSession) {
+            setSession(autoSession);
+            setUser(autoSession.user);
+          }
+        }
       } finally {
+        console.log('🏁 Initial session loading complete');
         setLoading(false);
       }
     };

@@ -298,7 +298,6 @@ export class VoiceChatService {
             if (data === '[DONE]') {
               console.log('🏁 Stream completed. Audio queue length:', this.audioQueue.length)
               if (this.audioQueue.length > 0) {
-                console.log('🎵 Playing remaining audio chunks')
                 await this.playAudioQueue()
               } else {
                 console.log('⚠️ No audio chunks received - may need fallback TTS')
@@ -331,7 +330,6 @@ export class VoiceChatService {
                 
                 // Start playing audio immediately for TTS (complete audio)
                 if (!this.isPlaying) {
-                  console.log('🎵 Starting audio playback, queue length:', this.audioQueue.length)
                   this.playAudioQueue()
                 }
               }
@@ -357,7 +355,6 @@ export class VoiceChatService {
   }
 
   private async playAudioQueue(): Promise<void> {
-    console.log('🎵 playAudioQueue called. isPlaying:', this.isPlaying, 'queue length:', this.audioQueue.length)
     
     if (this.isPlaying || this.audioQueue.length === 0) {
       console.log('⏸️ Skipping playback - already playing or empty queue')
@@ -490,7 +487,6 @@ export class VoiceChatService {
     messages: VoiceChatMessage[],
     callbacks?: VoiceChatCallbacks
   ): Promise<void> {
-    console.log('🎵 Using local OpenAI service with ElevenLabs TTS')
     
     let fullResponse = ''
     
@@ -532,7 +528,6 @@ export class VoiceChatService {
               
               // Start playing audio
               if (!this.isPlaying) {
-                console.log('🎵 Starting TTS audio playback')
                 this.playAudioQueue()
               }
               

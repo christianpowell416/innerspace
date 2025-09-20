@@ -64,9 +64,10 @@ export function VoiceFlowchartCreator({
   const [isLoading, setIsLoading] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [conversation, setConversation] = useState<Array<{
-    type: 'user' | 'assistant', 
+    type: 'user' | 'assistant',
     text: string,
     id: string,
+    sessionId?: string,
     fadeAnim?: Animated.Value,
     words?: Array<{
       text: string,
@@ -80,24 +81,152 @@ export function VoiceFlowchartCreator({
   const [isAIResponding, setIsAIResponding] = useState(false);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [currentResponseId, setCurrentResponseId] = useState<string | null>(null);
   const [incrementalFlowchart, setIncrementalFlowchart] = useState<FlowchartStructure | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<string>('');
   const [showIncrementalFlowchart, setShowIncrementalFlowchart] = useState(true);
   const [showTextInput, setShowTextInput] = useState(false);
   const [showWelcomeTooltip, setShowWelcomeTooltip] = useState(false);
-  
+  const [showSquareCards, setShowSquareCards] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [currentUserInputSession, setCurrentUserInputSession] = useState<string | null>(null);
+  const [aiResponseQueue, setAiResponseQueue] = useState<Array<{sessionId: string, text: string, responseId: string}>>([]);
+  const [allowAIDisplay, setAllowAIDisplay] = useState(false);
+
   const sessionRef = useRef<VoiceFlowchartSession | null>(null);
   const textInputRef = useRef<any>(null);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const colorPulseAnim = useRef(new Animated.Value(0)).current;
 
+  // Refs for callback state to prevent closure issues
+  const isAIRespondingRef = useRef(false);
+  const isStreamingRef = useRef(false);
+  const currentResponseIdRef = useRef<string | null>(null);
+  const currentUserInputSessionRef = useRef<string | null>(null);
+  const userMessageAddedForSessionRef = useRef<string | null>(null);
+
+  // Robust check for when AI responses should display immediately
+  const shouldDisplayAIImmediately = () => {
+    const currentSession = currentUserInputSessionRef.current;
+    return (
+      allowAIDisplay && // User message animation completed
+      currentSession && // Valid session exists
+      userMessageAddedForSessionRef.current === currentSession // User message confirmed for this session
+    );
+  };
+
+  // Enhanced queue processor - runs when state changes
+  useEffect(() => {
+    if (shouldDisplayAIImmediately() && aiResponseQueue.length > 0) {
+      // Process all queued responses for the current session
+      const currentSession = currentUserInputSessionRef.current;
+      const responsesToProcess = aiResponseQueue.filter(response => response.sessionId === currentSession);
+
+      if (responsesToProcess.length > 0) {
+        // Remove processed responses from queue
+        setAiResponseQueue(prev => prev.filter(response => response.sessionId !== currentSession));
+
+        // Add/update all responses in conversation
+        responsesToProcess.forEach(queuedResponse => {
+          setConversation(prev => {
+            const lastMessage = prev[prev.length - 1];
+            const existingMessageIndex = prev.findIndex(msg => msg.id === queuedResponse.responseId);
+
+            if (existingMessageIndex >= 0) {
+              // Message with this ID already exists - update it
+              const updatedConversation = [...prev];
+              updatedConversation[existingMessageIndex] = {
+                ...updatedConversation[existingMessageIndex],
+                text: queuedResponse.text
+              };
+              return updatedConversation;
+            }
+
+            // If last message is assistant with same response ID, update it
+            if (lastMessage && lastMessage.type === 'assistant' && lastMessage.id === queuedResponse.responseId) {
+              // Update existing message with new content (streaming)
+              return [...prev.slice(0, -1), {
+                ...lastMessage,
+                text: queuedResponse.text
+              }];
+            } else {
+              // Create new assistant message
+              return [...prev, {
+                type: 'assistant',
+                text: queuedResponse.text,
+                id: queuedResponse.responseId,
+                sessionId: queuedResponse.sessionId
+              }];
+            }
+          });
+        });
+      }
+    }
+  }, [allowAIDisplay, aiResponseQueue, currentUserInputSession]);
+
+  // Separate queue monitor - watches for new queue items and processes immediately if ready
+  useEffect(() => {
+    if (aiResponseQueue.length > 0 && shouldDisplayAIImmediately()) {
+      // Process queued responses immediately when conditions are met
+      const currentSession = currentUserInputSessionRef.current;
+      const responsesToProcess = aiResponseQueue.filter(response => response.sessionId === currentSession);
+
+      if (responsesToProcess.length > 0) {
+        // Remove processed responses from queue
+        setAiResponseQueue(prev => prev.filter(response => response.sessionId !== currentSession));
+
+        // Add/update all responses in conversation
+        responsesToProcess.forEach(queuedResponse => {
+          setConversation(prev => {
+            const lastMessage = prev[prev.length - 1];
+            const existingMessageIndex = prev.findIndex(msg => msg.id === queuedResponse.responseId);
+
+            if (existingMessageIndex >= 0) {
+              // Message with this ID already exists - update it
+              const updatedConversation = [...prev];
+              updatedConversation[existingMessageIndex] = {
+                ...updatedConversation[existingMessageIndex],
+                text: queuedResponse.text
+              };
+              return updatedConversation;
+            }
+
+            // If last message is assistant with same response ID, update it
+            if (lastMessage && lastMessage.type === 'assistant' && lastMessage.id === queuedResponse.responseId) {
+              // Update existing message with new content (streaming)
+              return [...prev.slice(0, -1), {
+                ...lastMessage,
+                text: queuedResponse.text
+              }];
+            } else {
+              // Create new assistant message
+              return [...prev, {
+                type: 'assistant',
+                text: queuedResponse.text,
+                id: queuedResponse.responseId,
+                sessionId: queuedResponse.sessionId
+              }];
+            }
+          });
+        });
+      }
+    }
+  }, [aiResponseQueue.length]);
+
   // Helper function to add user message with fade-in animation
   const addUserMessageWithAnimation = (text: string) => {
     // console.log('📝 Adding user message with animation:', text);
     const fadeAnim = new Animated.Value(0);
     const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    
+
+    // Session ID is already set in onTranscript callback - no need to generate here
+    // Set ref immediately for synchronous access by AI response logic
+    const currentSession = currentUserInputSessionRef.current;
+    if (currentSession) {
+      userMessageAddedForSessionRef.current = currentSession;
+    }
+
     // Stop processing state - text is about to appear
     // console.log('🛑 Stopping processing indicator');
     setIsProcessingUserInput(false);
@@ -114,11 +243,12 @@ export function VoiceFlowchartCreator({
         return prev;
       }
       
-      const newMessage = { 
-        type: 'user' as const, 
-        text, 
+      const newMessage = {
+        type: 'user' as const,
+        text,
         id: messageId,
-        fadeAnim 
+        sessionId: currentUserInputSessionRef.current || undefined,
+        fadeAnim
       };
       
       // Start fade-in animation
@@ -126,8 +256,11 @@ export function VoiceFlowchartCreator({
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
-      }).start();
-      
+      }).start(() => {
+        // Animation complete - allow AI responses to display
+        setAllowAIDisplay(true);
+      });
+
       return [...prev, newMessage];
     });
   };
@@ -399,12 +532,14 @@ export function VoiceFlowchartCreator({
             setIsListeningWithLogging(true);
             // Clear AI responding state when we start listening for user input
             setIsAIResponding(false);
+            isAIRespondingRef.current = false; // Update ref for callbacks
           },
           onListeningStop: () => {
             // console.log('🛑 VOICE: Stopped recording');
             // console.log('🔵 Button State: isListening=false, isAIResponding=true → BLUE');
             setIsListeningWithLogging(false);
             setIsAIResponding(true); // Set AI responding immediately when recording stops
+            isAIRespondingRef.current = true; // Update ref for callbacks
             // Clear any lingering transcript when recording stops
             setTimeout(() => setTranscript(''), 500);
           },
@@ -415,16 +550,30 @@ export function VoiceFlowchartCreator({
               // Start processing indicator when we begin handling the transcript
               console.log('🟡 Starting processing indicator for transcript');
               setIsProcessingUserInput(true);
-              
+
+              // Generate session ID here BEFORE adding user message to ensure proper ordering
+              const newSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+              setCurrentUserInputSession(newSessionId);
+              currentUserInputSessionRef.current = newSessionId;
+
+              // Reset AI display permission for new session
+              setAllowAIDisplay(false);
+
               // Reset transcript
               setTranscript('');
-              
+
               // Set pending message to ensure it's added before response
               setPendingUserMessage(transcriptText);
-              
+
               // Add user message to conversation with fade-in animation
               addUserMessageWithAnimation(transcriptText);
-              
+
+              // Add a small delay to ensure user message gets processed before AI response
+              setTimeout(() => {
+                // This timeout ensures the user message state update has been processed
+                // before any AI responses can be added to the conversation
+              }, 10);
+
               // Clear pending after a short delay
               setTimeout(() => setPendingUserMessage(null), 1000);
             } else {
@@ -432,48 +581,67 @@ export function VoiceFlowchartCreator({
               setTranscript(transcriptText);
             }
           },
+          onResponseStart: (responseId) => {
+            // Mark AI as responding and track response ID
+            console.log('💬 AI Response started - Setting button to BLUE, ID:', responseId);
+            setIsAIResponding(true);
+            setCurrentResponseId(responseId);
+            setIsStreaming(true);
+            setIsProcessingUserInput(false);
+
+            // Update refs for callback access
+            isAIRespondingRef.current = true;
+            isStreamingRef.current = true;
+            currentResponseIdRef.current = responseId;
+          },
           onResponse: (response) => {
             if (!response) return;
-            
+
             // Don't start AI response if user is actively recording
             if (isListening) {
               console.log('🎤 User is recording - suppressing AI response and audio');
               return;
             }
-            
-            // Mark AI as responding when we start receiving response
-            console.log('💬 AI Response started - Setting button to BLUE');
-            setIsAIResponding(true);
-            // Ensure processing indicator is stopped when AI starts responding
-            setIsProcessingUserInput(false);
-            
-            // Simply update conversation with the new text
-            setConversation(prev => {
-              const lastMessage = prev[prev.length - 1];
-              
-              if (lastMessage && lastMessage.type === 'assistant') {
-                // Append to existing assistant message (streaming)
-                const newText = lastMessage.text + response;
-                return [...prev.slice(0, -1), { 
-                  type: 'assistant', 
-                  text: newText,
-                  id: lastMessage.id
-                }];
-              } else {
-                // Create new assistant message
-                const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-                return [...prev, { 
-                  type: 'assistant', 
-                  text: response, 
-                  id: messageId
-                }];
-              }
-            });
+
+            const currentSession = currentUserInputSessionRef.current;
+            const responseId = currentResponseIdRef.current || (currentSession ? `response_${currentSession}` : (Date.now().toString() + Math.random().toString(36).substr(2, 9)));
+
+            // Always queue responses first - let the queue processor decide when to display
+            if (currentSession) {
+              setAiResponseQueue(prev => {
+                // Update existing queued response or add new one
+                const existingIndex = prev.findIndex(item => item.responseId === responseId);
+                if (existingIndex >= 0) {
+                  const updated = [...prev];
+                  updated[existingIndex] = { sessionId: currentSession, text: response, responseId };
+                  return updated;
+                } else {
+                  return [...prev, { sessionId: currentSession, text: response, responseId }];
+                }
+              });
+            }
           },
           onResponseComplete: () => {
-            console.log('✅ AI Response complete - Setting button to GREEN');
-            console.log('🔵 Button State: isListening=false, isAIResponding=false → GREEN');
             setIsAIResponding(false);
+            setCurrentResponseId(null); // Reset response ID
+            setIsStreaming(false); // Reset streaming state
+
+            // Only clear queue for the current session to avoid clearing queued responses for new sessions
+            const currentSession = currentUserInputSessionRef.current;
+            if (currentSession) {
+              setAiResponseQueue(prev => prev.filter(response => response.sessionId !== currentSession));
+            }
+
+            // Reset refs for callback access
+            isAIRespondingRef.current = false;
+            isStreamingRef.current = false;
+            currentResponseIdRef.current = null;
+            userMessageAddedForSessionRef.current = null; // Reset for next session
+
+            // Clear user input session to prevent duplicate responses
+            // Note: Don't reset currentUserInputSession state here as it's needed for React rendering
+            // Only reset the ref to signal that this session is complete
+            // The state will be updated when the next user input starts a new session
           },
           onFlowchartGenerated: (flowchart) => {
             // Flowchart generation temporarily disabled
@@ -538,7 +706,14 @@ export function VoiceFlowchartCreator({
     setRecordingDuration(0);
     setRecordingStartTime(null);
     setIsAIResponding(false);
-    
+    setCurrentResponseId(null);
+    setIsStreaming(false);
+
+    // Reset refs for callback access
+    isAIRespondingRef.current = false;
+    isStreamingRef.current = false;
+    currentResponseIdRef.current = null;
+
     // Reset cleanup flag
     setIsCleaningUp(false);
   };
@@ -603,6 +778,7 @@ export function VoiceFlowchartCreator({
       try {
         // Immediately set AI responding to prevent button turning green
         setIsAIResponding(true);
+        isAIRespondingRef.current = true;
         
         sessionRef.current.stopListening();
         
@@ -621,7 +797,6 @@ export function VoiceFlowchartCreator({
         // Clear any transcript preview immediately
         setTranscript('');
         
-        console.log('✅ Recording stopped successfully');
         
         // SUCCESS haptic feedback for successful recording completion
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -635,6 +810,7 @@ export function VoiceFlowchartCreator({
       // SET VISUAL STATE IMMEDIATELY for instant feedback
       setIsListeningWithLogging(true);
       setIsAIResponding(false);
+      isAIRespondingRef.current = false;
       console.log('🔴 IMMEDIATE: Button state set to RED (listening=true)');
       
       if (shouldForceStart) {
@@ -663,7 +839,6 @@ export function VoiceFlowchartCreator({
           setRecordingDuration(duration);
         }, 100);
         
-        console.log('✅ UI: Recording setup complete');
       } catch (error) {
         console.error('❌ UI: Error starting recording:', error);
         // Reset visual state if recording fails
@@ -784,7 +959,7 @@ export function VoiceFlowchartCreator({
             {/* Fixed Header - draggable */}
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
-                Live Loop
+                New Loop
               </Text>
               <Pressable
                 style={styles.closeButton}
@@ -793,7 +968,120 @@ export function VoiceFlowchartCreator({
                 <Text style={styles.closeButtonText}>✕</Text>
               </Pressable>
             </View>
-            
+
+            {/* Collapsible Square Cards Section - only show when text input is hidden */}
+            {!showTextInput && (
+              <View style={styles.collapsibleSection}>
+                <Pressable
+                  style={styles.collapsibleHeader}
+                  onPress={() => setShowSquareCards(!showSquareCards)}
+                >
+                  <Text style={[
+                    styles.collapsibleHeaderText,
+                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                  ]}>
+                    Quick Actions
+                  </Text>
+                  <Text style={[
+                    styles.collapsibleArrow,
+                    {
+                      color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
+                      transform: [{ rotate: showSquareCards ? '180deg' : '0deg' }]
+                    }
+                  ]}>
+                    ▼
+                  </Text>
+                </Pressable>
+
+                {showSquareCards && (
+                  <View style={styles.squareCardsContainer}>
+                    <View style={styles.squareCardsInner}>
+                      <View style={styles.squareCardWrapper}>
+                        <Text style={[
+                          styles.squareCardTitle,
+                          { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                        ]}>
+                          Emotions
+                        </Text>
+                        <Pressable
+                          style={[
+                            styles.squareCard,
+                            {
+                              backgroundColor: colorScheme === 'dark'
+                                ? 'rgba(255, 255, 255, 0.1)'
+                                : 'rgba(0, 0, 0, 0.05)',
+                              borderColor: colorScheme === 'dark'
+                                ? 'rgba(255, 255, 255, 0.2)'
+                                : 'rgba(0, 0, 0, 0.1)',
+                            }
+                          ]}
+                          onPress={() => {
+                            // Handle emotions card press
+                            console.log('Emotions card pressed');
+                          }}
+                        >
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.squareCardWrapper}>
+                        <Text style={[
+                          styles.squareCardTitle,
+                          { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                        ]}>
+                          Parts
+                        </Text>
+                        <Pressable
+                          style={[
+                            styles.squareCard,
+                            {
+                              backgroundColor: colorScheme === 'dark'
+                                ? 'rgba(255, 255, 255, 0.1)'
+                                : 'rgba(0, 0, 0, 0.05)',
+                              borderColor: colorScheme === 'dark'
+                                ? 'rgba(255, 255, 255, 0.2)'
+                                : 'rgba(0, 0, 0, 0.1)',
+                            }
+                          ]}
+                          onPress={() => {
+                            // Handle parts card press
+                            console.log('Parts card pressed');
+                          }}
+                        >
+                        </Pressable>
+                      </View>
+
+                      <View style={styles.squareCardWrapper}>
+                        <Text style={[
+                          styles.squareCardTitle,
+                          { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                        ]}>
+                          Needs
+                        </Text>
+                        <Pressable
+                          style={[
+                            styles.squareCard,
+                            {
+                              backgroundColor: colorScheme === 'dark'
+                                ? 'rgba(255, 255, 255, 0.1)'
+                                : 'rgba(0, 0, 0, 0.05)',
+                              borderColor: colorScheme === 'dark'
+                                ? 'rgba(255, 255, 255, 0.2)'
+                                : 'rgba(0, 0, 0, 0.1)',
+                            }
+                          ]}
+                          onPress={() => {
+                            // Handle needs card press
+                            console.log('Needs card pressed');
+                          }}
+                        >
+                        </Pressable>
+                      </View>
+                    </View>
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Content Container */}
             <View style={styles.modalScrollView}>
                 {/* Incremental Flowchart Toggle */}
@@ -917,93 +1205,6 @@ export function VoiceFlowchartCreator({
           
         </ScrollView>
 
-        {/* Square Cards Container - only show when text input is hidden */}
-        {!showTextInput && (
-          <View style={styles.squareCardsContainer}>
-            <View style={styles.squareCardsInner}>
-              <View style={styles.squareCardWrapper}>
-                <Text style={[
-                  styles.squareCardTitle,
-                  { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
-                ]}>
-                  Emotions
-                </Text>
-                <Pressable
-                  style={[
-                    styles.squareCard,
-                    { 
-                      backgroundColor: colorScheme === 'dark' 
-                        ? 'rgba(255, 255, 255, 0.1)' 
-                        : 'rgba(0, 0, 0, 0.05)',
-                      borderColor: colorScheme === 'dark'
-                        ? 'rgba(255, 255, 255, 0.2)'
-                        : 'rgba(0, 0, 0, 0.1)',
-                    }
-                  ]}
-                  onPress={() => {
-                    // Handle emotions card press
-                    console.log('Emotions card pressed');
-                  }}
-                >
-                </Pressable>
-              </View>
-              
-              <View style={styles.squareCardWrapper}>
-                <Text style={[
-                  styles.squareCardTitle,
-                  { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
-                ]}>
-                  Parts
-                </Text>
-                <Pressable
-                  style={[
-                    styles.squareCard,
-                    { 
-                      backgroundColor: colorScheme === 'dark' 
-                        ? 'rgba(255, 255, 255, 0.1)' 
-                        : 'rgba(0, 0, 0, 0.05)',
-                      borderColor: colorScheme === 'dark'
-                        ? 'rgba(255, 255, 255, 0.2)'
-                        : 'rgba(0, 0, 0, 0.1)',
-                    }
-                  ]}
-                  onPress={() => {
-                    // Handle parts card press
-                    console.log('Parts card pressed');
-                  }}
-                >
-                </Pressable>
-              </View>
-              
-              <View style={styles.squareCardWrapper}>
-                <Text style={[
-                  styles.squareCardTitle,
-                  { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
-                ]}>
-                  Needs
-                </Text>
-                <Pressable
-                  style={[
-                    styles.squareCard,
-                    { 
-                      backgroundColor: colorScheme === 'dark' 
-                        ? 'rgba(255, 255, 255, 0.1)' 
-                        : 'rgba(0, 0, 0, 0.05)',
-                      borderColor: colorScheme === 'dark'
-                        ? 'rgba(255, 255, 255, 0.2)'
-                        : 'rgba(0, 0, 0, 0.1)',
-                    }
-                  ]}
-                  onPress={() => {
-                    // Handle needs card press
-                    console.log('Needs card pressed');
-                  }}
-                >
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        )}
 
         {/* Controls - Transparent Container */}
         <View style={[
@@ -1864,11 +2065,36 @@ const styles = StyleSheet.create({
     fontFamily: 'Georgia',
     textTransform: 'capitalize',
   },
+  // Collapsible Section Styles
+  collapsibleSection: {
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 10,
+  },
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  collapsibleHeaderText: {
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: 'Georgia',
+  },
+  collapsibleArrow: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
   // Square Cards Styles
   squareCardsContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    paddingBottom: 15,
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   squareCardsInner: {
     flexDirection: 'row',

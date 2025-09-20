@@ -16,16 +16,34 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const router = useRouter();
 
   useEffect(() => {
-    if (loading) return;
+    if (loading) {
+      console.log('🔄 AuthGuard: Still loading auth state...');
+      return;
+    }
 
     const inAuthGroup = segments[0] === 'auth';
+    console.log('🛡️ AuthGuard check:', {
+      user: user?.email || 'none',
+      loading,
+      inAuthGroup,
+      segments
+    });
 
     if (!user && !inAuthGroup) {
-      // Redirect to sign-in if not authenticated and not in auth group
-      router.replace('/auth/sign-in');
+      console.log('🔐 AuthGuard: No user, redirecting to sign-in');
+      // Add small delay in dev mode to allow auto-login to complete
+      if (__DEV__) {
+        setTimeout(() => {
+          router.replace('/auth/sign-in');
+        }, 500);
+      } else {
+        router.replace('/auth/sign-in');
+      }
     } else if (user && inAuthGroup) {
-      // Redirect to main app if authenticated and in auth group
+      console.log('✅ AuthGuard: User authenticated, redirecting to app');
       router.replace('/(tabs)');
+    } else {
+      console.log('👌 AuthGuard: Auth state OK');
     }
   }, [user, loading, segments]);
 

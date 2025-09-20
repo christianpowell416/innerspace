@@ -241,6 +241,7 @@ export const createVoiceFlowchartSession = (
     onListeningStop?: () => void;
     onTranscript?: (transcript: string, isFinal: boolean) => void;
     onResponse?: (response: string) => void;
+    onResponseStart?: (responseId: string) => void;
     onResponseComplete?: () => void;
     onFlowchartGenerated?: (flowchart: FlowchartStructure) => void;
     onError?: (error: Error) => void;
@@ -270,6 +271,10 @@ export const createVoiceFlowchartSession = (
   let streamingAudioBuffer: Uint8Array[] = [];
   let streamingPlayer: any | null = null;
   let isProcessingAudio = false;
+
+  // Transcript throttling variables
+  let lastTranscriptUpdate: number = 0;
+  const transcriptUpdateInterval: number = 500; // 500ms throttle
 
   const session: VoiceFlowchartSession = {
     connect: async () => {
@@ -404,6 +409,8 @@ export const createVoiceFlowchartSession = (
       sentenceChunkBoundaries = [];
       lastAudioStreamPosition = 0;
       audioSegmentCount = 0; // Reset progressive counter
+      currentResponseId = null; // Reset response state
+      lastProcessedResponse = null; // Reset processed response
 
       console.log('✅ Disconnect cleanup complete');
     },
@@ -816,7 +823,6 @@ export const createVoiceFlowchartSession = (
       websocket.send(JSON.stringify(vadConfig));
       isContinuousMode = true;
       callbacks.onListeningStart?.();
-      console.log('✅ Continuous listening enabled - server will handle turn detection');
     },
 
     stopContinuousListening: () => {
@@ -836,7 +842,6 @@ export const createVoiceFlowchartSession = (
       websocket.send(JSON.stringify(disableVadConfig));
       isContinuousMode = false;
       callbacks.onListeningStop?.();
-      console.log('✅ Continuous listening disabled');
     },
 
     interruptResponse: () => {
@@ -876,7 +881,6 @@ export const createVoiceFlowchartSession = (
         isProcessingAudio = false;
         hasActiveResponse = false;
         
-        console.log('✅ Response interrupted and audio stopped');
         callbacks.onResponseComplete?.();
       }
     },
@@ -983,6 +987,10 @@ export const createVoiceFlowchartSession = (
   // Simple direct audio processing
   let audioSegmentCount = 0;
 
+  // Response state management to prevent duplicates
+  let currentResponseId: string | null = null;
+  let lastProcessedResponse: string | null = null;
+
   // Helper function to process next audio segment
   const processNextSegment = () => {
     if (isProcessingAudio || isPlaying) {
@@ -1001,7 +1009,6 @@ export const createVoiceFlowchartSession = (
     // Determine how many chunks to process
     const chunksToProcess = streamingAudioBuffer.length >= 100 ? 100 : streamingAudioBuffer.length;
 
-    console.log(`🎵 Processing next segment: ${chunksToProcess} chunks (${streamingAudioBuffer.length} available)`);
     audioSegmentCount++;
     isProcessingAudio = true;
 
@@ -1038,7 +1045,6 @@ export const createVoiceFlowchartSession = (
 
       sound.addListener('playbackStatusUpdate', (status) => {
         if (status.didJustFinish) {
-          console.log(`🎵 Segment ${audioSegmentCount} finished`);
 
           try {
             sound.remove();
@@ -1051,7 +1057,6 @@ export const createVoiceFlowchartSession = (
 
           // Check if we need to continue or complete
           if (streamingAudioBuffer.length === 0 && !isReceivingAudio) {
-            console.log('✅ Audio complete');
             audioSegmentCount = 0;
             callbacks.onResponseComplete?.();
           } else if (streamingAudioBuffer.length >= 100) {
@@ -1060,7 +1065,6 @@ export const createVoiceFlowchartSession = (
             setTimeout(() => processNextSegment(), 100);
           } else if (!isReceivingAudio && streamingAudioBuffer.length > 0) {
             // Final segment with remaining chunks (less than 100)
-            console.log(`🎵 Processing final segment with ${streamingAudioBuffer.length} chunks`);
             setTimeout(() => processFinalSegment(), 100);
           } else {
             console.log(`⏳ Waiting for more chunks (have ${streamingAudioBuffer.length}, need 100)`);
@@ -1074,7 +1078,6 @@ export const createVoiceFlowchartSession = (
       });
 
       currentSound = sound;
-      console.log(`🎵 Playing segment ${audioSegmentCount} (${chunks.length} chunks)`);
     }).catch((error) => {
       console.error('❌ Error processing audio segment:', error);
       isProcessingAudio = false;
@@ -1088,7 +1091,6 @@ export const createVoiceFlowchartSession = (
       return;
     }
 
-    console.log(`🎵 Processing final segment: ${streamingAudioBuffer.length} chunks (all remaining)`);
     audioSegmentCount++;
     isProcessingAudio = true;
 
@@ -1125,7 +1127,6 @@ export const createVoiceFlowchartSession = (
 
       sound.addListener('playbackStatusUpdate', (status) => {
         if (status.didJustFinish) {
-          console.log(`🎵 Final segment ${audioSegmentCount} finished`);
 
           try {
             sound.remove();
@@ -1137,7 +1138,6 @@ export const createVoiceFlowchartSession = (
           currentSound = null;
 
           // Final segment is complete - trigger completion
-          console.log('✅ Final audio segment complete - audio done');
           audioSegmentCount = 0;
           callbacks.onResponseComplete?.();
 
@@ -1149,7 +1149,6 @@ export const createVoiceFlowchartSession = (
       });
 
       currentSound = sound;
-      console.log(`🎵 Playing final segment ${audioSegmentCount} (${chunks.length} chunks)`);
     }).catch((error) => {
       console.error('❌ Error processing final audio segment:', error);
       isProcessingAudio = false;
@@ -1195,83 +1194,50 @@ export const createVoiceFlowchartSession = (
           currentTranscript = '';
           sentenceChunkBoundaries = [];
           streamingAudioBuffer = []; // Reset audio buffer for new response
+          currentResponseId = message.response?.id || Date.now().toString();
+          lastProcessedResponse = null;
+
+          // Notify UI of new response start
+          callbacks.onResponseStart?.(currentResponseId);
           break;
           
         case 'response.text.delta':
-          // Use text deltas for immediate display - this is independent of audio processing
-          // console.log('📝 TEXT DELTA (using for immediate display):', JSON.stringify(message.delta));
-          if (message.delta) {
-            // Only send text deltas if we don't have audio transcript
-            if (!currentTranscript || currentTranscript.trim() === '') {
-              callbacks.onResponse?.(message.delta);
-            } else {
-              // console.log('📝 Skipping text delta - audio transcript active');
-            }
-          }
+          // Skip text deltas - we'll use audio transcript for voice responses
           break;
-          
+
         case 'response.text.done':
-          // console.log('📝 AI TEXT RESPONSE (complete):', message.text);
-          // console.log('🔍 DEBUG: Text response length:', message.text?.length);
-          
-          // Only use text response if we don't have audio transcript
-          if (!currentTranscript || currentTranscript.trim() === '') {
-            // Use the complete text response for display since deltas might be empty
-            if (message.text) {
-              // console.log('📝 Raw text content:', message.text);
-              
-              // Try extracting conversational text first
-              const conversationalText = extractConversationalText(message.text);
-              // console.log('📝 Extracted conversational text:', conversationalText);
-              
-              if (conversationalText && conversationalText.trim()) {
-                // console.log('📝 Displaying extracted text:', conversationalText.substring(0, 100) + '...');
-                callbacks.onResponse?.(conversationalText);
-              } else {
-                // Fallback: display the complete text if extraction fails
-                // console.log('📝 Extraction failed, displaying complete text as fallback');
-                callbacks.onResponse?.(message.text);
-              }
-            }
-          } else {
-            // console.log('📝 Skipping text response - audio transcript will be used');
+          // Skip text responses - we'll use audio transcript for voice responses
+          // Only try to parse flowchart JSON if needed
+          if (message.text) {
+            tryParseFlowchartFromResponse(message.text);
           }
-
-
-          // Try to parse flowchart JSON from response
-          tryParseFlowchartFromResponse(message.text);
           break;
           
         case 'response.audio_transcript.delta':
-          // Use audio transcript deltas for building complete transcript
-          // console.log('🎤 AUDIO TRANSCRIPT DELTA:', JSON.stringify(message.delta));
-          if (message.delta) {
-            // Update running transcript
+          // Build complete transcript and send incremental updates for real-time display
+          if (message.delta && currentResponseId) {
             currentTranscript += message.delta;
-            
-            // Check for sentence endings
-            const sentenceEndings = detectSentenceEndings(currentTranscript);
-            const lastSentenceEnd = sentenceEndings[sentenceEndings.length - 1];
-            
-            // If we found a sentence ending and it's new
-            if (lastSentenceEnd && lastSentenceEnd > (sentenceChunkBoundaries[sentenceChunkBoundaries.length - 1] || 0)) {
-              // console.log(`📝 SENTENCE DETECTED at position ${lastSentenceEnd}: "${currentTranscript.slice(0, lastSentenceEnd)}"`);
-              // Mark current sentence boundary position (not audio chunks)
-              sentenceChunkBoundaries.push(lastSentenceEnd);
+
+            // Audio transcript delta received
+
+            // Send incremental update for streaming display
+            // Only if this is the current response (not a duplicate)
+            if (currentTranscript !== lastProcessedResponse) {
+              callbacks.onResponse?.(currentTranscript);
             }
-            
-            // Don't send deltas to UI - wait for complete transcript
-            // console.log(`📝 BUILDING TRANSCRIPT: "${currentTranscript}"`);
           }
           break;
-          
+
         case 'response.audio_transcript.done':
-          // Send the complete transcript to UI now that it's finished
-          if (currentTranscript && currentTranscript.trim()) {
-            callbacks.onResponse?.(currentTranscript);
-          } else if (message.transcript && message.transcript.trim()) {
-            callbacks.onResponse?.(message.transcript);
+          // Ensure the final complete transcript is sent to UI
+          const finalTranscript = message.transcript || currentTranscript;
+
+          // Send final transcript if it's different from what was last processed
+          if (finalTranscript !== lastProcessedResponse) {
+            callbacks.onResponse?.(finalTranscript);
           }
+
+          lastProcessedResponse = finalTranscript;
           break;
           
         case 'response.audio.delta':
@@ -1294,24 +1260,20 @@ export const createVoiceFlowchartSession = (
               }
             }
 
-            // Enhanced logging for debugging audio cutoff
-            if (streamingAudioBuffer.length % 3 === 0 || streamingAudioBuffer.length === 1) {
-              console.log(`🔊 Audio chunk ${streamingAudioBuffer.length} received (${binaryString.length} bytes)`);
-            }
+            // Audio chunk received
 
           }
           break;
           
         case 'response.audio.done':
-          console.log(`🔍 AUDIO DONE: Reception complete. Buffer has ${streamingAudioBuffer.length} chunks`);
+          // Audio reception complete
           isReceivingAudio = false;
 
           // Process any remaining buffered audio
           if (streamingAudioBuffer.length > 0 && !isProcessingAudio && !isPlaying) {
-            console.log(`🎵 Processing final ${streamingAudioBuffer.length} audio chunks`);
+            // Processing final audio chunks
             processNextSegment();
           } else if (!isProcessingAudio && !isPlaying) {
-            console.log('✅ No final audio to process - response complete');
             callbacks.onResponseComplete?.();
           }
           
