@@ -27,11 +27,16 @@ import {
   loadFlowchartTemplate,
   generateVoiceInstructions 
 } from '@/lib/services/voiceFlowchartGenerator';
-import { 
-  incrementalFlowchartGenerator, 
-  ConversationMessage, 
-  IncrementalFlowchartCallbacks 
+import {
+  incrementalFlowchartGenerator,
+  ConversationMessage,
+  IncrementalFlowchartCallbacks
 } from '@/lib/services/incrementalFlowchartGenerator';
+import {
+  emotionPartsDetector,
+  DetectedLists,
+  DetectionCallbacks
+} from '@/lib/services/emotionPartsDetector';
 import * as DocumentPicker from 'expo-document-picker';
 
 interface VoiceFlowchartCreatorProps {
@@ -92,6 +97,11 @@ export function VoiceFlowchartCreator({
   const [currentUserInputSession, setCurrentUserInputSession] = useState<string | null>(null);
   const [aiResponseQueue, setAiResponseQueue] = useState<Array<{sessionId: string, text: string, responseId: string}>>([]);
   const [allowAIDisplay, setAllowAIDisplay] = useState(false);
+  const [detectedItems, setDetectedItems] = useState<DetectedLists>({
+    emotions: [],
+    parts: [],
+    needs: []
+  });
 
   const sessionRef = useRef<VoiceFlowchartSession | null>(null);
   const textInputRef = useRef<any>(null);
@@ -546,7 +556,11 @@ export function VoiceFlowchartCreator({
           onTranscript: (transcriptText, isFinal) => {
             if (isFinal) {
               console.log('📝 TRANSCRIPTION:', transcriptText);
-              
+
+              // Analyze user voice message for emotions, parts, and needs
+              const detectedLists = emotionPartsDetector.addMessage(transcriptText);
+              setDetectedItems(detectedLists);
+
               // Start processing indicator when we begin handling the transcript
               console.log('🟡 Starting processing indicator for transcript');
               setIsProcessingUserInput(true);
@@ -706,6 +720,10 @@ export function VoiceFlowchartCreator({
     setRecordingStartTime(null);
     setIsAIResponding(false);
     setCurrentResponseId(null);
+
+    // Reset detected items
+    emotionPartsDetector.reset();
+    setDetectedItems({ emotions: [], parts: [], needs: [] });
     setIsStreaming(false);
 
     // Reset refs for callback access
@@ -851,6 +869,10 @@ export function VoiceFlowchartCreator({
   const handleSendText = () => {
     if (sessionRef.current && isConnected && textInput.trim()) {
       const messageText = textInput.trim();
+
+      // Analyze user message for emotions, parts, and needs
+      const detectedLists = emotionPartsDetector.addMessage(messageText);
+      setDetectedItems(detectedLists);
 
       // Generate session ID for text input (same as voice input)
       const newSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
@@ -1010,7 +1032,7 @@ export function VoiceFlowchartCreator({
                         ]}>
                           Emotions
                         </Text>
-                        <Pressable
+                        <View
                           style={[
                             styles.squareCard,
                             {
@@ -1022,12 +1044,30 @@ export function VoiceFlowchartCreator({
                                 : 'rgba(0, 0, 0, 0.1)',
                             }
                           ]}
-                          onPress={() => {
-                            // Handle emotions card press
-                            console.log('Emotions card pressed');
-                          }}
                         >
-                        </Pressable>
+                          <ScrollView style={styles.cardScrollView} showsVerticalScrollIndicator={false}>
+                            {detectedItems.emotions.length === 0 ? (
+                              <Text style={[
+                                styles.cardEmptyText,
+                                { color: colorScheme === 'dark' ? '#888888' : '#999999' }
+                              ]}>
+                                No emotions detected yet...
+                              </Text>
+                            ) : (
+                              detectedItems.emotions.map((emotion, index) => (
+                                <Text
+                                  key={`emotion-${index}`}
+                                  style={[
+                                    styles.cardListItem,
+                                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                                  ]}
+                                >
+                                  • {emotion}
+                                </Text>
+                              ))
+                            )}
+                          </ScrollView>
+                        </View>
                       </View>
 
                       <View style={styles.squareCardWrapper}>
@@ -1037,7 +1077,7 @@ export function VoiceFlowchartCreator({
                         ]}>
                           Parts
                         </Text>
-                        <Pressable
+                        <View
                           style={[
                             styles.squareCard,
                             {
@@ -1049,12 +1089,30 @@ export function VoiceFlowchartCreator({
                                 : 'rgba(0, 0, 0, 0.1)',
                             }
                           ]}
-                          onPress={() => {
-                            // Handle parts card press
-                            console.log('Parts card pressed');
-                          }}
                         >
-                        </Pressable>
+                          <ScrollView style={styles.cardScrollView} showsVerticalScrollIndicator={false}>
+                            {detectedItems.parts.length === 0 ? (
+                              <Text style={[
+                                styles.cardEmptyText,
+                                { color: colorScheme === 'dark' ? '#888888' : '#999999' }
+                              ]}>
+                                No parts detected yet...
+                              </Text>
+                            ) : (
+                              detectedItems.parts.map((part, index) => (
+                                <Text
+                                  key={`part-${index}`}
+                                  style={[
+                                    styles.cardListItem,
+                                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                                  ]}
+                                >
+                                  • {part}
+                                </Text>
+                              ))
+                            )}
+                          </ScrollView>
+                        </View>
                       </View>
 
                       <View style={styles.squareCardWrapper}>
@@ -1064,7 +1122,7 @@ export function VoiceFlowchartCreator({
                         ]}>
                           Needs
                         </Text>
-                        <Pressable
+                        <View
                           style={[
                             styles.squareCard,
                             {
@@ -1076,12 +1134,30 @@ export function VoiceFlowchartCreator({
                                 : 'rgba(0, 0, 0, 0.1)',
                             }
                           ]}
-                          onPress={() => {
-                            // Handle needs card press
-                            console.log('Needs card pressed');
-                          }}
                         >
-                        </Pressable>
+                          <ScrollView style={styles.cardScrollView} showsVerticalScrollIndicator={false}>
+                            {detectedItems.needs.length === 0 ? (
+                              <Text style={[
+                                styles.cardEmptyText,
+                                { color: colorScheme === 'dark' ? '#888888' : '#999999' }
+                              ]}>
+                                No needs detected yet...
+                              </Text>
+                            ) : (
+                              detectedItems.needs.map((need, index) => (
+                                <Text
+                                  key={`need-${index}`}
+                                  style={[
+                                    styles.cardListItem,
+                                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                                  ]}
+                                >
+                                  • {need}
+                                </Text>
+                              ))
+                            )}
+                          </ScrollView>
+                        </View>
                       </View>
                     </View>
                   </View>
@@ -2088,8 +2164,26 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderRadius: 16,
     borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-start',
+    padding: 8,
+  },
+  cardScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  cardEmptyText: {
+    fontSize: 11,
+    fontFamily: 'Georgia',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 15,
+    lineHeight: 14,
+  },
+  cardListItem: {
+    fontSize: 11,
+    fontFamily: 'Georgia',
+    lineHeight: 14,
+    marginBottom: 4,
   },
 });
