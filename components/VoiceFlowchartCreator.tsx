@@ -974,23 +974,21 @@ export function VoiceFlowchartCreator({
                 New Loop
               </Text>
               <View style={styles.headerControls}>
-                {/* Quick Actions dropdown arrow */}
-                {!showTextInput && (
-                  <Pressable
-                    style={styles.quickActionsToggle}
-                    onPress={() => setShowSquareCards(!showSquareCards)}
-                  >
-                    <Text style={[
-                      styles.collapsibleArrow,
-                      {
-                        color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
-                        transform: [{ rotate: showSquareCards ? '180deg' : '0deg' }]
-                      }
-                    ]}>
-                      ▼
-                    </Text>
-                  </Pressable>
-                )}
+                {/* Quick Actions dropdown arrow - always visible */}
+                <Pressable
+                  style={styles.quickActionsToggle}
+                  onPress={() => setShowSquareCards(!showSquareCards)}
+                >
+                  <Text style={[
+                    styles.collapsibleArrow,
+                    {
+                      color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
+                      transform: [{ rotate: showSquareCards ? '180deg' : '0deg' }]
+                    }
+                  ]}>
+                    ▼
+                  </Text>
+                </Pressable>
                 <Pressable
                   style={styles.closeButton}
                   onPress={handleClose}
