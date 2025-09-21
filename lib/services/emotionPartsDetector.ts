@@ -24,32 +24,32 @@ class EmotionPartsDetector {
 
   // Patterns to detect emotional expressions (capture verbatim)
   private emotionIndicators = [
-    /\bfeel(?:ing)?\s+([a-zA-Z\s]+?)(?:\s+(?:about|when|that|because|and|but|or|\.|,|$))/gi,
-    /\bi'm\s+([a-zA-Z\s]+?)(?:\s+(?:about|when|that|because|and|but|or|\.|,|$))/gi,
-    /\bi\s+feel\s+([a-zA-Z\s]+?)(?:\s+(?:about|when|that|because|and|but|or|\.|,|$))/gi,
-    /\bmakes?\s+me\s+feel\s+([a-zA-Z\s]+?)(?:\s+(?:about|when|that|because|and|but|or|\.|,|$))/gi,
-    /\bfeeling\s+([a-zA-Z\s]+?)(?:\s+(?:about|when|that|because|and|but|or|\.|,|$))/gi
+    /\bi\s+feel\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/gi,
+    /\bfeeling\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/gi,
+    /\bi'm\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/gi,
+    /\bmakes?\s+me\s+feel\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/gi,
+    /\bfeel\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/gi
   ];
 
   // Patterns to detect parts language (capture verbatim)
   private partsIndicators = [
-    /\bpart of me\s+(?:that\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\bparts? of me\s+(?:that\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\bthe\s+part\s+(?:of me\s+)?(?:that\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\binner\s+([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
+    /\bpart of me\s+(?:that\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\bparts? of me\s+(?:that\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\bthe\s+part\s+(?:of me\s+)?(?:that\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\binner\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)?)/gi,
     /\b(manager|exile|firefighter|protector|critic)\b/gi,
     /\bthe\s+(manager|exile|firefighter|protector|critic)\b/gi
   ];
 
   // Patterns to detect needs expressions (capture verbatim)
   private needsIndicators = [
-    /\bi\s+need\s+(?:to\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\bneed\s+(?:to\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\bi\s+want\s+(?:to\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\bwant\s+(?:to\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\bi\s+wish\s+(?:to\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\blonging\s+for\s+([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi,
-    /\bdesire\s+(?:for\s+)?([a-zA-Z\s]+?)(?:\s+(?:and|but|or|\.|,|$))/gi
+    /\bi\s+need\s+(?:to\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\bneed\s+(?:to\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\bi\s+want\s+(?:to\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\bwant\s+(?:to\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\bi\s+wish\s+(?:to\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\blonging\s+for\s+([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi,
+    /\bdesire\s+(?:for\s+)?([a-zA-Z]+(?:\s+[a-zA-Z]+)*)/gi
   ];
 
   /**
