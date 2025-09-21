@@ -582,8 +582,7 @@ export function VoiceFlowchartCreator({
             }
           },
           onResponseStart: (responseId) => {
-            // Mark AI as responding and track response ID
-            console.log('💬 AI Response started - Setting button to BLUE, ID:', responseId);
+            console.log('🔵 Button: AI_RESPONDING');
             setIsAIResponding(true);
             setCurrentResponseId(responseId);
             setIsStreaming(true);
@@ -597,23 +596,13 @@ export function VoiceFlowchartCreator({
           onResponse: (response) => {
             if (!response) return;
 
-            console.log('📥 onResponse called:', {
-              responseLength: response.length,
-              isListening,
-              currentSession: currentUserInputSessionRef.current,
-              responsePreview: response.substring(0, 50) + '...'
-            });
-
             // Don't start AI response if user is actively recording
             if (isListening) {
-              console.log('🎤 User is recording - suppressing AI response and audio');
               return;
             }
 
             const currentSession = currentUserInputSessionRef.current;
             const responseId = currentResponseIdRef.current || (currentSession ? `response_${currentSession}` : (Date.now().toString() + Math.random().toString(36).substr(2, 9)));
-
-            console.log('📝 Processing response:', { currentSession, responseId });
 
             // Always queue responses first - let the queue processor decide when to display
             if (currentSession) {
@@ -631,6 +620,7 @@ export function VoiceFlowchartCreator({
             }
           },
           onResponseComplete: () => {
+            console.log('⚪ Button: IDLE');
             setIsAIResponding(false);
             setCurrentResponseId(null); // Reset response ID
             setIsStreaming(false); // Reset streaming state
@@ -866,7 +856,6 @@ export function VoiceFlowchartCreator({
       const newSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
       setCurrentUserInputSession(newSessionId);
       currentUserInputSessionRef.current = newSessionId;
-      console.log('📝 Created new session for text input:', newSessionId);
 
       // Reset AI display permission for new session
       setAllowAIDisplay(false);
