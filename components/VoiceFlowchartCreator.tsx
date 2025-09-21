@@ -1011,19 +1011,9 @@ export function VoiceFlowchartCreator({
               </View>
             </View>
 
-            {/* Collapsible Square Cards Section - only show when text input is hidden */}
-            {!showTextInput && (
+            {/* Square Cards Section - only show when dropdown is expanded and text input is hidden */}
+            {!showTextInput && showSquareCards && (
               <View style={styles.collapsibleSection}>
-                <View style={styles.collapsibleHeader}>
-                  <Text style={[
-                    styles.collapsibleHeaderText,
-                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
-                  ]}>
-                    Quick Actions
-                  </Text>
-                </View>
-
-                {showSquareCards && (
                   <View style={styles.squareCardsContainer}>
                     <View style={styles.squareCardsInner}>
                       <View style={styles.squareCardWrapper}>
@@ -1108,7 +1098,6 @@ export function VoiceFlowchartCreator({
                       </View>
                     </View>
                   </View>
-                )}
               </View>
             )}
 
