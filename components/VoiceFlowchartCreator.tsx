@@ -558,8 +558,11 @@ export function VoiceFlowchartCreator({
               console.log('📝 TRANSCRIPTION:', transcriptText);
 
               // Analyze user voice message for emotions, parts, and needs
-              const detectedLists = emotionPartsDetector.addMessage(transcriptText);
-              setDetectedItems(detectedLists);
+              emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
+                setDetectedItems(detectedLists);
+              }).catch(error => {
+                console.warn('🔍 [DETECTION] Voice analysis error:', error);
+              });
 
               // Start processing indicator when we begin handling the transcript
               console.log('🟡 Starting processing indicator for transcript');
@@ -871,8 +874,11 @@ export function VoiceFlowchartCreator({
       const messageText = textInput.trim();
 
       // Analyze user message for emotions, parts, and needs
-      const detectedLists = emotionPartsDetector.addMessage(messageText);
-      setDetectedItems(detectedLists);
+      emotionPartsDetector.addMessage(messageText).then(detectedLists => {
+        setDetectedItems(detectedLists);
+      }).catch(error => {
+        console.warn('🔍 [DETECTION] Text analysis error:', error);
+      });
 
       // Generate session ID for text input (same as voice input)
       const newSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
