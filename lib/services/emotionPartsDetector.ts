@@ -39,24 +39,32 @@ TASK: Analyze the user's message and extract:
 3. NEEDS: Any expressed needs, wants, desires, or unmet needs
 
 GUIDELINES:
-- Use the user's exact words when possible (1-2 words max per item)
+- Extract ONLY the core emotion/part/need word, removing all adjectives and intensifiers
+- Remove words like: really, very, extremely, super, quite, pretty, totally, completely, so, deeply, etc.
+- Keep only the essential noun or base emotion word
 - Only extract what is explicitly or implicitly expressed
 - Be contextually intelligent - understand nuance and implications
 - Don't invent or assume - only detect what's genuinely present
-- Capture the essence in the user's language, not clinical terms
+- Capture the essence in clean, simple terms
 
 EXAMPLES:
 User: "I'm feeling really overwhelmed lately"
 → {"emotions": ["Overwhelmed"], "parts": [], "needs": []}
 
-User: "Part of me wants to hide, but I also need connection"
-→ {"emotions": [], "parts": ["Wants to hide"], "needs": ["Connection"]}
-
-User: "I'm anxious about the meeting tomorrow"
+User: "I'm super anxious about everything"
 → {"emotions": ["Anxious"], "parts": [], "needs": []}
 
-User: "Something inside me feels broken"
+User: "Part of me desperately wants to hide"
+→ {"emotions": [], "parts": ["Wants to hide"], "needs": []}
+
+User: "I'm extremely tired and need some peace"
+→ {"emotions": ["Tired"], "parts": [], "needs": ["Peace"]}
+
+User: "Something deep inside me feels completely broken"
 → {"emotions": ["Broken"], "parts": ["Something inside"], "needs": []}
+
+User: "I really need to feel very safe right now"
+→ {"emotions": [], "parts": [], "needs": ["Safety"]}
 
 RESPONSE FORMAT: JSON only, no explanations
 {"emotions": ["word1", "word2"], "parts": ["phrase1"], "needs": ["need1", "need2"]}`;
