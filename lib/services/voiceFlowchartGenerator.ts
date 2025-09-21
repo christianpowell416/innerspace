@@ -824,12 +824,12 @@ export const createVoiceFlowchartSession = (
         const responseMessage = {
           type: 'response.create',
           response: {
-            modalities: ['text', 'audio'] // Keep both for now, but prioritize text processing
+            modalities: ['text'] // Only request text modality for text inputs to disable audio
           }
         };
         websocket.send(JSON.stringify(responseMessage));
         hasActiveResponse = true;
-        console.log('📤 Requesting response with modalities: text, audio');
+        console.log('📤 Requesting response with modalities: text only (no audio)');
       }
     },
 
@@ -1304,6 +1304,12 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.audio.delta':
+          // Skip audio processing for text inputs - only process audio for voice inputs
+          if (lastInputWasText) {
+            console.log('📝 Skipping audio delta for text input');
+            break;
+          }
+
           // Handle audio response chunks with seamless streaming approach
           if (message.delta) {
             // Convert base64 chunk to binary buffer for seamless streaming
@@ -1329,6 +1335,13 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.audio.done':
+          // Skip audio processing for text inputs - only process audio for voice inputs
+          if (lastInputWasText) {
+            console.log('📝 Skipping audio processing for text input - calling onResponseComplete');
+            callbacks.onResponseComplete?.();
+            break;
+          }
+
           // Audio reception complete
           isReceivingAudio = false;
 
@@ -1339,7 +1352,7 @@ export const createVoiceFlowchartSession = (
           } else if (!isProcessingAudio && !isPlaying) {
             callbacks.onResponseComplete?.();
           }
-          
+
           // Reset for next response
           sentenceChunkBoundaries = [];
           break;
