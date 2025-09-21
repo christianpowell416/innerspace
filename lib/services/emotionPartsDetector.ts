@@ -60,47 +60,65 @@ class EmotionPartsDetector {
       return this.getCurrentLists();
     }
 
+    console.log('🔍 [DETECTION] Analyzing text:', text.substring(0, 100) + (text.length > 100 ? '...' : ''));
+
+    let foundEmotions = 0;
+    let foundParts = 0;
+    let foundNeeds = 0;
+
     // Detect emotions (capture what user actually said)
-    this.emotionIndicators.forEach(pattern => {
+    this.emotionIndicators.forEach((pattern, index) => {
       let match;
       const regex = new RegExp(pattern.source, pattern.flags);
       while ((match = regex.exec(text)) !== null) {
         if (match[1]) {
           const emotion = this.cleanCapture(match[1]);
-          if (emotion) {
+          if (emotion && !this.detectedEmotions.has(emotion)) {
+            console.log(`😊 [EMOTION] Pattern ${index + 1} detected: "${emotion}" from "${match[0]}"`);
             this.detectedEmotions.add(emotion);
+            foundEmotions++;
           }
         }
       }
     });
 
     // Detect parts (capture verbatim parts language)
-    this.partsIndicators.forEach(pattern => {
+    this.partsIndicators.forEach((pattern, index) => {
       let match;
       const regex = new RegExp(pattern.source, pattern.flags);
       while ((match = regex.exec(text)) !== null) {
         if (match[1]) {
           const part = this.cleanCapture(match[1]);
-          if (part) {
+          if (part && !this.detectedParts.has(part)) {
+            console.log(`🧩 [PARTS] Pattern ${index + 1} detected: "${part}" from "${match[0]}"`);
             this.detectedParts.add(part);
+            foundParts++;
           }
         }
       }
     });
 
     // Detect needs (capture what user actually said they need)
-    this.needsIndicators.forEach(pattern => {
+    this.needsIndicators.forEach((pattern, index) => {
       let match;
       const regex = new RegExp(pattern.source, pattern.flags);
       while ((match = regex.exec(text)) !== null) {
         if (match[1]) {
           const need = this.cleanCapture(match[1]);
-          if (need) {
+          if (need && !this.detectedNeeds.has(need)) {
+            console.log(`💚 [NEEDS] Pattern ${index + 1} detected: "${need}" from "${match[0]}"`);
             this.detectedNeeds.add(need);
+            foundNeeds++;
           }
         }
       }
     });
+
+    if (foundEmotions > 0 || foundParts > 0 || foundNeeds > 0) {
+      console.log(`📊 [DETECTION] Summary: ${foundEmotions} emotions, ${foundParts} parts, ${foundNeeds} needs detected`);
+    } else {
+      console.log('📊 [DETECTION] No new items detected in this text');
+    }
 
     return this.getCurrentLists();
   }
@@ -146,7 +164,13 @@ class EmotionPartsDetector {
    * Add a message to analyze
    */
   addMessage(content: string, callbacks?: DetectionCallbacks): DetectedLists {
+    console.log('📨 [DETECTION] Adding message for analysis');
     const lists = this.analyzeText(content);
+    console.log('📋 [DETECTION] Current totals:', {
+      emotions: lists.emotions.length,
+      parts: lists.parts.length,
+      needs: lists.needs.length
+    });
     callbacks?.onDetectionUpdate?.(lists);
     return lists;
   }
@@ -155,9 +179,18 @@ class EmotionPartsDetector {
    * Reset all detected items
    */
   reset(): void {
+    console.log('🔄 [DETECTION] Resetting all detected items');
+    const prevCounts = {
+      emotions: this.detectedEmotions.size,
+      parts: this.detectedParts.size,
+      needs: this.detectedNeeds.size
+    };
+
     this.detectedEmotions.clear();
     this.detectedParts.clear();
     this.detectedNeeds.clear();
+
+    console.log('✅ [DETECTION] Reset complete. Cleared:', prevCounts);
   }
 
   /**
