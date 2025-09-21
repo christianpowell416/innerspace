@@ -998,8 +998,8 @@ export function VoiceFlowchartCreator({
               </View>
             </View>
 
-            {/* Square Cards Section - only show when dropdown is expanded and text input is hidden */}
-            {!showTextInput && showSquareCards && (
+            {/* Square Cards Section - only show when dropdown is expanded */}
+            {showSquareCards && (
               <View style={styles.collapsibleSection}>
                   <View style={styles.squareCardsContainer}>
                     <View style={styles.squareCardsInner}>
