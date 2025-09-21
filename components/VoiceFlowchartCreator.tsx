@@ -984,37 +984,44 @@ export function VoiceFlowchartCreator({
               <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
                 New Loop
               </Text>
-              <Pressable
-                style={styles.closeButton}
-                onPress={handleClose}
-              >
-                <Text style={styles.closeButtonText}>✕</Text>
-              </Pressable>
+              <View style={styles.headerControls}>
+                {/* Quick Actions dropdown arrow */}
+                {!showTextInput && (
+                  <Pressable
+                    style={styles.quickActionsToggle}
+                    onPress={() => setShowSquareCards(!showSquareCards)}
+                  >
+                    <Text style={[
+                      styles.collapsibleArrow,
+                      {
+                        color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
+                        transform: [{ rotate: showSquareCards ? '180deg' : '0deg' }]
+                      }
+                    ]}>
+                      ▼
+                    </Text>
+                  </Pressable>
+                )}
+                <Pressable
+                  style={styles.closeButton}
+                  onPress={handleClose}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </Pressable>
+              </View>
             </View>
 
             {/* Collapsible Square Cards Section - only show when text input is hidden */}
             {!showTextInput && (
               <View style={styles.collapsibleSection}>
-                <Pressable
-                  style={styles.collapsibleHeader}
-                  onPress={() => setShowSquareCards(!showSquareCards)}
-                >
+                <View style={styles.collapsibleHeader}>
                   <Text style={[
                     styles.collapsibleHeaderText,
                     { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
                   ]}>
                     Quick Actions
                   </Text>
-                  <Text style={[
-                    styles.collapsibleArrow,
-                    {
-                      color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
-                      transform: [{ rotate: showSquareCards ? '180deg' : '0deg' }]
-                    }
-                  ]}>
-                    ▼
-                  </Text>
-                </Pressable>
+                </View>
 
                 {showSquareCards && (
                   <View style={styles.squareCardsContainer}>
@@ -1581,6 +1588,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     fontFamily: 'Georgia',
+  },
+  headerControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  quickActionsToggle: {
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   templateSection: {
     padding: 20,
