@@ -41,27 +41,46 @@ TASK: Analyze the user's message and extract:
 GUIDELINES:
 - Extract ONLY the core emotion/part/need word, removing all adjectives and intensifiers
 - Remove words like: really, very, extremely, super, quite, pretty, totally, completely, so, deeply, etc.
-- Keep only the essential noun or base emotion word
+- Convert ALL detections to proper NOUN forms (not adjectives or verbs)
 - Only extract what is explicitly or implicitly expressed
 - Be contextually intelligent - understand nuance and implications
 - Don't invent or assume - only detect what's genuinely present
 - Capture the essence in clean, simple terms
 
+EMOTION & NEED CONVERSION RULES:
+- Adjectives to nouns: "anxious" → "Anxiety", "overwhelmed" → "Overwhelm", "tired" → "Fatigue"
+- Verbs to nouns: "hurting" → "Pain", "struggling" → "Struggle", "wanting" → "Want"
+- Keep existing nouns: "peace" → "Peace", "safety" → "Safety"
+
+PARTS REFINEMENT RULES:
+- For parts language, extract the core function/behavior as "verb + object" structure
+- Remove filler words like "part of me", "something in me", "there's a part"
+- Focus on what the part DOES or what it's about
+- Examples: "part of me is scared of rejection" → "Fears rejection"
+- Examples: "part of me wants to protect others" → "Protects others"
+- Examples: "something in me feels angry" → extract as emotion "Anger", not a part
+
 EXAMPLES:
 User: "I'm feeling really overwhelmed lately"
-→ {"emotions": ["Overwhelmed"], "parts": [], "needs": []}
+→ {"emotions": ["Overwhelm"], "parts": [], "needs": []}
 
 User: "I'm super anxious about everything"
-→ {"emotions": ["Anxious"], "parts": [], "needs": []}
+→ {"emotions": ["Anxiety"], "parts": [], "needs": []}
 
 User: "Part of me desperately wants to hide"
 → {"emotions": [], "parts": ["Wants to hide"], "needs": []}
 
+User: "Part of me is scared of rejection"
+→ {"emotions": [], "parts": ["Fears rejection"], "needs": []}
+
+User: "Part of me wants to protect others from being hurt"
+→ {"emotions": [], "parts": ["Protects others"], "needs": []}
+
 User: "I'm extremely tired and need some peace"
-→ {"emotions": ["Tired"], "parts": [], "needs": ["Peace"]}
+→ {"emotions": ["Fatigue"], "parts": [], "needs": ["Peace"]}
 
 User: "Something deep inside me feels completely broken"
-→ {"emotions": ["Broken"], "parts": ["Something inside"], "needs": []}
+→ {"emotions": ["Brokenness"], "parts": [], "needs": []}
 
 User: "I really need to feel very safe right now"
 → {"emotions": [], "parts": [], "needs": ["Safety"]}
