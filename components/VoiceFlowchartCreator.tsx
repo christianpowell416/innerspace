@@ -597,6 +597,13 @@ export function VoiceFlowchartCreator({
           onResponse: (response) => {
             if (!response) return;
 
+            console.log('📥 onResponse called:', {
+              responseLength: response.length,
+              isListening,
+              currentSession: currentUserInputSessionRef.current,
+              responsePreview: response.substring(0, 50) + '...'
+            });
+
             // Don't start AI response if user is actively recording
             if (isListening) {
               console.log('🎤 User is recording - suppressing AI response and audio');
@@ -605,6 +612,8 @@ export function VoiceFlowchartCreator({
 
             const currentSession = currentUserInputSessionRef.current;
             const responseId = currentResponseIdRef.current || (currentSession ? `response_${currentSession}` : (Date.now().toString() + Math.random().toString(36).substr(2, 9)));
+
+            console.log('📝 Processing response:', { currentSession, responseId });
 
             // Always queue responses first - let the queue processor decide when to display
             if (currentSession) {
@@ -852,7 +861,16 @@ export function VoiceFlowchartCreator({
   const handleSendText = () => {
     if (sessionRef.current && isConnected && textInput.trim()) {
       const messageText = textInput.trim();
-      
+
+      // Generate session ID for text input (same as voice input)
+      const newSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+      setCurrentUserInputSession(newSessionId);
+      currentUserInputSessionRef.current = newSessionId;
+      console.log('📝 Created new session for text input:', newSessionId);
+
+      // Reset AI display permission for new session
+      setAllowAIDisplay(false);
+
       // Add user message to conversation with fade-in animation
       addUserMessageWithAnimation(messageText);
       
@@ -956,6 +974,11 @@ export function VoiceFlowchartCreator({
             tint={colorScheme === 'dark' ? 'dark' : 'light'}
             style={styles.blurContainer}
           >
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ flex: 1 }}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 110 : 0}
+            >
             {/* Fixed Header - draggable */}
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
@@ -1210,8 +1233,10 @@ export function VoiceFlowchartCreator({
           <View style={[
             styles.textInputContainer,
             {
-              paddingHorizontal: 20,
-              paddingVertical: 10,
+              paddingHorizontal: 10,
+              paddingVertical: 15,
+              minHeight: 60,
+              marginBottom: -15,
               backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.9)',
             }
           ]}>
@@ -1224,12 +1249,7 @@ export function VoiceFlowchartCreator({
                 // Hide text input and clear it
                 setShowTextInput(false);
                 setTextInput('');
-
-                // Immediately start voice recording
-                if (sessionRef.current && isConnected) {
-                  console.log('🎤 Text input voice button - immediately starting recording');
-                  handleTapToTalk();
-                }
+                // Just switch back to voice mode without starting recording
               }}
             >
               <Image
@@ -1253,7 +1273,7 @@ export function VoiceFlowchartCreator({
                     borderWidth: 1
                   }
                 ]}
-                placeholder="Type your message..."
+                placeholder=""
                 placeholderTextColor={isDark ? '#888888' : '#666666'}
                 value={textInput}
                 onChangeText={setTextInput}
@@ -1269,7 +1289,11 @@ export function VoiceFlowchartCreator({
                 onPress={handleSendText}
                 disabled={!isConnected || !textInput.trim()}
               >
-                <Text style={styles.sendButtonText}>↑</Text>
+                <IconSymbol
+                  size={18}
+                  name="arrow.up"
+                  color="#FFFFFF"
+                />
               </Pressable>
             </View>
           </View>
@@ -1396,6 +1420,7 @@ export function VoiceFlowchartCreator({
 
         </View>
             </View>
+            </KeyboardAvoidingView>
           </BlurView>
         </Animated.View>
       </View>
@@ -1722,7 +1747,7 @@ const styles = StyleSheet.create({
   },
   textInputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
     gap: 8,
     paddingHorizontal: 0,
     paddingTop: 0,
@@ -1754,12 +1779,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'absolute',
-    right: 6,
+    right: 4,
   },
   sendButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '900',
     fontFamily: 'Georgia',
   },
   textInputVoiceButton: {

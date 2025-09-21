@@ -256,6 +256,7 @@ export const createVoiceFlowchartSession = (
   let currentRecording: any | null = null;
   let currentSound: any | null = null;
   let isCreatingRecording = false; // Prevent concurrent recording creation
+  let lastInputWasText = false; // Track if the most recent input was text vs voice
   let isReceivingAudio = false;
   let hasActiveResponse = false;
   let continuousRecordingInterval: NodeJS.Timeout | null = null;
@@ -421,6 +422,10 @@ export const createVoiceFlowchartSession = (
         console.log('❌ Cannot start listening - no websocket or not connected');
         return;
       }
+
+      // Mark that the last input was voice
+      lastInputWasText = false;
+      console.log('🎤 Voice recording started, setting lastInputWasText = false');
       
       // Check if already creating a recording
       if (isCreatingRecording) {
@@ -686,6 +691,31 @@ export const createVoiceFlowchartSession = (
               encoding: FileSystem.EncodingType.Base64,
             });
 
+            // Check if the audio contains actual speech before sending
+            const hasSpeech = await checkAudioForSpeechContent(finalAudioData);
+
+            if (!hasSpeech) {
+              console.log('🔇 No speech detected in recording - skipping transcription to prevent hallucination');
+              // Silently skip without notifying user
+
+              // Clean up without sending to API
+              currentRecording = null;
+              lastAudioStreamPosition = 0;
+              isUserStoppingRecording = false;
+              callbacks.onListeningStop?.();
+
+              // Clean up audio file
+              try {
+                await FileSystem.deleteAsync(uri, { idempotent: true });
+              } catch (cleanupError) {
+                console.warn('⚠️ Could not clean up audio file:', cleanupError);
+              }
+
+              return; // Exit early without sending to OpenAI
+            }
+
+            console.log('✅ Speech detected - proceeding with transcription');
+
             // Convert base64 to binary
             const binaryString = atob(finalAudioData);
             const bytes = new Uint8Array(binaryString.length);
@@ -768,8 +798,11 @@ export const createVoiceFlowchartSession = (
         console.error('❌ Cannot send message: websocket not connected');
         return;
       }
-      
-      
+
+      // Mark that the last input was text
+      lastInputWasText = true;
+      console.log('📝 Text message sent, setting lastInputWasText = true');
+
       const message = {
         type: 'conversation.item.create',
         item: {
@@ -791,11 +824,12 @@ export const createVoiceFlowchartSession = (
         const responseMessage = {
           type: 'response.create',
           response: {
-            modalities: ['text', 'audio']
+            modalities: ['text', 'audio'] // Keep both for now, but prioritize text processing
           }
         };
         websocket.send(JSON.stringify(responseMessage));
         hasActiveResponse = true;
+        console.log('📤 Requesting response with modalities: text, audio');
       }
     },
 
@@ -1177,6 +1211,12 @@ export const createVoiceFlowchartSession = (
   const handleRealtimeMessage = (message: any) => {
     try {
       // console.log('🔍 DEBUG: Received message type:', message.type); // Too verbose
+
+      // Log response messages for debugging text responses
+      if (message.type.startsWith('response.')) {
+        console.log('📥 Received response message:', { type: message.type, lastInputWasText });
+      }
+
       switch (message.type) {
         case 'session.created':
           break;
@@ -1202,12 +1242,28 @@ export const createVoiceFlowchartSession = (
           break;
           
         case 'response.text.delta':
-          // Skip text deltas - we'll use audio transcript for voice responses
+          // Process text deltas if last input was text, otherwise skip for voice responses
+          console.log('📝 Text delta received:', { lastInputWasText, hasDelta: !!message.delta, hasResponseId: !!currentResponseId });
+          if (lastInputWasText && message.delta && currentResponseId) {
+            console.log('📝 Processing text delta for text input:', message.delta);
+            currentTranscript += message.delta;
+            callbacks.onResponse?.(currentTranscript);
+          } else {
+            console.log('📝 Skipping text delta:', { lastInputWasText, delta: message.delta, responseId: currentResponseId });
+          }
           break;
 
         case 'response.text.done':
-          // Skip text responses - we'll use audio transcript for voice responses
-          // Only try to parse flowchart JSON if needed
+          // Process final text response if last input was text, otherwise skip for voice responses
+          console.log('📝 Text done received:', { lastInputWasText, hasText: !!message.text, text: message.text?.substring(0, 100) + '...' });
+          if (lastInputWasText && message.text) {
+            console.log('📝 Processing final text response for text input:', message.text);
+            currentTranscript = message.text;
+            callbacks.onResponse?.(currentTranscript);
+          } else {
+            console.log('📝 Skipping text done:', { lastInputWasText, hasText: !!message.text });
+          }
+          // Always try to parse flowchart JSON if needed
           if (message.text) {
             tryParseFlowchartFromResponse(message.text);
           }
@@ -1217,12 +1273,19 @@ export const createVoiceFlowchartSession = (
           // Build complete transcript and send incremental updates for real-time display
           if (message.delta && currentResponseId) {
             currentTranscript += message.delta;
+            console.log('🎵 Audio transcript delta:', {
+              delta: message.delta,
+              currentTranscript: currentTranscript.substring(0, 50) + '...',
+              lastProcessed: lastProcessedResponse?.substring(0, 50) + '...',
+              willSend: currentTranscript !== lastProcessedResponse
+            });
 
             // Audio transcript delta received
 
             // Send incremental update for streaming display
             // Only if this is the current response (not a duplicate)
             if (currentTranscript !== lastProcessedResponse) {
+              console.log('📤 Calling onResponse callback with:', currentTranscript.substring(0, 50) + '...');
               callbacks.onResponse?.(currentTranscript);
             }
           }
