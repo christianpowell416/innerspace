@@ -199,20 +199,28 @@ export function BubbleChart({ data, config, callbacks, loading = false }: Bubble
     // Base font size from radius
     const baseFontSize = Math.max(10, Math.min(16, radius / 3));
 
+    // Progressive size multiplier for larger bubbles
+    // Small bubbles (≤30): no change, Large bubbles (≥46): 35% larger
+    const sizeMultiplier = radius <= 30
+      ? 1.0
+      : Math.min(1.35, 1.0 + ((radius - 30) / 60) * 0.35);
+
+    const scaledFontSize = baseFontSize * sizeMultiplier;
+
     // Calculate available width (70% of diameter for circular shape)
     const availableWidth = radius * 1.4;
 
     // Estimate character width for Georgia font
-    const charWidth = baseFontSize * 0.5;
+    const charWidth = scaledFontSize * 0.5;
     const estimatedTextWidth = text.length * charWidth;
 
     // If text is too wide, scale down the font
     if (estimatedTextWidth > availableWidth) {
       const scaleFactor = availableWidth / estimatedTextWidth;
-      return Math.max(8, baseFontSize * scaleFactor); // Minimum 8px font
+      return Math.max(8, scaledFontSize * scaleFactor); // Minimum 8px font
     }
 
-    return baseFontSize;
+    return scaledFontSize;
   };
 
   // Intelligent text wrapping for circular bubbles
@@ -397,7 +405,7 @@ export function BubbleChart({ data, config, callbacks, loading = false }: Bubble
                             style={{
                               fontSize,
                               color: '#FFFFFF',
-                              fontWeight: '600',
+                              fontWeight: 'normal',
                               fontFamily: 'Georgia',
                               textAlign: 'center',
                               lineHeight,

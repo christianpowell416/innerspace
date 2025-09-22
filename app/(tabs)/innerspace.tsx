@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { ThemedText } from '@/components/ThemedText';
 import { BubbleChart } from '@/components/BubbleChart';
 import {
   createBubbleChartData,
@@ -26,10 +27,12 @@ import {
   BubbleChartCallbacks
 } from '@/lib/types/bubbleChart';
 import { generateTestEmotionData, createTestEmotionStats } from '@/lib/utils/testData';
+import { EmotionDetailModal } from '@/components/EmotionDetailModal';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 type TabType = 'emotions' | 'parts' | 'needs';
+type SortType = 'frequency' | 'intensity' | 'recency';
 
 // Development mode - set to true to use test data
 const USE_TEST_DATA = __DEV__ && true; // Set to true for testing
@@ -38,6 +41,10 @@ export default function InnerspaceScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const [activeTab, setActiveTab] = useState<TabType>('emotions');
+  const [sortBy, setSortBy] = useState<SortType>('frequency');
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [selectedEmotion, setSelectedEmotion] = useState<EmotionBubbleData | null>(null);
+  const [showEmotionDetail, setShowEmotionDetail] = useState(false);
 
   // Animation values for tab indicator
   const tabIndicatorPosition = useRef(new Animated.Value(0)).current;
@@ -51,6 +58,69 @@ export default function InnerspaceScreen() {
   );
   const [emotionsLoading, setEmotionsLoading] = useState(true);
   const [emotionStats, setEmotionStats] = useState<any>(null);
+
+  // Function to recalculate bubble sizes based on sort type
+  const recalculateBubbleSizes = useCallback((bubbles: EmotionBubbleData[], sortType: SortType, config: BubbleChartConfig) => {
+    if (bubbles.length === 0) return bubbles;
+
+    // Extract values for the selected sort type
+    const values = bubbles.map(bubble => {
+      switch (sortType) {
+        case 'intensity':
+          return bubble.intensity;
+        case 'recency':
+          return Date.now() - bubble.lastSeen.getTime(); // Lower = more recent
+        case 'frequency':
+        default:
+          return bubble.frequency;
+      }
+    });
+
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+
+    // Create custom scaling function
+    const createScale = (domain: [number, number], range: [number, number]) => {
+      const [domainMin, domainMax] = domain;
+      const [rangeMin, rangeMax] = range;
+      return (value: number): number => {
+        if (domainMax === domainMin) return rangeMin;
+        let normalizedValue = (value - domainMin) / (domainMax - domainMin);
+
+        // For recency, invert the scale (more recent = larger)
+        if (sortType === 'recency') {
+          normalizedValue = 1 - normalizedValue;
+        }
+
+        const sqrtValue = Math.sqrt(Math.max(0, normalizedValue));
+        return rangeMin + sqrtValue * (rangeMax - rangeMin);
+      };
+    };
+
+    const radiusScale = createScale([minValue, maxValue], [config.minRadius, config.maxRadius]);
+
+    // Return bubbles with recalculated radii
+    return bubbles.map(bubble => {
+      let value;
+      switch (sortType) {
+        case 'intensity':
+          value = bubble.intensity;
+          break;
+        case 'recency':
+          value = Date.now() - bubble.lastSeen.getTime();
+          break;
+        case 'frequency':
+        default:
+          value = bubble.frequency;
+          break;
+      }
+
+      return {
+        ...bubble,
+        radius: radiusScale(value)
+      };
+    });
+  }, []);
 
   const loadEmotionData = useCallback(async () => {
     try {
@@ -73,7 +143,8 @@ export default function InnerspaceScreen() {
         // Simulate loading delay
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        setEmotionBubbles(testBubbles);
+        const sortedBubbles = recalculateBubbleSizes(testBubbles, sortBy, config);
+        setEmotionBubbles(sortedBubbles);
         setEmotionStats(testStats);
       } else {
         // Load real data from Supabase
@@ -82,7 +153,8 @@ export default function InnerspaceScreen() {
           getEmotionStatistics()
         ]);
 
-        setEmotionBubbles(bubbleData);
+        const sortedBubbles = recalculateBubbleSizes(bubbleData, sortBy, config);
+        setEmotionBubbles(sortedBubbles);
         setEmotionStats(stats);
       }
     } catch (error) {
@@ -91,28 +163,34 @@ export default function InnerspaceScreen() {
     } finally {
       setEmotionsLoading(false);
     }
-  }, [isDark]);
+  }, [isDark, sortBy, recalculateBubbleSizes]);
 
   // Load emotion data
   useEffect(() => {
     loadEmotionData();
   }, [loadEmotionData]);
 
+  // Handle sort change
+  const handleSortChange = (newSortType: SortType) => {
+    setSortBy(newSortType);
+    setShowSortMenu(false);
+
+    // Recalculate bubble sizes with current data
+    if (emotionBubbles.length > 0) {
+      const sortedBubbles = recalculateBubbleSizes(emotionBubbles, newSortType, bubbleConfig);
+      setEmotionBubbles(sortedBubbles);
+    }
+  };
+
   // Bubble chart callbacks
   const bubbleCallbacks: BubbleChartCallbacks = {
     onBubblePress: (bubble) => {
-      Alert.alert(
-        bubble.emotion,
-        `Mentioned ${bubble.frequency} times\nAverage intensity: ${bubble.intensity.toFixed(1)}\nLast seen: ${bubble.lastSeen.toLocaleDateString()}`,
-        [{ text: 'OK' }]
-      );
+      setSelectedEmotion(bubble);
+      setShowEmotionDetail(true);
     },
     onBubbleLongPress: (bubble) => {
-      Alert.alert(
-        'Emotion Details',
-        `${bubble.emotion}\n\nFrequency: ${bubble.frequency}\nIntensity: ${bubble.intensity.toFixed(1)}\nCategory: ${bubble.category}\nConversations: ${bubble.conversationIds.length}`,
-        [{ text: 'OK' }]
-      );
+      setSelectedEmotion(bubble);
+      setShowEmotionDetail(true);
     },
   };
 
@@ -146,18 +224,44 @@ export default function InnerspaceScreen() {
             loading={emotionsLoading}
           />
 
-          {/* Refresh Button */}
+          {/* Filter Button */}
           {!emotionsLoading && emotionBubbles.length > 0 && (
-            <Pressable
-              style={[styles.refreshButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}
-              onPress={loadEmotionData}
-            >
-              <IconSymbol
-                name="arrow.clockwise"
-                size={16}
-                color={isDark ? '#fff' : '#000'}
-              />
-            </Pressable>
+            <View style={styles.filterContainer}>
+              <Pressable
+                style={[styles.filterButton, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}
+                onPress={() => setShowSortMenu(!showSortMenu)}
+              >
+                <IconSymbol
+                  name="slider.horizontal.3"
+                  size={16}
+                  color={isDark ? '#fff' : '#000'}
+                />
+              </Pressable>
+
+              {/* Sort Menu */}
+              {showSortMenu && (
+                <View style={[styles.sortMenu, { backgroundColor: isDark ? 'rgba(20,20,20,0.95)' : 'rgba(255,255,255,0.95)' }]}>
+                  <Pressable
+                    style={[styles.sortOption, sortBy === 'frequency' && styles.sortOptionActive]}
+                    onPress={() => handleSortChange('frequency')}
+                  >
+                    <ThemedText style={[styles.sortOptionText, { color: isDark ? '#fff' : '#000' }]}>Frequency</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.sortOption, sortBy === 'intensity' && styles.sortOptionActive]}
+                    onPress={() => handleSortChange('intensity')}
+                  >
+                    <ThemedText style={[styles.sortOptionText, { color: isDark ? '#fff' : '#000' }]}>Intensity</ThemedText>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.sortOption, sortBy === 'recency' && styles.sortOptionActive]}
+                    onPress={() => handleSortChange('recency')}
+                  >
+                    <ThemedText style={[styles.sortOptionText, { color: isDark ? '#fff' : '#000' }]}>Recency</ThemedText>
+                  </Pressable>
+                </View>
+              )}
+            </View>
           )}
         </View>
 
@@ -175,15 +279,15 @@ export default function InnerspaceScreen() {
             size={64}
             color={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)'}
           />
-          <Text style={[styles.emptyStateTitle, { color: isDark ? '#fff' : '#000' }]}>
+          <ThemedText type="subtitle" style={styles.emptyStateTitle}>
             Your Parts
-          </Text>
-          <Text style={[styles.emptyStateText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
+          </ThemedText>
+          <ThemedText style={[styles.emptyStateText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
             Identify your internal family system
-          </Text>
-          <Text style={[styles.emptyStateSubtext, { color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
+          </ThemedText>
+          <ThemedText style={[styles.emptyStateSubtext, { color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
             Managers, Firefighters, and Exiles
-          </Text>
+          </ThemedText>
         </View>
       </View>
     </View>
@@ -198,15 +302,15 @@ export default function InnerspaceScreen() {
             size={64}
             color={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)'}
           />
-          <Text style={[styles.emptyStateTitle, { color: isDark ? '#fff' : '#000' }]}>
+          <ThemedText type="subtitle" style={styles.emptyStateTitle}>
             Your Needs
-          </Text>
-          <Text style={[styles.emptyStateText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
+          </ThemedText>
+          <ThemedText style={[styles.emptyStateText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
             Understand your core human needs
-          </Text>
-          <Text style={[styles.emptyStateSubtext, { color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
+          </ThemedText>
+          <ThemedText style={[styles.emptyStateSubtext, { color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
             Safety, Connection, Autonomy, and more
-          </Text>
+          </ThemedText>
         </View>
       </View>
     </View>
@@ -214,13 +318,18 @@ export default function InnerspaceScreen() {
 
   return (
     <GradientBackground>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
           {/* Header */}
           <View style={styles.headerContainer}>
-            <Text style={[styles.headerText, { color: isDark ? '#fff' : '#000' }]}>
-              My Innerspace
-            </Text>
+            <Text style={{
+              fontSize: 42,
+              fontWeight: 'bold',
+              color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+              textAlign: 'left',
+              fontFamily: 'Georgia',
+              lineHeight: 50
+            }}>My Innerspace</Text>
           </View>
 
           {/* Tab Bar */}
@@ -242,7 +351,7 @@ export default function InnerspaceScreen() {
                 style={styles.tabButton}
                 onPress={() => handleTabPress('emotions')}
               >
-                <Text style={[
+                <ThemedText style={[
                   styles.tabText,
                   activeTab === 'emotions' && styles.tabTextActive,
                   { color: activeTab === 'emotions'
@@ -251,14 +360,14 @@ export default function InnerspaceScreen() {
                   }
                 ]}>
                   Emotions
-                </Text>
+                </ThemedText>
               </Pressable>
 
               <Pressable
                 style={styles.tabButton}
                 onPress={() => handleTabPress('parts')}
               >
-                <Text style={[
+                <ThemedText style={[
                   styles.tabText,
                   activeTab === 'parts' && styles.tabTextActive,
                   { color: activeTab === 'parts'
@@ -267,14 +376,14 @@ export default function InnerspaceScreen() {
                   }
                 ]}>
                   Parts
-                </Text>
+                </ThemedText>
               </Pressable>
 
               <Pressable
                 style={styles.tabButton}
                 onPress={() => handleTabPress('needs')}
               >
-                <Text style={[
+                <ThemedText style={[
                   styles.tabText,
                   activeTab === 'needs' && styles.tabTextActive,
                   { color: activeTab === 'needs'
@@ -283,7 +392,7 @@ export default function InnerspaceScreen() {
                   }
                 ]}>
                   Needs
-                </Text>
+                </ThemedText>
               </Pressable>
             </View>
           </View>
@@ -296,6 +405,16 @@ export default function InnerspaceScreen() {
           </View>
         </View>
       </SafeAreaView>
+
+      {/* Emotion Detail Modal */}
+      <EmotionDetailModal
+        visible={showEmotionDetail}
+        onClose={() => {
+          setShowEmotionDetail(false);
+          setSelectedEmotion(null);
+        }}
+        emotion={selectedEmotion}
+      />
     </GradientBackground>
   );
 }
@@ -308,13 +427,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerContainer: {
-    paddingTop: 20,
+    alignItems: 'flex-start',
+    paddingTop: -5,
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 15,
+    zIndex: 100,
+    position: 'relative',
+    backgroundColor: 'rgba(0,0,0,0.01)',
   },
   headerText: {
-    fontSize: 34,
-    fontWeight: '700',
     letterSpacing: 0.374,
   },
   tabBarContainer: {
@@ -344,6 +465,7 @@ const styles = StyleSheet.create({
   tabText: {
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: 'Georgia',
   },
   tabTextActive: {
     fontWeight: '700',
@@ -361,13 +483,10 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   emptyStateTitle: {
-    fontSize: 24,
-    fontWeight: '700',
     marginTop: 20,
     marginBottom: 8,
   },
   emptyStateText: {
-    fontSize: 16,
     textAlign: 'center',
     paddingHorizontal: 40,
     marginBottom: 8,
@@ -376,6 +495,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     paddingHorizontal: 40,
+    fontFamily: 'Georgia',
   },
   statsContainer: {
     paddingBottom: 20,
@@ -409,16 +529,45 @@ const styles = StyleSheet.create({
     marginTop: 20, // Space from statistics header
     paddingBottom: 90, // Space for bottom tab bar
   },
-  refreshButton: {
+  filterContainer: {
     position: 'absolute',
     top: 10,
     right: 10,
+    zIndex: 10,
+  },
+  filterButton: {
     width: 32,
     height: 32,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1,
+  },
+  sortMenu: {
+    position: 'absolute',
+    top: 40,
+    right: 0,
+    borderRadius: 8,
+    minWidth: 120,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  sortOption: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    marginVertical: 2,
+    marginHorizontal: 4,
+  },
+  sortOptionActive: {
+    backgroundColor: 'rgba(0,122,255,0.2)',
+  },
+  sortOptionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    fontFamily: 'Georgia',
   },
   insightContainer: {
     backgroundColor: 'rgba(255,255,255,0.05)',
