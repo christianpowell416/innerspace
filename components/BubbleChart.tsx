@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, StyleSheet, Pressable, Animated, Text } from 'react-native';
-import Svg, { Circle, Text as SvgText, G } from 'react-native-svg';
+import { View, StyleSheet, Pressable, Animated, Text, Platform } from 'react-native';
 import { forceSimulation, forceCollide, forceCenter, forceManyBody } from 'd3-force';
 import * as Haptics from 'expo-haptics';
+import Hypher from 'hypher';
+import english from 'hyphenation.en-us';
+import { BlurView } from 'expo-blur';
 
 import {
   EmotionBubbleData,
@@ -21,6 +23,9 @@ interface BubbleChartProps {
 export function BubbleChart({ data, config, callbacks, loading = false }: BubbleChartProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+
+  // Initialize hyphenator with English patterns
+  const hyphenator = new Hypher(english);
 
   const [bubbles, setBubbles] = useState<EmotionBubbleData[]>([]);
   const [selectedBubble, setSelectedBubble] = useState<string | null>(null);
@@ -50,28 +55,57 @@ export function BubbleChart({ data, config, callbacks, loading = false }: Bubble
       return;
     }
 
+    // Sort bubbles by size (largest first) for better center positioning
+    const sortedData = [...data].sort((a, b) => b.radius - a.radius);
+
     // Create a copy of the data with initial positions
-    const initialBubbles = data.map(bubble => ({
-      ...bubble,
-      x: config.width / 2 + (Math.random() - 0.5) * 100,
-      y: config.height / 2 + (Math.random() - 0.5) * 100,
-      vx: 0,
-      vy: 0,
-      fx: null,
-      fy: null,
-    }));
+    const initialBubbles = sortedData.map((bubble, index) => {
+      // Position larger bubbles closer to center
+      const distanceFromCenter = Math.min(100, 20 + (index * 8));
+      const angle = (index * 2.4) % (2 * Math.PI); // Spiral pattern
+
+      return {
+        ...bubble,
+        x: config.width / 2 + Math.cos(angle) * distanceFromCenter,
+        y: config.height / 2 + Math.sin(angle) * distanceFromCenter,
+        vx: 0,
+        vy: 0,
+        fx: null,
+        fy: null,
+      };
+    });
 
     console.log('🔄 D3 simulation initialized with', data.length, 'bubbles in', `${config.width}x${config.height}px area`);
 
     setBubbles(initialBubbles);
 
+    // Custom force to pull larger bubbles toward center
+    const centerPullForce = () => {
+      initialBubbles.forEach(bubble => {
+        if (!bubble.x || !bubble.y) return;
+
+        // Calculate distance from center
+        const centerX = config.width / 2;
+        const centerY = config.height / 2;
+        const dx = centerX - bubble.x;
+        const dy = centerY - bubble.y;
+
+        // Stronger pull for larger bubbles (higher frequency emotions)
+        const pullStrength = (bubble.radius / config.maxRadius) * 0.02;
+
+        bubble.vx = (bubble.vx || 0) + dx * pullStrength;
+        bubble.vy = (bubble.vy || 0) + dy * pullStrength;
+      });
+    };
+
     // Create D3 force simulation with boundary constraints
     const simulation = forceSimulation(initialBubbles as any)
-      .force('center', forceCenter(config.width / 2, config.height / 2).strength(0.1)) // Stronger center force
-      .force('collision', forceCollide((d: any) => d.radius + config.padding).strength(0.5)) // Reduced collision
-      .force('charge', forceManyBody().strength(-30)) // Reduced repulsion
-      .alphaDecay(0.02)
-      .velocityDecay(0.6); // Increased damping
+      .force('center', forceCenter(config.width / 2, config.height / 2).strength(0.05)) // Reduced general center force
+      .force('collision', forceCollide((d: any) => d.radius + config.padding).strength(0.5))
+      .force('charge', forceManyBody().strength(-20)) // Reduced repulsion
+      .force('centerPull', centerPullForce) // Custom center pull for large bubbles
+      .alphaDecay(0.015) // Slower decay for more settling time
+      .velocityDecay(0.7); // Higher damping for stability
 
     // Update positions on each tick with boundary constraints
     let tickCount = 0;
@@ -160,14 +194,85 @@ export function BubbleChart({ data, config, callbacks, loading = false }: Bubble
     return brightness > 128 ? '#000000' : '#FFFFFF';
   };
 
-  // Get font size based on bubble radius
-  const getFontSize = (radius: number): number => {
-    return Math.max(10, Math.min(16, radius / 3));
+  // Smart font sizing based on bubble radius and text length
+  const getFontSize = (radius: number, text: string): number => {
+    // Base font size from radius
+    const baseFontSize = Math.max(10, Math.min(16, radius / 3));
+
+    // Calculate available width (70% of diameter for circular shape)
+    const availableWidth = radius * 1.4;
+
+    // Estimate character width for Georgia font
+    const charWidth = baseFontSize * 0.5;
+    const estimatedTextWidth = text.length * charWidth;
+
+    // If text is too wide, scale down the font
+    if (estimatedTextWidth > availableWidth) {
+      const scaleFactor = availableWidth / estimatedTextWidth;
+      return Math.max(8, baseFontSize * scaleFactor); // Minimum 8px font
+    }
+
+    return baseFontSize;
   };
 
-  // Truncate long emotion names
-  const truncateText = (text: string, maxLength: number = 12): string => {
-    return text.length > maxLength ? text.substring(0, maxLength - 1) + '…' : text;
+  // Intelligent text wrapping for circular bubbles
+  const wrapTextForBubble = (text: string, radius: number, fontSize: number): string[] => {
+    try {
+      // Calculate usable width (70% of diameter to account for circular shape)
+      const usableWidth = radius * 1.4;
+
+      // Estimate character width (rough approximation for Georgia font)
+      const charWidth = fontSize * 0.5;
+      const maxCharsPerLine = Math.floor(usableWidth / charWidth);
+
+      // If text fits on one line, return as-is
+      if (text.length <= maxCharsPerLine) {
+        return [text];
+      }
+
+      // Use hyphenation for better word breaks
+      const hyphenatedText = hyphenator.hyphenateText(text);
+      const words = hyphenatedText.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+        if (testLine.length <= maxCharsPerLine) {
+          currentLine = testLine;
+        } else {
+          if (currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            // Word is too long for one line, break it
+            if (word.length > maxCharsPerLine) {
+              lines.push(word.substring(0, maxCharsPerLine - 1) + '-');
+              currentLine = word.substring(maxCharsPerLine - 1);
+            } else {
+              currentLine = word;
+            }
+          }
+        }
+      }
+
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+
+      // Limit to 2 lines for bubble readability
+      if (lines.length > 2) {
+        lines[1] = lines[1].substring(0, Math.max(0, maxCharsPerLine - 1)) + '…';
+        return lines.slice(0, 2);
+      }
+
+      return lines;
+    } catch (error) {
+      console.warn('Text wrapping failed, using fallback:', error);
+      // Fallback to simple truncation
+      return [text.length > 12 ? text.substring(0, 11) + '…' : text];
+    }
   };
 
   if (loading) {
@@ -206,74 +311,110 @@ export function BubbleChart({ data, config, callbacks, loading = false }: Bubble
         onPress={handleChartPress}
         accessible={false}
       >
-        <Svg
-          width={config.width}
-          height={config.height}
-          viewBox={`0 0 ${config.width} ${config.height}`}
+        <View
+          style={{
+            width: config.width,
+            height: config.height,
+            position: 'relative',
+          }}
         >
           {bubbles.map((bubble) => {
             const isSelected = selectedBubble === bubble.id;
             const x = bubble.x || (config.width / 2);
             const y = bubble.y || (config.height / 2);
+            const radius = bubble.radius * (isSelected ? 1.1 : 1);
 
             return (
-              <G key={bubble.id}>
-                {/* Bubble circle */}
-                <Circle
-                  cx={x}
-                  cy={y}
-                  r={bubble.radius * (isSelected ? 1.1 : 1)}
-                  fill={bubble.color}
-                  stroke={isSelected ? (isDark ? '#fff' : '#000') : 'transparent'}
-                  strokeWidth={isSelected ? 2 : 0}
-                  opacity={0.8}
-                  onPress={() => handleBubblePress(bubble)}
-                  onLongPress={() => handleBubbleLongPress(bubble)}
-                />
-
-                {/* Bubble label */}
-                <SvgText
-                  x={x}
-                  y={y + 2}
-                  fontSize={getFontSize(bubble.radius)}
-                  fill={getTextColor(bubble.color)}
-                  textAnchor="middle"
-                  alignmentBaseline="middle"
-                  fontWeight="600"
-                  pointerEvents="none"
-                >
-                  {truncateText(bubble.emotion)}
-                </SvgText>
-
-                {/* Frequency indicator (small circle) */}
-                {bubble.frequency > 5 && (
-                  <Circle
-                    cx={x + bubble.radius * 0.6}
-                    cy={y - bubble.radius * 0.6}
-                    r={6}
-                    fill={isDark ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.6)'}
-                  />
-                )}
-
-                {/* Frequency text */}
-                {bubble.frequency > 5 && (
-                  <SvgText
-                    x={x + bubble.radius * 0.6}
-                    y={y - bubble.radius * 0.6 + 1}
-                    fontSize={8}
-                    fill={isDark ? '#000' : '#fff'}
-                    textAnchor="middle"
-                    alignmentBaseline="middle"
-                    fontWeight="700"
-                    pointerEvents="none"
+              <Pressable
+                key={bubble.id}
+                style={{
+                  position: 'absolute',
+                  left: x - radius,
+                  top: y - radius,
+                  width: radius * 2,
+                  height: radius * 2,
+                  borderRadius: radius,
+                  borderWidth: 3,
+                  borderColor: isSelected
+                    ? 'rgba(46, 125, 50, 0.5)'
+                    : isDark
+                      ? 'rgba(255, 255, 255, 0.2)'
+                      : 'rgba(0, 0, 0, 0.15)',
+                  shadowColor: '#000',
+                  shadowOffset: {
+                    width: 0,
+                    height: 4,
+                  },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 4.65,
+                  elevation: 8,
+                  overflow: 'hidden', // Ensure circular clipping at container level
+                }}
+                onPress={() => handleBubblePress(bubble)}
+                onLongPress={() => handleBubbleLongPress(bubble)}
+              >
+                <View style={{
+                  flex: 1,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}>
+                  <BlurView
+                    intensity={20}
+                    tint="systemMaterial"
+                    style={{
+                      position: 'absolute',
+                      width: (radius * 2) + 6,
+                      height: (radius * 2) + 6,
+                      borderRadius: radius + 3,
+                      left: '50%',
+                      top: '50%',
+                      transform: [
+                        { translateX: -(radius + 3) },
+                        { translateY: -(radius + 3) }
+                      ],
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      backgroundColor: isSelected
+                        ? 'rgba(46, 125, 50, 0.6)'
+                        : `${bubble.color}50`, // Original opacity with blur
+                    }}
                   >
-                    {bubble.frequency}
-                  </SvgText>
-                )}
-              </G>
+                  {/* Bubble label */}
+                  {(() => {
+                    const fontSize = getFontSize(bubble.radius, bubble.emotion);
+                    const textLines = wrapTextForBubble(bubble.emotion, bubble.radius, fontSize);
+                    const lineHeight = fontSize * 1.2;
+
+                    return (
+                      <View style={{
+                        flex: 1,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                        {textLines.map((line, index) => (
+                          <Text
+                            key={index}
+                            style={{
+                              fontSize,
+                              color: '#FFFFFF',
+                              fontWeight: '600',
+                              fontFamily: 'Georgia',
+                              textAlign: 'center',
+                              lineHeight,
+                            }}
+                          >
+                            {line}
+                          </Text>
+                        ))}
+                      </View>
+                    );
+                  })()}
+                  </BlurView>
+                </View>
+              </Pressable>
             );
           })}
-        </Svg>
+        </View>
       </Pressable>
     </View>
   );
@@ -297,6 +438,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     textAlign: 'center',
+    fontFamily: 'Georgia',
   },
   emptyContainer: {
     padding: 40,
@@ -306,10 +448,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginBottom: 8,
+    fontFamily: 'Georgia',
   },
   emptySubtext: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+    fontFamily: 'Georgia',
   },
 });

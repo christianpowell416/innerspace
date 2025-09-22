@@ -112,15 +112,10 @@ export default function TabLayout() {
         options={{
           title: 'Loops',
           tabBarIcon: ({ color, focused }) => (
-            <BlurView
-              intensity={60}
-              tint={colorScheme === 'dark' ? 'dark' : 'light'}
+            <View
               style={[
                 styles.centerButton,
-                { 
-                  backgroundColor: focused 
-                    ? 'rgba(46, 125, 50, 0.6)' // Stronger green when focused
-                    : 'rgba(255, 255, 255, 0.3)', // White when not focused
+                {
                   borderWidth: 3,
                   borderColor: focused
                     ? 'rgba(46, 125, 50, 0.5)'
@@ -130,17 +125,30 @@ export default function TabLayout() {
                 }
               ]}
             >
-              <Image 
-                source={require('@/assets/images/Logo.png')}
+              <BlurView
+                intensity={20}
+                tint="systemMaterial"
                 style={[
-                  styles.logoIcon,
-                  { 
-                    tintColor: focused ? '#FFF' : colorScheme === 'dark' ? '#FFF' : '#000',
+                  styles.centerButtonBlur,
+                  {
+                    backgroundColor: focused
+                      ? 'rgba(46, 125, 50, 0.6)' // Stronger green when focused
+                      : 'rgba(255, 255, 255, 0.3)', // White when not focused
                   }
                 ]}
-                resizeMode="contain"
-              />
-            </BlurView>
+              >
+                <Image
+                  source={require('@/assets/images/Logo.png')}
+                  style={[
+                    styles.logoIcon,
+                    {
+                      tintColor: focused ? '#FFF' : colorScheme === 'dark' ? '#FFF' : '#000',
+                    }
+                  ]}
+                  resizeMode="contain"
+                />
+              </BlurView>
+            </View>
           ),
           tabBarButton: ChatTabButton,
         }}
@@ -152,10 +160,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="conversations"
+        name="innerspace"
         options={{
-          title: 'Conversations',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="bubble.left.and.bubble.right.fill" color={color} />,
+          title: 'My Innerspace',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="sparkles" color={color} />,
         }}
       />
     </Tabs>
@@ -178,6 +186,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4.65,
     elevation: 8,
     overflow: 'hidden',
+  },
+  centerButtonBlur: {
+    width: 104,
+    height: 104,
+    borderRadius: 52,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: -2,
+    marginTop: -2,
   },
   centerButtonContainer: {
     top: -20,
