@@ -17,6 +17,14 @@ import { createFlowchart, updateFlowchartWithDescription, getUserFlowchartWithId
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert } from 'react-native';
 
+import { PartsMiniBubbleChart } from '@/components/PartsMiniBubbleChart';
+import { NeedsMiniBubbleChart } from '@/components/NeedsMiniBubbleChart';
+import { EmotionsMiniBubbleChart } from '@/components/EmotionsMiniBubbleChart';
+import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
+import { generateTestEmotionData } from '@/lib/utils/testData';
+import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
+import { EmotionBubbleData } from '@/lib/types/bubbleChart';
+
 const CARD_BORDER_RADIUS = 24;
 
 export default function ChatScreen() {
@@ -35,6 +43,12 @@ export default function ChatScreen() {
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [expandedSquareCard, setExpandedSquareCard] = useState<string | null>(null);
+  const [partsData, setPartsData] = useState<PartBubbleData[]>([]);
+  const [needsData, setNeedsData] = useState<NeedBubbleData[]>([]);
+  const [emotionsData, setEmotionsData] = useState<EmotionBubbleData[]>([]);
+  const [partsChartDimensions, setPartsChartDimensions] = useState({ width: 180, height: 140 });
+  const [needsChartDimensions, setNeedsChartDimensions] = useState({ width: 180, height: 140 });
+  const [emotionsChartDimensions, setEmotionsChartDimensions] = useState({ width: 180, height: 140 });
   const cardOpacity = useRef({
     emotions: new Animated.Value(1),
     parts: new Animated.Value(1),
@@ -79,7 +93,17 @@ export default function ChatScreen() {
       }
     };
   }, []);
-  
+
+  // Load parts, needs, and emotions data when expanding cards
+  useEffect(() => {
+    if (expandedSquareCard) {
+      // Generate test data - in a real app, this would come from the conversation analysis
+      setPartsData(generateTestPartsData(8));
+      setNeedsData(generateTestNeedsData(8));
+      setEmotionsData(generateTestEmotionData(12));
+    }
+  }, [expandedSquareCard]);
+
   const handleButtonPress = (type: string) => {
     console.log(`${type} button pressed`);
     setSelectedTopic(type);
@@ -131,6 +155,22 @@ export default function ChatScreen() {
     
     setVoiceModalVisible(false);
     setSelectedTopic('');
+  };
+
+  // Handle bubble press events
+  const handlePartPress = (part: PartBubbleData) => {
+    console.log('Part pressed:', part.name);
+    // TODO: Show part detail modal or additional info
+  };
+
+  const handleNeedPress = (need: NeedBubbleData) => {
+    console.log('Need pressed:', need.name);
+    // TODO: Show need detail modal or additional info
+  };
+
+  const handleEmotionPress = (emotion: EmotionBubbleData) => {
+    console.log('Emotion pressed:', emotion.name);
+    // TODO: Show emotion detail modal or additional info
   };
 
   const conversationData = [
@@ -199,7 +239,12 @@ export default function ChatScreen() {
   const handleCardPress = (card: any) => {
     setSelectedCard(card);
     setModalVisible(true);
-    
+
+    // Generate initial sample data for bubble charts
+    setPartsData(generateTestPartsData(6));
+    setNeedsData(generateTestNeedsData(6));
+    setEmotionsData(generateTestEmotionData(8));
+
     // Animate modal sliding up from bottom
     Animated.timing(modalTranslateY, {
       toValue: 0,
@@ -819,9 +864,9 @@ export default function ChatScreen() {
                                 onPress={() => expandCard('emotions')}
                                 style={[
                                   styles.squareCard,
-                                  { 
-                                    backgroundColor: colorScheme === 'dark' 
-                                      ? 'rgba(255, 255, 255, 0.1)' 
+                                  {
+                                    backgroundColor: colorScheme === 'dark'
+                                      ? 'rgba(255, 255, 255, 0.1)'
                                       : 'rgba(0, 0, 0, 0.05)',
                                     borderColor: colorScheme === 'dark'
                                       ? 'rgba(255, 255, 255, 0.2)'
@@ -829,6 +874,21 @@ export default function ChatScreen() {
                                   }
                                 ]}
                               >
+                                <View
+                                  style={styles.chartContainer}
+                                  onLayout={(event) => {
+                                    const { width, height } = event.nativeEvent.layout;
+                                    setEmotionsChartDimensions({ width, height });
+                                  }}
+                                >
+                                  <EmotionsMiniBubbleChart
+                                    data={emotionsData}
+                                    width={emotionsChartDimensions.width}
+                                    height={emotionsChartDimensions.height}
+                                    callbacks={{ onBubblePress: handleEmotionPress }}
+                                    loading={emotionsData.length === 0}
+                                  />
+                                </View>
                               </Pressable>
                             </Animated.View>
                           </View>
@@ -854,9 +914,9 @@ export default function ChatScreen() {
                                 onPress={() => expandCard('parts')}
                                 style={[
                                   styles.squareCard,
-                                  { 
-                                    backgroundColor: colorScheme === 'dark' 
-                                      ? 'rgba(255, 255, 255, 0.1)' 
+                                  {
+                                    backgroundColor: colorScheme === 'dark'
+                                      ? 'rgba(255, 255, 255, 0.1)'
                                       : 'rgba(0, 0, 0, 0.05)',
                                     borderColor: colorScheme === 'dark'
                                       ? 'rgba(255, 255, 255, 0.2)'
@@ -864,6 +924,21 @@ export default function ChatScreen() {
                                   }
                                 ]}
                               >
+                                <View
+                                  style={styles.chartContainer}
+                                  onLayout={(event) => {
+                                    const { width, height } = event.nativeEvent.layout;
+                                    setPartsChartDimensions({ width, height });
+                                  }}
+                                >
+                                  <PartsMiniBubbleChart
+                                    data={partsData}
+                                    width={partsChartDimensions.width}
+                                    height={partsChartDimensions.height}
+                                    callbacks={{ onBubblePress: handlePartPress }}
+                                    loading={partsData.length === 0}
+                                  />
+                                </View>
                               </Pressable>
                             </Animated.View>
                             
@@ -890,9 +965,9 @@ export default function ChatScreen() {
                                 onPress={() => expandCard('needs')}
                                 style={[
                                   styles.squareCard,
-                                  { 
-                                    backgroundColor: colorScheme === 'dark' 
-                                      ? 'rgba(255, 255, 255, 0.1)' 
+                                  {
+                                    backgroundColor: colorScheme === 'dark'
+                                      ? 'rgba(255, 255, 255, 0.1)'
                                       : 'rgba(0, 0, 0, 0.05)',
                                     borderColor: colorScheme === 'dark'
                                       ? 'rgba(255, 255, 255, 0.2)'
@@ -900,6 +975,21 @@ export default function ChatScreen() {
                                   }
                                 ]}
                               >
+                                <View
+                                  style={styles.chartContainer}
+                                  onLayout={(event) => {
+                                    const { width, height } = event.nativeEvent.layout;
+                                    setNeedsChartDimensions({ width, height });
+                                  }}
+                                >
+                                  <NeedsMiniBubbleChart
+                                    data={needsData}
+                                    width={needsChartDimensions.width}
+                                    height={needsChartDimensions.height}
+                                    callbacks={{ onBubblePress: handleNeedPress }}
+                                    loading={needsData.length === 0}
+                                  />
+                                </View>
                               </Pressable>
                             </Animated.View>
                             
@@ -915,9 +1005,9 @@ export default function ChatScreen() {
                             onPress={() => collapseCard()}
                             style={[
                               styles.expandedCard,
-                              { 
-                                backgroundColor: colorScheme === 'dark' 
-                                  ? 'rgba(255, 255, 255, 0.1)' 
+                              {
+                                backgroundColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.1)'
                                   : 'rgba(0, 0, 0, 0.05)',
                                 borderColor: colorScheme === 'dark'
                                   ? 'rgba(255, 255, 255, 0.2)'
@@ -925,6 +1015,21 @@ export default function ChatScreen() {
                               }
                             ]}
                           >
+                            <View
+                              style={styles.chartContainer}
+                              onLayout={(event) => {
+                                const { width, height } = event.nativeEvent.layout;
+                                setEmotionsChartDimensions({ width, height });
+                              }}
+                            >
+                              <EmotionsMiniBubbleChart
+                                data={emotionsData}
+                                width={emotionsChartDimensions.width}
+                                height={emotionsChartDimensions.height}
+                                callbacks={{ onBubblePress: handleEmotionPress }}
+                                loading={emotionsData.length === 0}
+                              />
+                            </View>
                           </Pressable>
                         </Animated.View>
                         
@@ -936,9 +1041,9 @@ export default function ChatScreen() {
                             onPress={() => collapseCard()}
                             style={[
                               styles.expandedCard,
-                              { 
-                                backgroundColor: colorScheme === 'dark' 
-                                  ? 'rgba(255, 255, 255, 0.1)' 
+                              {
+                                backgroundColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.1)'
                                   : 'rgba(0, 0, 0, 0.05)',
                                 borderColor: colorScheme === 'dark'
                                   ? 'rgba(255, 255, 255, 0.2)'
@@ -946,6 +1051,21 @@ export default function ChatScreen() {
                               }
                             ]}
                           >
+                            <View
+                              style={styles.chartContainer}
+                              onLayout={(event) => {
+                                const { width, height } = event.nativeEvent.layout;
+                                setPartsChartDimensions({ width, height });
+                              }}
+                            >
+                              <PartsMiniBubbleChart
+                                data={partsData}
+                                width={partsChartDimensions.width}
+                                height={partsChartDimensions.height}
+                                callbacks={{ onBubblePress: handlePartPress }}
+                                loading={partsData.length === 0}
+                              />
+                            </View>
                           </Pressable>
                         </Animated.View>
                         
@@ -957,9 +1077,9 @@ export default function ChatScreen() {
                             onPress={() => collapseCard()}
                             style={[
                               styles.expandedCard,
-                              { 
-                                backgroundColor: colorScheme === 'dark' 
-                                  ? 'rgba(255, 255, 255, 0.1)' 
+                              {
+                                backgroundColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.1)'
                                   : 'rgba(0, 0, 0, 0.05)',
                                 borderColor: colorScheme === 'dark'
                                   ? 'rgba(255, 255, 255, 0.2)'
@@ -967,6 +1087,21 @@ export default function ChatScreen() {
                               }
                             ]}
                           >
+                            <View
+                              style={styles.chartContainer}
+                              onLayout={(event) => {
+                                const { width, height } = event.nativeEvent.layout;
+                                setNeedsChartDimensions({ width, height });
+                              }}
+                            >
+                              <NeedsMiniBubbleChart
+                                data={needsData}
+                                width={needsChartDimensions.width}
+                                height={needsChartDimensions.height}
+                                callbacks={{ onBubblePress: handleNeedPress }}
+                                loading={needsData.length === 0}
+                              />
+                            </View>
                           </Pressable>
                         </Animated.View>
                         
@@ -981,6 +1116,7 @@ export default function ChatScreen() {
                         ]}>
                           {selectedCard.description}
                         </Text>
+
                       </Animated.View>
                     </ScrollView>
                   </View>

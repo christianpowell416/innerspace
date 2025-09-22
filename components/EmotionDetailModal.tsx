@@ -16,8 +16,8 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
-import { PartsBubbleChart } from '@/components/PartsBubbleChart';
-import { NeedsBubbleChart } from '@/components/NeedsBubbleChart';
+import { PartsDetailBubbleChart } from '@/components/PartsDetailBubbleChart';
+import { NeedsDetailBubbleChart } from '@/components/NeedsDetailBubbleChart';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
 
@@ -222,24 +222,24 @@ export function EmotionDetailModal({
             >
               <View style={styles.contentContainer}>
 
-                {/* Intensity Slider */}
-                <View style={[
-                  styles.sectionCard,
+                {/* Intensity Header */}
+                <Text style={[
+                  styles.sectionTitle,
                   {
-                    backgroundColor: isDark
-                      ? 'rgba(255, 255, 255, 0.1)'
-                      : 'rgba(0, 0, 0, 0.05)',
-                    borderColor: isDark
-                      ? 'rgba(255, 255, 255, 0.2)'
-                      : 'rgba(0, 0, 0, 0.1)',
+                    color: isDark ? '#FFFFFF' : '#000000',
+                    fontSize: 22.5,
+                    fontWeight: '600',
+                    marginBottom: 6,
+                    fontFamily: 'Georgia',
+                    paddingHorizontal: 0,
+                    marginTop: 0,
                   }
                 ]}>
-                  <Text style={[
-                    styles.sectionTitle,
-                    { color: isDark ? '#FFFFFF' : '#000000' }
-                  ]}>
-                    Intensity
-                  </Text>
+                  Intensity
+                </Text>
+
+                {/* Intensity Slider */}
+                <View style={{ marginBottom: 16 }}>
                   <View style={styles.sliderContainer}>
                     <View style={styles.sliderTrack}>
                       <View style={[
@@ -287,7 +287,85 @@ export function EmotionDetailModal({
                   </View>
                 </View>
 
-                {/* Parts and Needs Row */}
+                {/* Insights Section */}
+                <Text style={[
+                  styles.sectionTitle,
+                  {
+                    color: isDark ? '#FFFFFF' : '#000000',
+                    fontSize: 22.5,
+                    fontWeight: '600',
+                    marginBottom: 12,
+                    fontFamily: 'Georgia',
+                    paddingHorizontal: 0,
+                    marginTop: 10,
+                  }
+                ]}>
+                  Insights
+                </Text>
+                <Text style={[
+                  styles.sectionContent,
+                  {
+                    color: isDark ? '#CCCCCC' : '#666666',
+                    marginBottom: 8,
+                    paddingHorizontal: 0,
+                  }
+                ]}>
+                  {emotion.frequency === 1
+                    ? "This emotion appeared once in your conversations."
+                    : `This emotion has been a recurring theme, appearing ${emotion.frequency} times.`
+                  }
+                </Text>
+                <Text style={[
+                  styles.sectionContent,
+                  {
+                    color: isDark ? '#CCCCCC' : '#666666',
+                    marginBottom: 20,
+                    paddingHorizontal: 0,
+                  }
+                ]}>
+                  {emotion.intensity > 7
+                    ? "The intensity suggests this emotion was felt quite strongly."
+                    : emotion.intensity > 4
+                      ? "The intensity indicates moderate emotional engagement."
+                      : "The intensity suggests this emotion was felt subtly."
+                  }
+                </Text>
+
+                {/* Parts and Needs Headers */}
+                <View style={[styles.sideBySideContainer, { marginBottom: 6 }]}>
+                  <Text style={[
+                    styles.sectionTitle,
+                    {
+                      color: isDark ? '#FFFFFF' : '#000000',
+                      fontSize: 22.5,
+                      fontWeight: '600',
+                      marginBottom: 0,
+                      fontFamily: 'Georgia',
+                      paddingHorizontal: 0,
+                      marginTop: 10,
+                      flex: 1,
+                    }
+                  ]}>
+                    Parts
+                  </Text>
+                  <Text style={[
+                    styles.sectionTitle,
+                    {
+                      color: isDark ? '#FFFFFF' : '#000000',
+                      fontSize: 22.5,
+                      fontWeight: '600',
+                      marginBottom: 0,
+                      fontFamily: 'Georgia',
+                      paddingHorizontal: 0,
+                      marginTop: 10,
+                      flex: 1,
+                    }
+                  ]}>
+                    Needs
+                  </Text>
+                </View>
+
+                {/* Parts and Needs Charts */}
                 <View style={styles.sideBySideContainer}>
                   {/* Parts Section */}
                   <View style={[
@@ -301,22 +379,14 @@ export function EmotionDetailModal({
                         : 'rgba(0, 0, 0, 0.1)',
                     }
                   ]}>
-                    <View style={styles.sectionTitleContainer}>
-                      <Text style={[
-                        styles.sectionTitle,
-                        { color: isDark ? '#FFFFFF' : '#000000' }
-                      ]}>
-                        Parts
-                      </Text>
-                    </View>
                     <View
-                      style={styles.chartContainer}
+                      style={[styles.chartContainer, { marginTop: 5 }]}
                       onLayout={(event) => {
                         const { width, height } = event.nativeEvent.layout;
                         setPartsChartDimensions({ width, height });
                       }}
                     >
-                      <PartsBubbleChart
+                      <PartsDetailBubbleChart
                         data={partsData}
                         width={partsChartDimensions.width}
                         height={partsChartDimensions.height}
@@ -337,22 +407,14 @@ export function EmotionDetailModal({
                         : 'rgba(0, 0, 0, 0.1)',
                     }
                   ]}>
-                    <View style={styles.sectionTitleContainer}>
-                      <Text style={[
-                        styles.sectionTitle,
-                        { color: isDark ? '#FFFFFF' : '#000000' }
-                      ]}>
-                        Needs
-                      </Text>
-                    </View>
                     <View
-                      style={styles.chartContainer}
+                      style={[styles.chartContainer, { marginTop: 5 }]}
                       onLayout={(event) => {
                         const { width, height } = event.nativeEvent.layout;
                         setNeedsChartDimensions({ width, height });
                       }}
                     >
-                      <NeedsBubbleChart
+                      <NeedsDetailBubbleChart
                         data={needsData}
                         width={needsChartDimensions.width}
                         height={needsChartDimensions.height}
@@ -363,24 +425,18 @@ export function EmotionDetailModal({
                 </View>
 
                 {/* Loops Section */}
-                <View style={[
-                  styles.sectionCard,
-                  {
-                    backgroundColor: isDark
-                      ? 'rgba(255, 255, 255, 0.1)'
-                      : 'rgba(0, 0, 0, 0.05)',
-                    borderColor: isDark
-                      ? 'rgba(255, 255, 255, 0.2)'
-                      : 'rgba(0, 0, 0, 0.1)',
-                  }
-                ]}>
-                  {/* Count badge in top right */}
+                <View style={{ position: 'relative', marginBottom: 16 }}>
+                  {/* Count badge in top left */}
                   <View style={[
                     styles.countBadge,
                     {
                       borderColor: emotion.color,
                       borderWidth: 2,
-                      backgroundColor: 'transparent'
+                      backgroundColor: 'transparent',
+                      position: 'absolute',
+                      top: 8, // Moved down to center align with text
+                      left: 0,
+                      zIndex: 1,
                     }
                   ]}>
                     <Text style={[
@@ -393,95 +449,98 @@ export function EmotionDetailModal({
 
                   <Text style={[
                     styles.sectionTitle,
-                    { color: isDark ? '#FFFFFF' : '#000000' }
+                    {
+                      color: isDark ? '#FFFFFF' : '#000000',
+                      fontSize: 22.5,
+                      fontWeight: '600',
+                      marginBottom: 0, // Decreased by 4 more px from 4
+                      fontFamily: 'Georgia',
+                      paddingHorizontal: 0,
+                      marginTop: 13, // Moved down 3px from 10
+                      marginLeft: 40, // Moved left by 2 more px from 42
+                    }
                   ]}>
                     Loops
                   </Text>
 
                   {/* Conversation excerpts */}
-                  <View style={styles.conversationList}>
-                    {[
-                      { excerpt: "...was surprised when he showed up...", title: "Family Reunion", date: "9/15/25" },
-                      { excerpt: "...didn't expect that reaction from her...", title: "Work Meeting", date: "9/12/25" },
-                      { excerpt: "...feeling overwhelmed by all the changes...", title: "Life Transitions", date: "9/10/25" },
-                      { excerpt: "...couldn't believe what I was hearing...", title: "Personal Discovery", date: "9/8/25" },
-                      { excerpt: "...the pressure to make the right decision...", title: "Career Choice", date: "9/5/25" }
-                    ].map((item, index) => (
-                      <View
-                        key={index}
-                        style={[
-                          styles.conversationItem,
-                          {
-                            backgroundColor: isDark
-                              ? 'rgba(255, 255, 255, 0.05)'
-                              : 'rgba(0, 0, 0, 0.03)',
-                          }
-                        ]}
-                      >
-                        <View style={styles.conversationTitleRow}>
-                          <Text style={[
-                            styles.conversationTitle,
-                            { color: '#FFFFFF' }
-                          ]}>
-                            {item.title}
-                          </Text>
-                          <Text style={[
-                            styles.conversationDate,
-                            { color: '#FFFFFF' }
-                          ]}>
-                            {item.date}
-                          </Text>
-                        </View>
-                        <Text style={[
-                          styles.conversationExcerpt,
-                          { color: isDark ? '#AAAAAA' : '#999999' }
-                        ]}>
-                          "{item.excerpt}"
-                        </Text>
-                      </View>
-                    ))}
+                  <View style={{ marginTop: 0 }}>
+                    <View style={styles.conversationList}>
+                      {[
+                        { excerpt: "...was surprised when he showed up...", title: "Family Reunion", date: "9/15/25" },
+                        { excerpt: "...didn't expect that reaction from her...", title: "Work Meeting", date: "9/12/25" },
+                        { excerpt: "...feeling overwhelmed by all the changes...", title: "Life Transitions", date: "9/10/25" },
+                        { excerpt: "...couldn't believe what I was hearing...", title: "Personal Discovery", date: "9/8/25" },
+                        { excerpt: "...the pressure to make the right decision...", title: "Career Choice", date: "9/5/25" }
+                      ].map((item, index) => {
+                        // Create gradient effect for cards
+                        const lightness = isDark
+                          ? 0.85 - (0.1 * index) // Dark mode: gradient from lighter to darker
+                          : 0.95 - (0.1 * index); // Light mode: gradient from lighter to darker
+
+                        const grayValue = Math.round(255 * lightness);
+
+                        return (
+                          <View
+                            key={index}
+                            style={[
+                              styles.loopCardSimple,
+                              {
+                                marginTop: index === 0 ? 0 : -40, // Increased overlap
+                                borderColor: isDark
+                                  ? 'rgba(255, 255, 255, 0.2)'
+                                  : 'rgba(0, 0, 0, 0.1)',
+                              }
+                            ]}
+                          >
+                            <BlurView
+                              intensity={50}
+                              tint={isDark ? 'dark' : 'light'}
+                              style={[
+                                styles.loopCardBlur,
+                                {
+                                  backgroundColor: isDark
+                                    ? 'rgba(255, 255, 255, 0.1)'
+                                    : 'rgba(0, 0, 0, 0.05)',
+                                }
+                              ]}
+                            >
+                              <Pressable
+                                onPress={() => {
+                                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                  console.log('Loop card pressed:', item.title);
+                                }}
+                                style={styles.loopCardPressable}
+                              >
+                                <View style={styles.loopCardHeader}>
+                                  <Text style={[
+                                    styles.loopCardTitle,
+                                    { color: isDark ? '#FFFFFF' : '#000000' }
+                                  ]}>
+                                    {item.title}
+                                  </Text>
+                                  <Text style={[
+                                    styles.loopCardDate,
+                                    { color: isDark ? '#CCCCCC' : '#666666' }
+                                  ]}>
+                                    {item.date}
+                                  </Text>
+                                </View>
+                                <Text style={[
+                                  styles.loopCardExcerpt,
+                                  { color: isDark ? '#DDDDDD' : '#444444' }
+                                ]}>
+                                  {item.excerpt}
+                                </Text>
+                              </Pressable>
+                            </BlurView>
+                          </View>
+                        );
+                      })}
+                    </View>
                   </View>
                 </View>
 
-                {/* Emotional Insights Section */}
-                <View style={[
-                  styles.sectionCard,
-                  {
-                    backgroundColor: isDark
-                      ? 'rgba(255, 255, 255, 0.1)'
-                      : 'rgba(0, 0, 0, 0.05)',
-                    borderColor: isDark
-                      ? 'rgba(255, 255, 255, 0.2)'
-                      : 'rgba(0, 0, 0, 0.1)',
-                  }
-                ]}>
-                  <Text style={[
-                    styles.sectionTitle,
-                    { color: isDark ? '#FFFFFF' : '#000000' }
-                  ]}>
-                    Insights
-                  </Text>
-                  <Text style={[
-                    styles.sectionContent,
-                    { color: isDark ? '#CCCCCC' : '#666666' }
-                  ]}>
-                    {emotion.frequency === 1
-                      ? "This emotion appeared once in your conversations."
-                      : `This emotion has been a recurring theme, appearing ${emotion.frequency} times.`
-                    }
-                  </Text>
-                  <Text style={[
-                    styles.sectionContent,
-                    { color: isDark ? '#CCCCCC' : '#666666' }
-                  ]}>
-                    {emotion.intensity > 7
-                      ? "The intensity suggests this emotion was felt quite strongly."
-                      : emotion.intensity > 4
-                        ? "The intensity indicates moderate emotional engagement."
-                        : "The intensity suggests this emotion was felt subtly."
-                    }
-                  </Text>
-                </View>
 
               </View>
             </ScrollView>
@@ -763,5 +822,48 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     marginRight: 5,
     padding: 0,
+  },
+  loopCardSimple: {
+    borderRadius: 16, // Match Parts/Needs border radius
+    height: 135,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  loopCardBlur: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 15,
+    paddingBottom: 20,
+  },
+  loopCardPressable: {
+    flex: 1,
+    padding: 10,
+    paddingBottom: 10,
+  },
+  loopCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  loopCardTitle: {
+    fontSize: 20, // Increased by 2px from 18
+    fontWeight: 'bold',
+    flex: 1,
+    marginRight: 10,
+    fontFamily: 'Georgia',
+  },
+  loopCardDate: {
+    fontSize: 19, // Increased by 2px from 17
+    fontWeight: 'normal',
+    fontFamily: 'Georgia',
+  },
+  loopCardExcerpt: {
+    fontSize: 16, // Increased by 2px from 14
+    lineHeight: 22, // Adjusted proportionally from 20
+    textAlign: 'left',
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
+    marginBottom: 15,
   },
 });

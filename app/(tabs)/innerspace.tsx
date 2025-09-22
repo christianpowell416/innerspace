@@ -15,7 +15,9 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
-import { BubbleChart } from '@/components/BubbleChart';
+import { EmotionsFullBubbleChart } from '@/components/EmotionsFullBubbleChart';
+import { PartsFullBubbleChart } from '@/components/PartsFullBubbleChart';
+import { NeedsFullBubbleChart } from '@/components/NeedsFullBubbleChart';
 import {
   createBubbleChartData,
   getDefaultBubbleConfig,
@@ -26,7 +28,14 @@ import {
   BubbleChartConfig,
   BubbleChartCallbacks
 } from '@/lib/types/bubbleChart';
+import {
+  PartBubbleData,
+  NeedBubbleData,
+  PartsBubbleChartCallbacks,
+  NeedsBubbleChartCallbacks
+} from '@/lib/types/partsNeedsChart';
 import { generateTestEmotionData, createTestEmotionStats } from '@/lib/utils/testData';
+import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { EmotionDetailModal } from '@/components/EmotionDetailModal';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -51,12 +60,16 @@ export default function InnerspaceScreen() {
 
   // Bubble chart state
   const [emotionBubbles, setEmotionBubbles] = useState<EmotionBubbleData[]>([]);
+  const [partsBubbles, setPartsBubbles] = useState<PartBubbleData[]>([]);
+  const [needsBubbles, setNeedsBubbles] = useState<NeedBubbleData[]>([]);
   const { height: screenHeight } = Dimensions.get('window');
   const availableHeight = screenHeight - 354; // Account for header, stats, tab bar, and padding
-  const [bubbleConfig, setBubbleConfig] = useState<BubbleChartConfig>(
+  const [bubbleConfig, setBubbleConfig] = useState<EmotionsFullBubbleChartConfig>(
     getDefaultBubbleConfig(screenWidth, availableHeight)
   );
   const [emotionsLoading, setEmotionsLoading] = useState(true);
+  const [partsLoading, setPartsLoading] = useState(true);
+  const [needsLoading, setNeedsLoading] = useState(true);
   const [emotionStats, setEmotionStats] = useState<any>(null);
 
   // Function to recalculate bubble sizes based on sort type
@@ -165,10 +178,44 @@ export default function InnerspaceScreen() {
     }
   }, [isDark, sortBy, recalculateBubbleSizes]);
 
-  // Load emotion data
+  // Load parts data
+  const loadPartsData = useCallback(async () => {
+    try {
+      setPartsLoading(true);
+      // Simulate loading delay
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const testParts = generateTestPartsData(12);
+      setPartsBubbles(testParts);
+    } catch (error) {
+      console.error('Error loading parts data:', error);
+      Alert.alert('Error', 'Failed to load parts data');
+    } finally {
+      setPartsLoading(false);
+    }
+  }, []);
+
+  // Load needs data
+  const loadNeedsData = useCallback(async () => {
+    try {
+      setNeedsLoading(true);
+      // Simulate loading delay
+      await new Promise(resolve => setTimeout(resolve, 400));
+      const testNeeds = generateTestNeedsData(10);
+      setNeedsBubbles(testNeeds);
+    } catch (error) {
+      console.error('Error loading needs data:', error);
+      Alert.alert('Error', 'Failed to load needs data');
+    } finally {
+      setNeedsLoading(false);
+    }
+  }, []);
+
+  // Load all data
   useEffect(() => {
     loadEmotionData();
-  }, [loadEmotionData]);
+    loadPartsData();
+    loadNeedsData();
+  }, [loadEmotionData, loadPartsData, loadNeedsData]);
 
   // Handle sort change
   const handleSortChange = (newSortType: SortType) => {
@@ -194,6 +241,22 @@ export default function InnerspaceScreen() {
     },
   };
 
+  // Parts bubble chart callbacks
+  const partsCallbacks: PartsBubbleChartCallbacks = {
+    onBubblePress: (part) => {
+      console.log('Parts bubble pressed:', part.name);
+      // TODO: Implement parts detail modal
+    },
+  };
+
+  // Needs bubble chart callbacks
+  const needsCallbacks: NeedsBubbleChartCallbacks = {
+    onBubblePress: (need) => {
+      console.log('Needs bubble pressed:', need.name);
+      // TODO: Implement needs detail modal
+    },
+  };
+
   const handleTabPress = (tab: TabType) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActiveTab(tab);
@@ -201,7 +264,7 @@ export default function InnerspaceScreen() {
     // Animate tab indicator
     const tabIndex = tab === 'emotions' ? 0 : tab === 'parts' ? 1 : 2;
     Animated.spring(tabIndicatorPosition, {
-      toValue: tabIndex * (screenWidth / 3),
+      toValue: tabIndex * ((screenWidth - 48) / 3),
       useNativeDriver: true,
       tension: 40,
       friction: 8,
@@ -217,7 +280,7 @@ export default function InnerspaceScreen() {
 
         {/* Bubble Chart */}
         <View style={styles.chartContainer}>
-          <BubbleChart
+          <EmotionsFullBubbleChart
             data={emotionBubbles}
             config={bubbleConfig}
             callbacks={bubbleCallbacks}
@@ -273,21 +336,13 @@ export default function InnerspaceScreen() {
   const renderPartsContent = () => (
     <View style={[styles.tabContent, { width: screenWidth }]}>
       <View style={styles.contentContainer}>
-        <View style={styles.emptyStateContainer}>
-          <IconSymbol
-            name="person.3.fill"
-            size={64}
-            color={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)'}
+        <View style={styles.chartContainer}>
+          <PartsFullBubbleChart
+            data={partsBubbles}
+            config={bubbleConfig}
+            callbacks={partsCallbacks}
+            loading={partsLoading}
           />
-          <ThemedText type="subtitle" style={styles.emptyStateTitle}>
-            Your Parts
-          </ThemedText>
-          <ThemedText style={[styles.emptyStateText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
-            Identify your internal family system
-          </ThemedText>
-          <ThemedText style={[styles.emptyStateSubtext, { color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
-            Managers, Firefighters, and Exiles
-          </ThemedText>
         </View>
       </View>
     </View>
@@ -296,21 +351,13 @@ export default function InnerspaceScreen() {
   const renderNeedsContent = () => (
     <View style={[styles.tabContent, { width: screenWidth }]}>
       <View style={styles.contentContainer}>
-        <View style={styles.emptyStateContainer}>
-          <IconSymbol
-            name="star.fill"
-            size={64}
-            color={isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.2)'}
+        <View style={styles.chartContainer}>
+          <NeedsFullBubbleChart
+            data={needsBubbles}
+            config={bubbleConfig}
+            callbacks={needsCallbacks}
+            loading={needsLoading}
           />
-          <ThemedText type="subtitle" style={styles.emptyStateTitle}>
-            Your Needs
-          </ThemedText>
-          <ThemedText style={[styles.emptyStateText, { color: isDark ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' }]}>
-            Understand your core human needs
-          </ThemedText>
-          <ThemedText style={[styles.emptyStateSubtext, { color: isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.4)' }]}>
-            Safety, Connection, Autonomy, and more
-          </ThemedText>
         </View>
       </View>
     </View>
@@ -329,7 +376,7 @@ export default function InnerspaceScreen() {
               textAlign: 'left',
               fontFamily: 'Georgia',
               lineHeight: 50
-            }}>My Innerspace</Text>
+            }}>My innerspace</Text>
           </View>
 
           {/* Tab Bar */}
@@ -440,6 +487,7 @@ const styles = StyleSheet.create({
   },
   tabBarContainer: {
     paddingHorizontal: 20,
+    marginTop: 10,
   },
   tabBar: {
     flexDirection: 'row',
@@ -464,11 +512,11 @@ const styles = StyleSheet.create({
   },
   tabText: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '400',
     fontFamily: 'Georgia',
   },
   tabTextActive: {
-    fontWeight: '700',
+    fontWeight: '400',
   },
   tabContent: {
     flex: 1,
