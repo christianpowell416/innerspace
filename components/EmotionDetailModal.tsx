@@ -16,6 +16,10 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
+import { PartsBubbleChart } from '@/components/PartsBubbleChart';
+import { NeedsBubbleChart } from '@/components/NeedsBubbleChart';
+import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
+import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
 
 interface EmotionDetailModalProps {
   visible: boolean;
@@ -33,6 +37,10 @@ export function EmotionDetailModal({
   const modalTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const [scrollPosition, setScrollPosition] = React.useState(0);
   const [internalVisible, setInternalVisible] = React.useState(false);
+  const [partsData, setPartsData] = React.useState<PartBubbleData[]>([]);
+  const [needsData, setNeedsData] = React.useState<NeedBubbleData[]>([]);
+  const [partsChartDimensions, setPartsChartDimensions] = React.useState({ width: 180, height: 140 });
+  const [needsChartDimensions, setNeedsChartDimensions] = React.useState({ width: 180, height: 140 });
 
   // Close modal function with animation
   const closeModal = () => {
@@ -103,6 +111,26 @@ export function EmotionDetailModal({
       modalTranslateY.setValue(Dimensions.get('window').height);
     }
   }, [visible]);
+
+  // Load parts and needs data when modal opens
+  React.useEffect(() => {
+    if (visible && emotion) {
+      // Generate test data - in a real app, this would come from the emotion's conversation analysis
+      setPartsData(generateTestPartsData(5));
+      setNeedsData(generateTestNeedsData(5));
+    }
+  }, [visible, emotion]);
+
+  // Handle bubble press events
+  const handlePartPress = (part: PartBubbleData) => {
+    console.log('Part pressed:', part.name);
+    // TODO: Show part detail modal or additional info
+  };
+
+  const handleNeedPress = (need: NeedBubbleData) => {
+    console.log('Need pressed:', need.name);
+    // TODO: Show need detail modal or additional info
+  };
 
   if (!emotion) {
     return null;
@@ -273,33 +301,27 @@ export function EmotionDetailModal({
                         : 'rgba(0, 0, 0, 0.1)',
                     }
                   ]}>
-                    <Text style={[
-                      styles.sectionTitle,
-                      { color: isDark ? '#FFFFFF' : '#000000' }
-                    ]}>
-                      Parts
-                    </Text>
-                    <View style={styles.tagContainer}>
-                      {['Critical', 'Protective', 'Inner Child'].map((part, index) => (
-                        <View
-                          key={index}
-                          style={[
-                            styles.tag,
-                            {
-                              backgroundColor: isDark
-                                ? 'rgba(255, 255, 255, 0.1)'
-                                : 'rgba(0, 0, 0, 0.1)',
-                            }
-                          ]}
-                        >
-                          <Text style={[
-                            styles.tagText,
-                            { color: isDark ? '#CCCCCC' : '#666666' }
-                          ]}>
-                            {part}
-                          </Text>
-                        </View>
-                      ))}
+                    <View style={styles.sectionTitleContainer}>
+                      <Text style={[
+                        styles.sectionTitle,
+                        { color: isDark ? '#FFFFFF' : '#000000' }
+                      ]}>
+                        Parts
+                      </Text>
+                    </View>
+                    <View
+                      style={styles.chartContainer}
+                      onLayout={(event) => {
+                        const { width, height } = event.nativeEvent.layout;
+                        setPartsChartDimensions({ width, height });
+                      }}
+                    >
+                      <PartsBubbleChart
+                        data={partsData}
+                        width={partsChartDimensions.width}
+                        height={partsChartDimensions.height}
+                        callbacks={{ onBubblePress: handlePartPress }}
+                      />
                     </View>
                   </View>
 
@@ -315,33 +337,27 @@ export function EmotionDetailModal({
                         : 'rgba(0, 0, 0, 0.1)',
                     }
                   ]}>
-                    <Text style={[
-                      styles.sectionTitle,
-                      { color: isDark ? '#FFFFFF' : '#000000' }
-                    ]}>
-                      Needs
-                    </Text>
-                    <View style={styles.tagContainer}>
-                      {['Security', 'Understanding', 'Connection'].map((need, index) => (
-                        <View
-                          key={index}
-                          style={[
-                            styles.tag,
-                            {
-                              backgroundColor: isDark
-                                ? 'rgba(255, 255, 255, 0.1)'
-                                : 'rgba(0, 0, 0, 0.1)',
-                            }
-                          ]}
-                        >
-                          <Text style={[
-                            styles.tagText,
-                            { color: isDark ? '#CCCCCC' : '#666666' }
-                          ]}>
-                            {need}
-                          </Text>
-                        </View>
-                      ))}
+                    <View style={styles.sectionTitleContainer}>
+                      <Text style={[
+                        styles.sectionTitle,
+                        { color: isDark ? '#FFFFFF' : '#000000' }
+                      ]}>
+                        Needs
+                      </Text>
+                    </View>
+                    <View
+                      style={styles.chartContainer}
+                      onLayout={(event) => {
+                        const { width, height } = event.nativeEvent.layout;
+                        setNeedsChartDimensions({ width, height });
+                      }}
+                    >
+                      <NeedsBubbleChart
+                        data={needsData}
+                        width={needsChartDimensions.width}
+                        height={needsChartDimensions.height}
+                        callbacks={{ onBubblePress: handleNeedPress }}
+                      />
                     </View>
                   </View>
                 </View>
@@ -671,7 +687,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 22.5,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 6,
     fontFamily: 'Georgia',
   },
   sectionContent: {
@@ -731,21 +747,21 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     borderWidth: 1,
-    padding: 20,
+    padding: 0,
+    minHeight: 180, // Ensure enough height for the bubble chart
+    overflow: 'hidden', // Ensure content respects border radius
   },
-  tagContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
+  sectionTitleContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 4,
   },
-  tag: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  tagText: {
-    fontSize: 14,
-    fontFamily: 'Georgia',
+  chartContainer: {
+    flex: 1,
+    marginTop: 2,
+    marginBottom: 5,
+    marginLeft: 5,
+    marginRight: 5,
+    padding: 0,
   },
 });
