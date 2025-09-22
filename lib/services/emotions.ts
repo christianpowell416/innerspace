@@ -1,5 +1,23 @@
 import { supabase } from '../supabase';
 import { Database } from '../database.types';
+import {
+  EmotionBubbleData,
+  EmotionFrequency,
+  getEmotionCategory,
+  getEmotionColor,
+  BubbleChartConfig
+} from '../types/bubbleChart';
+// Simple scaling utilities (replaces d3-scale for React Native compatibility)
+const createSqrtScale = (domain: [number, number], range: [number, number]) => {
+  const [domainMin, domainMax] = domain;
+  const [rangeMin, rangeMax] = range;
+
+  return (value: number): number => {
+    const normalizedValue = (value - domainMin) / (domainMax - domainMin);
+    const sqrtValue = Math.sqrt(Math.max(0, normalizedValue));
+    return rangeMin + sqrtValue * (rangeMax - rangeMin);
+  };
+};
 
 export type EmotionRow = Database['public']['Tables']['beliefs']['Row'];
 export type EmotionInsert = Database['public']['Tables']['beliefs']['Insert'];
@@ -405,5 +423,137 @@ export const subscribeToEmotions = (
         console.log('⚡ Real-time is active, no manual sync needed');
       }
     }
+  };
+};
+
+// ========== BUBBLE CHART FUNCTIONS ==========
+
+/**
+ * Aggregate emotions by name and frequency for bubble chart
+ */
+export const getEmotionFrequencies = async (): Promise<EmotionFrequency[]> => {
+  const emotions = await getEmotions();
+
+  // Group emotions by name (case-insensitive)
+  const emotionMap = new Map<string, EmotionFrequency>();
+
+  emotions.forEach(emotion => {
+    if (!emotion.emotion) return;
+
+    const emotionName = emotion.emotion.toLowerCase().trim();
+    const existing = emotionMap.get(emotionName);
+
+    if (existing) {
+      existing.count += emotion.frequency;
+      existing.averageIntensity = (existing.averageIntensity + emotion.score) / 2;
+      existing.conversationIds.push(emotion.id);
+      if (new Date(emotion.created_at) > existing.latestDate) {
+        existing.latestDate = new Date(emotion.created_at);
+      }
+    } else {
+      emotionMap.set(emotionName, {
+        emotion: emotion.emotion, // Keep original case
+        count: emotion.frequency,
+        averageIntensity: emotion.score,
+        latestDate: new Date(emotion.created_at),
+        conversationIds: [emotion.id]
+      });
+    }
+  });
+
+  return Array.from(emotionMap.values()).sort((a, b) => b.count - a.count);
+};
+
+/**
+ * Convert emotion frequencies to bubble chart data
+ */
+export const createBubbleChartData = async (
+  config: BubbleChartConfig,
+  isDark: boolean = false
+): Promise<EmotionBubbleData[]> => {
+  const frequencies = await getEmotionFrequencies();
+
+  if (frequencies.length === 0) {
+    return [];
+  }
+
+  // Create scales for bubble sizing
+  const maxCount = Math.max(...frequencies.map(f => f.count));
+  const minCount = Math.min(...frequencies.map(f => f.count));
+
+  const radiusScale = createSqrtScale([minCount, maxCount], [config.minRadius, config.maxRadius]);
+
+  // Convert to bubble data
+  return frequencies.map((freq, index) => ({
+    id: `emotion-${index}`,
+    emotion: freq.emotion,
+    frequency: freq.count,
+    intensity: freq.averageIntensity,
+    color: getEmotionColor(freq.emotion, isDark),
+    radius: radiusScale(freq.count),
+    category: getEmotionCategory(freq.emotion),
+    lastSeen: freq.latestDate,
+    conversationIds: freq.conversationIds,
+    // D3 simulation will add x, y, vx, vy, fx, fy
+  }));
+};
+
+/**
+ * Get default bubble chart configuration
+ */
+export const getDefaultBubbleConfig = (width: number, height: number): BubbleChartConfig => ({
+  width,
+  height,
+  minRadius: 20,
+  maxRadius: 60,
+  padding: 2,
+  centerForce: 0.03,
+  collisionStrength: 0.8,
+  velocityDecay: 0.4
+});
+
+/**
+ * Filter emotion data by category for bubble chart
+ */
+export const getEmotionsByCategory = async (categories: string[]): Promise<EmotionBubbleData[]> => {
+  const bubbleData = await createBubbleChartData(getDefaultBubbleConfig(400, 400));
+
+  if (categories.length === 0) {
+    return bubbleData;
+  }
+
+  return bubbleData.filter(bubble =>
+    categories.includes(bubble.category)
+  );
+};
+
+/**
+ * Get emotion statistics for insights
+ */
+export const getEmotionStatistics = async () => {
+  const frequencies = await getEmotionFrequencies();
+
+  if (frequencies.length === 0) {
+    return {
+      totalEmotions: 0,
+      totalMentions: 0,
+      mostFrequent: null,
+      averageIntensity: 0,
+      recentEmotions: []
+    };
+  }
+
+  const totalMentions = frequencies.reduce((sum, freq) => sum + freq.count, 0);
+  const averageIntensity = frequencies.reduce((sum, freq) => sum + freq.averageIntensity, 0) / frequencies.length;
+  const recentEmotions = frequencies
+    .sort((a, b) => b.latestDate.getTime() - a.latestDate.getTime())
+    .slice(0, 5);
+
+  return {
+    totalEmotions: frequencies.length,
+    totalMentions,
+    mostFrequent: frequencies[0] || null,
+    averageIntensity: Math.round(averageIntensity * 10) / 10,
+    recentEmotions
   };
 };
