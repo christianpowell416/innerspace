@@ -8,7 +8,7 @@ import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { VoiceFlowchartCreator } from '@/components/VoiceFlowchartCreator';
+import { VoiceConversationModal } from '@/components/VoiceConversationModal';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -16,6 +16,8 @@ import { FlowchartStructure } from '@/lib/types/flowchart';
 import { createFlowchart, updateFlowchartWithDescription, getUserFlowchartWithId } from '@/lib/services/flowcharts';
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert } from 'react-native';
+
+const CARD_BORDER_RADIUS = 24;
 
 export default function ChatScreen() {
   const colorScheme = useColorScheme();
@@ -207,6 +209,8 @@ export default function ChatScreen() {
   };
 
   const closeModal = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     // Animate modal sliding down
     Animated.timing(modalTranslateY, {
       toValue: Dimensions.get('window').height,
@@ -611,12 +615,10 @@ export default function ChatScreen() {
             
             // Create gradient effect based on screen position
             // Cards at top of viewport are lighter, cards at bottom are darker
-            const lightness = colorScheme === 'dark' 
-              ? 0.95 - (0.5 * normalizedPosition) // Dark mode: 0.95 at top to 0.45 at bottom (lighter overall)
-              : 1.0 - (0.4 * normalizedPosition); // Light mode: 1.0 at top to 0.6 at bottom (lighter overall)
+            const lightness = 0.9 - (0.8 * normalizedPosition); // 0.9 at top to 0.1 at bottom
             
             const grayValue = Math.round(255 * lightness);
-            const backgroundColor = `rgb(${grayValue}, ${grayValue}, ${grayValue})`;
+            const backgroundColor = `rgba(${grayValue}, ${grayValue}, ${grayValue}, 0.25)`;
             
             // Cards spread farther apart when scrolling fast (subtle bounce)
             const baseMargin = -210;
@@ -636,7 +638,7 @@ export default function ChatScreen() {
                 key={conversation.id}
                 style={[
                   styles.cardShadowContainer,
-                  { 
+                  {
                     zIndex: index + 1,
                     marginTop: index === 0 ? 0 : dynamicMargin,
                     height: 350,
@@ -644,13 +646,14 @@ export default function ChatScreen() {
                 ]}
               >
                 <BlurView
-                  intensity={60}
+                  intensity={50}
                   tint={colorScheme === 'dark' ? 'dark' : 'light'}
                   style={[
                     styles.card,
-                    { 
-                      backgroundColor: `rgba(${grayValue}, ${grayValue}, ${grayValue}, 0.2125)`,
-                      height: 350,
+                    {
+                      backgroundColor,
+                      height: 340,
+                      overflow: 'hidden',
                     }
                   ]}
                 >
@@ -680,13 +683,29 @@ export default function ChatScreen() {
                   </Text>
                 </Pressable>
                 </BlurView>
+                {/* Border overlay */}
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    borderRadius: CARD_BORDER_RADIUS,
+                    borderWidth: 1,
+                    borderColor: colorScheme === 'dark'
+                      ? 'rgba(255, 255, 255, 0.2)'
+                      : 'rgba(0, 0, 0, 0.1)',
+                    pointerEvents: 'none',
+                  }}
+                />
               </View>
             );
           })}
         </Animated.ScrollView>
       </SafeAreaView>
       
-      <VoiceFlowchartCreator
+      <VoiceConversationModal
         visible={voiceModalVisible}
         onClose={handleVoiceModalClose}
         onFlowchartCreated={handleFlowchartCreated}
@@ -1124,24 +1143,22 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   cardShadowContainer: {
-    borderRadius: 24,
+    borderRadius: CARD_BORDER_RADIUS,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 0,
+      height: -8,
     },
-    shadowOpacity: 1.0,
-    shadowRadius: 50,
-    elevation: 50,
+    shadowOpacity: 1,
+    shadowRadius: 15,
+    elevation: 15,
   },
   card: {
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: CARD_BORDER_RADIUS,
+    paddingTop: 16,
+    paddingHorizontal: 20,
     paddingBottom: 30,
-    height: 350,
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.3)',
-    overflow: 'hidden',
+    height: 340,
   },
   cardText: {
     fontSize: 16,
