@@ -1,4 +1,4 @@
-import { StyleSheet, View, Pressable, Text, ScrollView, TextInput, Animated, Modal, PanResponder, Dimensions } from 'react-native';
+import { StyleSheet, View, Pressable, Text, ScrollView, TextInput, Animated, Modal, PanResponder, Dimensions, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,6 +20,9 @@ import { Alert } from 'react-native';
 import { PartsMiniBubbleChart } from '@/components/PartsMiniBubbleChart';
 import { NeedsMiniBubbleChart } from '@/components/NeedsMiniBubbleChart';
 import { EmotionsMiniBubbleChart } from '@/components/EmotionsMiniBubbleChart';
+import { PartsExpandedBubbleChart } from '@/components/PartsExpandedBubbleChart';
+import { NeedsExpandedBubbleChart } from '@/components/NeedsExpandedBubbleChart';
+import { EmotionsExpandedBubbleChart } from '@/components/EmotionsExpandedBubbleChart';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { generateTestEmotionData } from '@/lib/utils/testData';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
@@ -169,7 +172,7 @@ export default function ChatScreen() {
   };
 
   const handleEmotionPress = (emotion: EmotionBubbleData) => {
-    console.log('Emotion pressed:', emotion.name);
+    console.log('Emotion pressed:', emotion.emotion);
     // TODO: Show emotion detail modal or additional info
   };
 
@@ -1001,8 +1004,7 @@ export default function ChatScreen() {
                           styles.expandedCardView,
                           { opacity: expandedOpacity.emotions }
                         ]}>
-                          <Pressable
-                            onPress={() => collapseCard()}
+                          <View
                             style={[
                               styles.expandedCard,
                               {
@@ -1015,6 +1017,26 @@ export default function ChatScreen() {
                               }
                             ]}
                           >
+                            <Pressable
+                              onPress={() => collapseCard()}
+                              style={[
+                                styles.minimizeButton,
+                                {
+                                  backgroundColor: colorScheme === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.1)'
+                                    : 'rgba(0, 0, 0, 0.05)',
+                                  borderColor: colorScheme === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.2)'
+                                    : 'rgba(0, 0, 0, 0.1)',
+                                }
+                              ]}
+                            >
+                              <IconSymbol
+                                name="chevron.up"
+                                size={18}
+                                color={colorScheme === 'dark' ? '#AAAAAA' : '#666666'}
+                              />
+                            </Pressable>
                             <View
                               style={styles.chartContainer}
                               onLayout={(event) => {
@@ -1022,7 +1044,7 @@ export default function ChatScreen() {
                                 setEmotionsChartDimensions({ width, height });
                               }}
                             >
-                              <EmotionsMiniBubbleChart
+                              <EmotionsExpandedBubbleChart
                                 data={emotionsData}
                                 width={emotionsChartDimensions.width}
                                 height={emotionsChartDimensions.height}
@@ -1030,15 +1052,14 @@ export default function ChatScreen() {
                                 loading={emotionsData.length === 0}
                               />
                             </View>
-                          </Pressable>
+                          </View>
                         </Animated.View>
                         
                         <Animated.View style={[
                           styles.expandedCardView,
                           { opacity: expandedOpacity.parts }
                         ]}>
-                          <Pressable
-                            onPress={() => collapseCard()}
+                          <View
                             style={[
                               styles.expandedCard,
                               {
@@ -1051,6 +1072,26 @@ export default function ChatScreen() {
                               }
                             ]}
                           >
+                            <Pressable
+                              onPress={() => collapseCard()}
+                              style={[
+                                styles.minimizeButton,
+                                {
+                                  backgroundColor: colorScheme === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.1)'
+                                    : 'rgba(0, 0, 0, 0.05)',
+                                  borderColor: colorScheme === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.2)'
+                                    : 'rgba(0, 0, 0, 0.1)',
+                                }
+                              ]}
+                            >
+                              <IconSymbol
+                                name="chevron.up"
+                                size={18}
+                                color={colorScheme === 'dark' ? '#AAAAAA' : '#666666'}
+                              />
+                            </Pressable>
                             <View
                               style={styles.chartContainer}
                               onLayout={(event) => {
@@ -1058,7 +1099,7 @@ export default function ChatScreen() {
                                 setPartsChartDimensions({ width, height });
                               }}
                             >
-                              <PartsMiniBubbleChart
+                              <PartsExpandedBubbleChart
                                 data={partsData}
                                 width={partsChartDimensions.width}
                                 height={partsChartDimensions.height}
@@ -1066,15 +1107,14 @@ export default function ChatScreen() {
                                 loading={partsData.length === 0}
                               />
                             </View>
-                          </Pressable>
+                          </View>
                         </Animated.View>
                         
                         <Animated.View style={[
                           styles.expandedCardView,
                           { opacity: expandedOpacity.needs }
                         ]}>
-                          <Pressable
-                            onPress={() => collapseCard()}
+                          <View
                             style={[
                               styles.expandedCard,
                               {
@@ -1087,6 +1127,26 @@ export default function ChatScreen() {
                               }
                             ]}
                           >
+                            <Pressable
+                              onPress={() => collapseCard()}
+                              style={[
+                                styles.minimizeButton,
+                                {
+                                  backgroundColor: colorScheme === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.1)'
+                                    : 'rgba(0, 0, 0, 0.05)',
+                                  borderColor: colorScheme === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.2)'
+                                    : 'rgba(0, 0, 0, 0.1)',
+                                }
+                              ]}
+                            >
+                              <IconSymbol
+                                name="chevron.up"
+                                size={18}
+                                color={colorScheme === 'dark' ? '#AAAAAA' : '#666666'}
+                              />
+                            </Pressable>
                             <View
                               style={styles.chartContainer}
                               onLayout={(event) => {
@@ -1094,7 +1154,7 @@ export default function ChatScreen() {
                                 setNeedsChartDimensions({ width, height });
                               }}
                             >
-                              <NeedsMiniBubbleChart
+                              <NeedsExpandedBubbleChart
                                 data={needsData}
                                 width={needsChartDimensions.width}
                                 height={needsChartDimensions.height}
@@ -1102,7 +1162,7 @@ export default function ChatScreen() {
                                 loading={needsData.length === 0}
                               />
                             </View>
-                          </Pressable>
+                          </View>
                         </Animated.View>
                         
                       </View>
@@ -1445,7 +1505,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
     position: 'relative',
-    overflow: 'visible', // Allow animated cards to overflow
+    overflow: 'hidden',
   },
   squareCardWrapper: {
     flex: 1,
@@ -1460,7 +1520,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   squareCardTitle: {
-    fontSize: 20,
+    fontSize: 22.5,
     fontFamily: 'Georgia',
     fontWeight: '600',
     marginBottom: 8,
@@ -1476,16 +1536,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  expandedCard: {
-    width: '100%',
-    aspectRatio: 1,
-    padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
   squareCardLabel: {
     fontSize: 14,
     fontFamily: 'Georgia',
@@ -1495,7 +1545,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 110,
     alignItems: 'center',
-    overflow: 'visible', // Allow content to overflow the container
+    overflow: 'hidden',
   },
   expandedCardContent: {
     fontSize: 16,
@@ -1519,5 +1569,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginHorizontal: 2, // Adjust width to match minimized cards
+    position: 'relative',
+  },
+  minimizeButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    zIndex: 110,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  chartContainer: {
+    flex: 1,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

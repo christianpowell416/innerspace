@@ -57,6 +57,17 @@ export interface NeedBubbleData {
   fy?: number | null;
 }
 
+export interface BubbleChartConfig {
+  width: number;
+  height: number;
+  minRadius: number;
+  maxRadius: number;
+  padding: number;
+  centerForce: number;
+  collisionStrength: number;
+  velocityDecay: number;
+}
+
 export interface CompactBubbleChartConfig {
   width: number;
   height: number;
