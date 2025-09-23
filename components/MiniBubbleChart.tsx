@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, StyleSheet, Pressable, Animated, Text } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
 import { forceSimulation, forceCollide, forceCenter, forceManyBody } from 'd3-force';
-import * as Haptics from 'expo-haptics';
 import Hypher from 'hypher';
 import english from 'hyphenation.en-us';
 
@@ -56,12 +55,8 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
     const shuffled = [...dataArray].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 7);
   }, [data]);
-  const [selectedBubble, setSelectedBubble] = useState<string | null>(null);
   const [isSimulationComplete, setIsSimulationComplete] = useState(false);
   const simulationRef = useRef<any>(null);
-
-  // Animation values for bubble scaling
-  const scaleAnimations = useRef<Map<string, Animated.Value>>(new Map());
   const lastUpdateTime = useRef<number>(0);
 
   // Store settled bubble positions to prevent reset on re-renders
@@ -87,8 +82,8 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
 
     const baseRadius = Math.max(minAllowedRadius, Math.min(maxAllowedRadius, idealRadius));
 
-    // Make bubbles 27.5% larger (was 50%, now 15% smaller: 1.5 * 0.85 = 1.275)
-    return baseRadius * 1.275;
+    // Make bubbles 14.75% larger (was 27.5%, now 10% smaller: 1.275 * 0.9 = 1.1475)
+    return baseRadius * 1.1475;
   }, [config.width, config.height, config.padding, config.maxRadius, config.minRadius]);
 
   // Throttled update function to prevent excessive re-renders
@@ -211,7 +206,7 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
     const simulation = forceSimulation(initialBubbles)
       .force('charge', forceManyBody().strength(-1)) // Almost no repulsion
       .force('center', forceCenter(config.width / 2, config.height / 2).strength(0.7)) // Maximum center pull
-      .force('collision', forceCollide().radius((d: any) => d.radius * 0.95).strength(1.0)) // Slightly smaller than bubble radius for overlap/touching
+      .force('collision', forceCollide().radius((d: any) => d.radius * 1.0).strength(1.0)) // Exact bubble radius for touching
       .velocityDecay(0.4) // Higher velocity decay for faster settling
       .alpha(0.8) // High initial alpha
       .alphaDecay(0.1); // Faster decay for quicker settling
@@ -273,37 +268,6 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
     };
   }, [safeData, config.width, config.height]);
 
-  // Handle bubble press
-  const handleBubblePress = useCallback((bubble: BubbleData) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    setSelectedBubble(bubble.id);
-
-    // Create or get animation value
-    if (!scaleAnimations.current.has(bubble.id)) {
-      scaleAnimations.current.set(bubble.id, new Animated.Value(1));
-    }
-
-    const scaleAnim = scaleAnimations.current.get(bubble.id)!;
-
-    // Scale animation
-    Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 1.1,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setSelectedBubble(null);
-    });
-
-    onBubblePress?.(bubble);
-  }, [onBubblePress]);
 
   // Calculate font size for mini bubbles - adjusted for proper scaling
   const getFontSize = useCallback((radius: number): number => {
@@ -376,17 +340,11 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
           const bubbleName = bubble?.name || '';
           const fontSize = getFontSize(radius);
           const textLines = wrapText(bubbleName, radius);
-          const isSelected = selectedBubble === bubble?.id;
 
-          // Get animation value
           const bubbleId = bubble?.id || `bubble-${Math.random()}`;
-          const scaleAnim = scaleAnimations.current.get(bubbleId) || new Animated.Value(1);
-          if (!scaleAnimations.current.has(bubbleId)) {
-            scaleAnimations.current.set(bubbleId, scaleAnim);
-          }
 
           return (
-            <Animated.View
+            <View
               key={bubbleId}
               style={[
                 styles.bubble,
@@ -395,12 +353,10 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
                   top: (bubble?.y || 0) - radius,
                   width: radius * 2,
                   height: radius * 2,
-                  transform: [{ scale: scaleAnim }],
                 },
               ]}
             >
-              <Pressable
-                onPress={() => bubble && handleBubblePress(bubble)}
+              <View
                 style={{
                   width: radius * 2,
                   height: radius * 2,
@@ -432,8 +388,8 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
                     </Text>
                   ))}
                 </View>
-              </Pressable>
-            </Animated.View>
+              </View>
+            </View>
           );
         })}
       </View>

@@ -311,11 +311,7 @@ export function FullBubbleChart({ data, config, onBubblePress, loading = false }
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <Text style={[styles.loadingText, { color: isDark ? '#fff' : '#000' }]}>
-          Loading emotions...
-        </Text>
-      </View>
+      <View style={[styles.container]} />
     );
   }
 
@@ -462,8 +458,7 @@ export function FullBubbleChart({ data, config, onBubblePress, loading = false }
                             style={{
                               fontSize,
                               color: isDark ? '#FFFFFF' : '#000000',
-                              fontWeight: 'normal',
-                              fontFamily: 'Georgia',
+                              fontWeight: 'bold',
                               textAlign: 'center',
                               lineHeight,
                             }}
@@ -503,7 +498,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     textAlign: 'center',
-    fontFamily: 'Georgia',
   },
   emptyContainer: {
     padding: 40,
@@ -513,12 +507,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginBottom: 8,
-    fontFamily: 'Georgia',
   },
   emptySubtext: {
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
-    fontFamily: 'Georgia',
   },
 });

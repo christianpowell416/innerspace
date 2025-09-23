@@ -2,7 +2,7 @@ import { StyleSheet, View, Pressable, Text, ScrollView, TextInput, Animated, Mod
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
@@ -17,12 +17,15 @@ import { createFlowchart, updateFlowchartWithDescription, getUserFlowchartWithId
 import { useAuth } from '@/contexts/AuthContext';
 import { Alert } from 'react-native';
 
-import { PartsMiniBubbleChart } from '@/components/PartsMiniBubbleChart';
-import { NeedsMiniBubbleChart } from '@/components/NeedsMiniBubbleChart';
-import { EmotionsMiniBubbleChart } from '@/components/EmotionsMiniBubbleChart';
-import { PartsExpandedBubbleChart } from '@/components/PartsExpandedBubbleChart';
-import { NeedsExpandedBubbleChart } from '@/components/NeedsExpandedBubbleChart';
-import { EmotionsExpandedBubbleChart } from '@/components/EmotionsExpandedBubbleChart';
+// Lazy load ALL bubble chart components to prevent them from loading until needed
+const PartsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/PartsHoneycombMiniBubbleChart').then(module => ({ default: module.PartsHoneycombMiniBubbleChart })));
+const NeedsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/NeedsHoneycombMiniBubbleChart').then(module => ({ default: module.NeedsHoneycombMiniBubbleChart })));
+const EmotionsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/EmotionsHoneycombMiniBubbleChart').then(module => ({ default: module.EmotionsHoneycombMiniBubbleChart })));
+
+// Lazy load expanded charts to prevent them from loading until needed
+const PartsExpandedBubbleChart = React.lazy(() => import('@/components/PartsExpandedBubbleChart').then(module => ({ default: module.PartsExpandedBubbleChart })));
+const NeedsExpandedBubbleChart = React.lazy(() => import('@/components/NeedsExpandedBubbleChart').then(module => ({ default: module.NeedsExpandedBubbleChart })));
+const EmotionsExpandedBubbleChart = React.lazy(() => import('@/components/EmotionsExpandedBubbleChart').then(module => ({ default: module.EmotionsExpandedBubbleChart })));
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { generateTestEmotionData } from '@/lib/utils/testData';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
@@ -52,6 +55,10 @@ export default function ChatScreen() {
   const [partsChartDimensions, setPartsChartDimensions] = useState({ width: 180, height: 140 });
   const [needsChartDimensions, setNeedsChartDimensions] = useState({ width: 180, height: 140 });
   const [emotionsChartDimensions, setEmotionsChartDimensions] = useState({ width: 180, height: 140 });
+  const [shouldRenderCharts, setShouldRenderCharts] = useState(false);
+  const [shouldLoadMiniCharts, setShouldLoadMiniCharts] = useState(false);
+  const [loadedExpandedCharts, setLoadedExpandedCharts] = useState<Set<string>>(new Set());
+  const [componentsCache, setComponentsCache] = useState<Set<string>>(new Set());
   const cardOpacity = useRef({
     emotions: new Animated.Value(1),
     parts: new Animated.Value(1),
@@ -97,15 +104,7 @@ export default function ChatScreen() {
     };
   }, []);
 
-  // Load parts, needs, and emotions data when expanding cards
-  useEffect(() => {
-    if (expandedSquareCard) {
-      // Generate test data - in a real app, this would come from the conversation analysis
-      setPartsData(generateTestPartsData(8));
-      setNeedsData(generateTestNeedsData(8));
-      setEmotionsData(generateTestEmotionData(12));
-    }
-  }, [expandedSquareCard]);
+  // Note: Data is now preloaded in handleCardPress when chat card opens
 
   const handleButtonPress = (type: string) => {
     console.log(`${type} button pressed`);
@@ -242,18 +241,43 @@ export default function ChatScreen() {
   const handleCardPress = (card: any) => {
     setSelectedCard(card);
     setModalVisible(true);
-
-    // Generate initial sample data for bubble charts
-    setPartsData(generateTestPartsData(6));
-    setNeedsData(generateTestNeedsData(6));
-    setEmotionsData(generateTestEmotionData(8));
+    setShouldRenderCharts(false); // Ensure charts don't render during animation
+    setShouldLoadMiniCharts(false); // Ensure mini charts don't load during animation
 
     // Animate modal sliding up from bottom
     Animated.timing(modalTranslateY, {
       toValue: 0,
       duration: 300,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      // Enhanced loading sequence with caching for faster subsequent loads
+      const hasCachedComponents = componentsCache.has('mini-charts');
+
+      if (hasCachedComponents) {
+        // Fast path for cached components
+        setShouldLoadMiniCharts(true);
+        setShouldRenderCharts(true);
+        setTimeout(() => {
+          setPartsData(generateTestPartsData(8));
+          setNeedsData(generateTestNeedsData(8));
+          setEmotionsData(generateTestEmotionData(12));
+        }, 50); // Faster load for cached components
+      } else {
+        // Slower path for first load with caching
+        setTimeout(() => {
+          setShouldLoadMiniCharts(true);
+          setComponentsCache(prev => new Set(prev).add('mini-charts'));
+          setTimeout(() => {
+            setShouldRenderCharts(true);
+            setTimeout(() => {
+              setPartsData(generateTestPartsData(8));
+              setNeedsData(generateTestNeedsData(8));
+              setEmotionsData(generateTestEmotionData(12));
+            }, 100); // Increased delay for component loading
+          }, 150); // Increased delay for mini chart loading
+        }, 100); // Additional buffer after animation
+      }
+    });
   };
 
   const closeModal = () => {
@@ -267,12 +291,22 @@ export default function ChatScreen() {
     }).start(() => {
       setModalVisible(false);
       setSelectedCard(null);
+      setShouldRenderCharts(false);
+      setShouldLoadMiniCharts(false);
+      setLoadedExpandedCharts(new Set()); // Clear loaded expanded charts
+      // Clear bubble chart data to show loading state on next open
+      setPartsData([]);
+      setNeedsData([]);
+      setEmotionsData([]);
     });
   };
 
   const expandCard = (cardType: string) => {
     setExpandedSquareCard(cardType);
-    
+
+    // Load the expanded chart component for this card type
+    setLoadedExpandedCharts(prev => new Set(prev).add(cardType));
+
     // Fade out all minimized cards, fade in the expanded view, and slide content down
     Animated.parallel([
       // Fade out all minimized cards
@@ -884,13 +918,17 @@ export default function ChatScreen() {
                                     setEmotionsChartDimensions({ width, height });
                                   }}
                                 >
-                                  <EmotionsMiniBubbleChart
-                                    data={emotionsData}
-                                    width={emotionsChartDimensions.width}
-                                    height={emotionsChartDimensions.height}
-                                    callbacks={{ onBubblePress: handleEmotionPress }}
-                                    loading={emotionsData.length === 0}
-                                  />
+                                  {shouldRenderCharts && shouldLoadMiniCharts ? (
+                                    <Suspense fallback={<View />}>
+                                      <EmotionsHoneycombMiniBubbleChart
+                                        data={emotionsData}
+                                        width={emotionsChartDimensions.width}
+                                        height={emotionsChartDimensions.height}
+                                        callbacks={{ onBubblePress: handleEmotionPress }}
+                                        loading={emotionsData.length === 0}
+                                      />
+                                    </Suspense>
+                                  ) : null}
                                 </View>
                               </Pressable>
                             </Animated.View>
@@ -934,13 +972,17 @@ export default function ChatScreen() {
                                     setPartsChartDimensions({ width, height });
                                   }}
                                 >
-                                  <PartsMiniBubbleChart
-                                    data={partsData}
-                                    width={partsChartDimensions.width}
-                                    height={partsChartDimensions.height}
-                                    callbacks={{ onBubblePress: handlePartPress }}
-                                    loading={partsData.length === 0}
-                                  />
+                                  {shouldRenderCharts && shouldLoadMiniCharts ? (
+                                    <Suspense fallback={<View />}>
+                                      <PartsHoneycombMiniBubbleChart
+                                        data={partsData}
+                                        width={partsChartDimensions.width}
+                                        height={partsChartDimensions.height}
+                                        callbacks={{ onBubblePress: handlePartPress }}
+                                        loading={partsData.length === 0}
+                                      />
+                                    </Suspense>
+                                  ) : null}
                                 </View>
                               </Pressable>
                             </Animated.View>
@@ -985,13 +1027,17 @@ export default function ChatScreen() {
                                     setNeedsChartDimensions({ width, height });
                                   }}
                                 >
-                                  <NeedsMiniBubbleChart
-                                    data={needsData}
-                                    width={needsChartDimensions.width}
-                                    height={needsChartDimensions.height}
-                                    callbacks={{ onBubblePress: handleNeedPress }}
-                                    loading={needsData.length === 0}
-                                  />
+                                  {shouldRenderCharts && shouldLoadMiniCharts ? (
+                                    <Suspense fallback={<View />}>
+                                      <NeedsHoneycombMiniBubbleChart
+                                        data={needsData}
+                                        width={needsChartDimensions.width}
+                                        height={needsChartDimensions.height}
+                                        callbacks={{ onBubblePress: handleNeedPress }}
+                                        loading={needsData.length === 0}
+                                      />
+                                    </Suspense>
+                                  ) : null}
                                 </View>
                               </Pressable>
                             </Animated.View>
@@ -1044,13 +1090,17 @@ export default function ChatScreen() {
                                 setEmotionsChartDimensions({ width, height });
                               }}
                             >
-                              <EmotionsExpandedBubbleChart
-                                data={emotionsData}
-                                width={emotionsChartDimensions.width}
-                                height={emotionsChartDimensions.height}
-                                callbacks={{ onBubblePress: handleEmotionPress }}
-                                loading={emotionsData.length === 0}
-                              />
+                              {shouldRenderCharts && loadedExpandedCharts.has('emotions') ? (
+                                <Suspense fallback={null}>
+                                  <EmotionsExpandedBubbleChart
+                                    data={emotionsData}
+                                    width={emotionsChartDimensions.width}
+                                    height={emotionsChartDimensions.height}
+                                    callbacks={{ onBubblePress: handleEmotionPress }}
+                                    loading={emotionsData.length === 0}
+                                  />
+                                </Suspense>
+                              ) : null}
                             </View>
                           </View>
                         </Animated.View>
@@ -1099,13 +1149,17 @@ export default function ChatScreen() {
                                 setPartsChartDimensions({ width, height });
                               }}
                             >
-                              <PartsExpandedBubbleChart
-                                data={partsData}
-                                width={partsChartDimensions.width}
-                                height={partsChartDimensions.height}
-                                callbacks={{ onBubblePress: handlePartPress }}
-                                loading={partsData.length === 0}
-                              />
+                              {shouldRenderCharts && loadedExpandedCharts.has('parts') ? (
+                                <Suspense fallback={null}>
+                                  <PartsExpandedBubbleChart
+                                    data={partsData}
+                                    width={partsChartDimensions.width}
+                                    height={partsChartDimensions.height}
+                                    callbacks={{ onBubblePress: handlePartPress }}
+                                    loading={partsData.length === 0}
+                                  />
+                                </Suspense>
+                              ) : null}
                             </View>
                           </View>
                         </Animated.View>
@@ -1154,13 +1208,17 @@ export default function ChatScreen() {
                                 setNeedsChartDimensions({ width, height });
                               }}
                             >
-                              <NeedsExpandedBubbleChart
-                                data={needsData}
-                                width={needsChartDimensions.width}
-                                height={needsChartDimensions.height}
-                                callbacks={{ onBubblePress: handleNeedPress }}
-                                loading={needsData.length === 0}
-                              />
+                              {shouldRenderCharts && loadedExpandedCharts.has('needs') ? (
+                                <Suspense fallback={null}>
+                                  <NeedsExpandedBubbleChart
+                                    data={needsData}
+                                    width={needsChartDimensions.width}
+                                    height={needsChartDimensions.height}
+                                    callbacks={{ onBubblePress: handleNeedPress }}
+                                    loading={needsData.length === 0}
+                                  />
+                                </Suspense>
+                              ) : null}
                             </View>
                           </View>
                         </Animated.View>

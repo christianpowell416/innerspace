@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, Suspense } from 'react';
 import {
   View,
   Text,
@@ -16,10 +16,12 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
-import { PartsDetailBubbleChart } from '@/components/PartsDetailBubbleChart';
-import { NeedsDetailBubbleChart } from '@/components/NeedsDetailBubbleChart';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
+
+// Lazy load detail chart components to prevent loading during modal animation
+const PartsDetailBubbleChart = React.lazy(() => import('@/components/PartsDetailBubbleChart').then(module => ({ default: module.PartsDetailBubbleChart })));
+const NeedsDetailBubbleChart = React.lazy(() => import('@/components/NeedsDetailBubbleChart').then(module => ({ default: module.NeedsDetailBubbleChart })));
 
 interface EmotionDetailModalProps {
   visible: boolean;
@@ -41,6 +43,8 @@ export function EmotionDetailModal({
   const [needsData, setNeedsData] = React.useState<NeedBubbleData[]>([]);
   const [partsChartDimensions, setPartsChartDimensions] = React.useState({ width: 180, height: 140 });
   const [needsChartDimensions, setNeedsChartDimensions] = React.useState({ width: 180, height: 140 });
+  const [shouldLoadDetailCharts, setShouldLoadDetailCharts] = React.useState(false);
+  const [shouldRenderCharts, setShouldRenderCharts] = React.useState(false);
 
   // Close modal function with animation
   const closeModal = () => {
@@ -55,6 +59,12 @@ export function EmotionDetailModal({
       setInternalVisible(false);
       // Reset modal position for next time
       modalTranslateY.setValue(Dimensions.get('window').height);
+      // Reset loading states
+      setShouldLoadDetailCharts(false);
+      setShouldRenderCharts(false);
+      // Clear data for next open
+      setPartsData([]);
+      setNeedsData([]);
       onClose();
     });
   };
@@ -99,27 +109,36 @@ export function EmotionDetailModal({
     if (visible) {
       // Show modal immediately and animate in
       setInternalVisible(true);
+      setShouldLoadDetailCharts(false);
+      setShouldRenderCharts(false);
       modalTranslateY.setValue(Dimensions.get('window').height);
       Animated.timing(modalTranslateY, {
         toValue: 0,
         duration: 300,
         useNativeDriver: true,
-      }).start();
+      }).start(() => {
+        // After animation completes, start loading charts
+        setShouldLoadDetailCharts(true);
+        setTimeout(() => {
+          setShouldRenderCharts(true);
+          setTimeout(() => {
+            if (emotion) {
+              setPartsData(generateTestPartsData(5));
+              setNeedsData(generateTestNeedsData(5));
+            }
+          }, 50); // Small delay for component loading
+        }, 100); // Delay for chart component loading
+      });
     } else {
       // Reset states for next time
       setInternalVisible(false);
       modalTranslateY.setValue(Dimensions.get('window').height);
-    }
-  }, [visible]);
-
-  // Load parts and needs data when modal opens
-  React.useEffect(() => {
-    if (visible && emotion) {
-      // Generate test data - in a real app, this would come from the emotion's conversation analysis
-      setPartsData(generateTestPartsData(5));
-      setNeedsData(generateTestNeedsData(5));
+      setShouldLoadDetailCharts(false);
+      setShouldRenderCharts(false);
     }
   }, [visible, emotion]);
+
+  // Data loading is now handled in the modal animation completion callback
 
   // Handle bubble press events
   const handlePartPress = (part: PartBubbleData) => {
@@ -386,12 +405,16 @@ export function EmotionDetailModal({
                         setPartsChartDimensions({ width, height });
                       }}
                     >
-                      <PartsDetailBubbleChart
-                        data={partsData}
-                        width={partsChartDimensions.width}
-                        height={partsChartDimensions.height}
-                        callbacks={{ onBubblePress: handlePartPress }}
-                      />
+                      {shouldRenderCharts && shouldLoadDetailCharts ? (
+                        <Suspense fallback={null}>
+                          <PartsDetailBubbleChart
+                            data={partsData}
+                            width={partsChartDimensions.width}
+                            height={partsChartDimensions.height}
+                            callbacks={{ onBubblePress: handlePartPress }}
+                          />
+                        </Suspense>
+                      ) : null}
                     </View>
                   </View>
 
@@ -414,12 +437,16 @@ export function EmotionDetailModal({
                         setNeedsChartDimensions({ width, height });
                       }}
                     >
-                      <NeedsDetailBubbleChart
-                        data={needsData}
-                        width={needsChartDimensions.width}
-                        height={needsChartDimensions.height}
-                        callbacks={{ onBubblePress: handleNeedPress }}
-                      />
+                      {shouldRenderCharts && shouldLoadDetailCharts ? (
+                        <Suspense fallback={null}>
+                          <NeedsDetailBubbleChart
+                            data={needsData}
+                            width={needsChartDimensions.width}
+                            height={needsChartDimensions.height}
+                            callbacks={{ onBubblePress: handleNeedPress }}
+                          />
+                        </Suspense>
+                      ) : null}
                     </View>
                   </View>
                 </View>

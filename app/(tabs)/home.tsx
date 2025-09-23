@@ -1,3 +1,4 @@
+import React, { useState, useEffect, Suspense } from 'react';
 import { StyleSheet, View, Pressable, ScrollView, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -8,19 +9,44 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@/contexts/AuthContext';
-import { LearningCarousel } from '@/components/LearningCarousel';
-import Hypher from 'hypher';
-import english from 'hyphenation.en-us';
+
+// Lazy load heavy components to prevent loading during page transitions
+const LearningCarousel = React.lazy(() => import('@/components/LearningCarousel').then(module => ({ default: module.LearningCarousel })));
 
 export default function HomeScreen() {
   const { user, profile } = useAuth();
   const colorScheme = useColorScheme();
-  
-  // Initialize hyphenator with English patterns
-  const hyphenator = new Hypher(english);
-  
+
+  // Progressive loading states
+  const [shouldLoadCarousel, setShouldLoadCarousel] = useState(false);
+  const [hyphenator, setHyphenator] = useState<any>(null);
+
+  // Initialize progressive loading after component mounts
+  useEffect(() => {
+    // Delay loading to allow page to render first
+    const timer = setTimeout(() => {
+      setShouldLoadCarousel(true);
+
+      // Lazy load hyphenation libraries
+      Promise.all([
+        import('hypher'),
+        import('hyphenation.en-us')
+      ]).then(([HypherModule, englishModule]) => {
+        const Hypher = HypherModule.default;
+        const english = englishModule.default;
+        setHyphenator(new Hypher(english));
+      }).catch(error => {
+        console.warn('Failed to load hyphenation libraries:', error);
+      });
+    }, 300); // Delay for page load
+
+    return () => clearTimeout(timer);
+  }, []);
+
   // Function to hyphenate text automatically
   const getHyphenatedText = (text: string) => {
+    if (!hyphenator) return text; // Return original text if hyphenator not loaded
+
     try {
       return hyphenator.hyphenateText(text);
     } catch (error) {
@@ -107,7 +133,13 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
         
-          <LearningCarousel onArticlePress={handleArticlePress} />
+          {shouldLoadCarousel ? (
+            <Suspense fallback={null}>
+              <LearningCarousel onArticlePress={handleArticlePress} />
+            </Suspense>
+          ) : (
+            null
+          )}
           
         </ScrollView>
       </SafeAreaView>

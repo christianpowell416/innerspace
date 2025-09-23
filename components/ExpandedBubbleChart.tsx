@@ -4,7 +4,6 @@ import { forceSimulation, forceCollide, forceCenter, forceManyBody } from 'd3-fo
 import * as Haptics from 'expo-haptics';
 import Hypher from 'hypher';
 import english from 'hyphenation.en-us';
-import { BlurView } from 'expo-blur';
 
 import { BubbleChartConfig } from '@/lib/types/partsNeedsChart';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -48,8 +47,9 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
   const [isSimulationComplete, setIsSimulationComplete] = useState(false);
   const simulationRef = useRef<any>(null);
 
-  // Animation values for bubble scaling
+  // Animation values for bubble scaling and opacity
   const scaleAnimations = useRef<Map<string, Animated.Value>>(new Map());
+  const opacityAnimations = useRef<Map<string, Animated.Value>>(new Map());
   const lastUpdateTime = useRef<number>(0);
 
   // Store settled bubble positions to prevent reset on re-renders
@@ -116,6 +116,19 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
         fy: null,
       }));
       setBubbles(staticBubbles);
+
+      // Fade in cached bubbles immediately
+      staticBubbles.forEach((bubble, index) => {
+        const delay = index * 50; // Stagger the fade-in
+        setTimeout(() => {
+          const opacityAnim = getOpacityAnimation(bubble.id);
+          Animated.timing(opacityAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }).start();
+        }, delay);
+      });
       return;
     }
 
@@ -192,8 +205,8 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
       .force('collision', forceCollide().radius((d: any) => d.radius + config.padding).strength(config.collisionStrength))
       .force('centerPull', centerPullForce)
       .velocityDecay(config.velocityDecay)
-      .alpha(0.7) // Moderate alpha for good settling
-      .alphaDecay(0.06); // Moderate decay
+      .alpha(1.0) // Higher alpha for faster simulation
+      .alphaDecay(0.15); // Faster decay for quicker settling
 
     // Boundary constraint function for square containers
     const applyBoundaryConstraints = () => {
@@ -241,6 +254,19 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
         }
       });
       setIsSimulationComplete(true);
+
+      // Fade in all bubbles once positioned
+      initialBubbles.forEach((bubble, index) => {
+        const delay = index * 50; // Stagger the fade-in
+        setTimeout(() => {
+          const opacityAnim = getOpacityAnimation(bubble.id);
+          Animated.timing(opacityAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }).start();
+        }, delay);
+      });
     });
 
     simulationRef.current = simulation;
@@ -251,6 +277,23 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
       }
     };
   }, [safeData, config.width, config.height]);
+
+  // Helper function to get or create opacity animation
+  const getOpacityAnimation = useCallback((bubbleId: string): Animated.Value => {
+    if (!opacityAnimations.current.has(bubbleId)) {
+      opacityAnimations.current.set(bubbleId, new Animated.Value(0)); // Start invisible
+    }
+    return opacityAnimations.current.get(bubbleId)!;
+  }, []);
+
+  // Reset opacity animations when data changes
+  useEffect(() => {
+    opacityAnimations.current.clear();
+    // Initialize opacity animations for new data
+    safeData.forEach(bubble => {
+      getOpacityAnimation(bubble.id);
+    });
+  }, [safeData, getOpacityAnimation]);
 
   // Handle bubble press
   const handleBubblePress = useCallback((bubble: BubbleData) => {
@@ -369,11 +412,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
 
   if (loading) {
     return (
-      <View style={[styles.container, { width: config.width, height: config.height }]}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? '#fff' : '#000' }]}>Loading...</Text>
-        </View>
-      </View>
+      <View style={[styles.container, { width: config.width, height: config.height }]} />
     );
   }
 
@@ -387,9 +426,10 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
           const textLines = wrapText(bubbleName, radius);
           const isSelected = selectedBubble === bubble?.id;
 
-          // Get animation value
+          // Get animation values
           const bubbleId = bubble?.id || `bubble-${Math.random()}`;
           const scaleAnim = scaleAnimations.current.get(bubbleId) || new Animated.Value(1);
+          const opacityAnim = getOpacityAnimation(bubbleId);
           if (!scaleAnimations.current.has(bubbleId)) {
             scaleAnimations.current.set(bubbleId, scaleAnim);
           }
@@ -404,6 +444,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
                   top: (bubble?.y || 0) - radius,
                   width: radius * 2,
                   height: radius * 2,
+                  opacity: opacityAnim,
                   transform: [{ scale: scaleAnim }],
                 },
               ]}
@@ -473,9 +514,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
                       />
                     </>
                   )}
-                  <BlurView
-                    intensity={20}
-                    tint="systemMaterial"
+                  <View
                     style={{
                       position: 'absolute',
                       width: (radius * 2) + 6,
@@ -489,7 +528,13 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
                       ],
                       justifyContent: 'center',
                       alignItems: 'center',
-                      backgroundColor: 'transparent',
+                      backgroundColor: isDark
+                        ? 'rgba(255, 255, 255, 0.15)'
+                        : 'rgba(255, 255, 255, 0.9)',
+                      borderWidth: 1,
+                      borderColor: isDark
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'rgba(0, 0, 0, 0.1)',
                     }}
                   >
                     {/* Bubble label */}
@@ -513,7 +558,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
                         </Text>
                       ))}
                     </View>
-                  </BlurView>
+                  </View>
                 </View>
               </Pressable>
             </Animated.View>

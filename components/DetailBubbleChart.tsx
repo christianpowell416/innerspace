@@ -371,11 +371,7 @@ export function DetailBubbleChart({ data, config, onBubblePress, loading = false
 
   if (loading) {
     return (
-      <View style={[styles.container, { width: config.width, height: config.height }]}>
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? '#fff' : '#000' }]}>Loading...</Text>
-        </View>
-      </View>
+      <View style={[styles.container, { width: config.width, height: config.height }]} />
     );
   }
 
@@ -506,8 +502,7 @@ export function DetailBubbleChart({ data, config, onBubblePress, loading = false
                           style={{
                             fontSize,
                             color: isDark ? '#FFFFFF' : '#000000',
-                            fontWeight: 'normal',
-                            fontFamily: 'Georgia',
+                            fontWeight: 'bold',
                             textAlign: 'center',
                             lineHeight: fontSize * 1.2,
                           }}
@@ -550,7 +545,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 12,
-    fontFamily: 'Georgia',
     opacity: 0.6,
   },
 });

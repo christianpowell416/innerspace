@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, Suspense } from 'react';
 import {
   StyleSheet,
   View,
@@ -15,9 +15,11 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { ThemedText } from '@/components/ThemedText';
-import { EmotionsFullBubbleChart } from '@/components/EmotionsFullBubbleChart';
-import { PartsFullBubbleChart } from '@/components/PartsFullBubbleChart';
-import { NeedsFullBubbleChart } from '@/components/NeedsFullBubbleChart';
+
+// Lazy load all bubble chart components to prevent loading during page transitions
+const EmotionsFullBubbleChart = React.lazy(() => import('@/components/EmotionsFullBubbleChart').then(module => ({ default: module.EmotionsFullBubbleChart })));
+const PartsFullBubbleChart = React.lazy(() => import('@/components/PartsFullBubbleChart').then(module => ({ default: module.PartsFullBubbleChart })));
+const NeedsFullBubbleChart = React.lazy(() => import('@/components/NeedsFullBubbleChart').then(module => ({ default: module.NeedsFullBubbleChart })));
 import {
   createBubbleChartData,
   getDefaultBubbleConfig,
@@ -71,6 +73,10 @@ export default function InnerspaceScreen() {
   const [partsLoading, setPartsLoading] = useState(true);
   const [needsLoading, setNeedsLoading] = useState(true);
   const [emotionStats, setEmotionStats] = useState<any>(null);
+
+  // Progressive loading states
+  const [loadedChartComponents, setLoadedChartComponents] = useState<Set<TabType>>(new Set());
+  const [shouldRenderCharts, setShouldRenderCharts] = useState(false);
 
   // Function to recalculate bubble sizes based on sort type
   const recalculateBubbleSizes = useCallback((bubbles: EmotionBubbleData[], sortType: SortType, config: BubbleChartConfig) => {
@@ -210,12 +216,28 @@ export default function InnerspaceScreen() {
     }
   }, []);
 
-  // Load all data
+  // Progressive loading - start after component mounts
   useEffect(() => {
-    loadEmotionData();
-    loadPartsData();
-    loadNeedsData();
-  }, [loadEmotionData, loadPartsData, loadNeedsData]);
+    // Delay initial loading to allow page to render first
+    const timer = setTimeout(() => {
+      setShouldRenderCharts(true);
+      // Load the active tab first
+      setLoadedChartComponents(new Set([activeTab]));
+
+      // Load data for the initial active tab
+      setTimeout(() => {
+        if (activeTab === 'emotions') {
+          loadEmotionData();
+        } else if (activeTab === 'parts') {
+          loadPartsData();
+        } else if (activeTab === 'needs') {
+          loadNeedsData();
+        }
+      }, 100); // Small delay for component loading
+    }, 200); // Initial delay for page load
+
+    return () => clearTimeout(timer);
+  }, []); // Only run once on mount
 
   // Handle sort change
   const handleSortChange = (newSortType: SortType) => {
@@ -261,6 +283,22 @@ export default function InnerspaceScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActiveTab(tab);
 
+    // Load component for this tab if not already loaded
+    if (!loadedChartComponents.has(tab)) {
+      setLoadedChartComponents(prev => new Set(prev).add(tab));
+
+      // Load data after component loads
+      setTimeout(() => {
+        if (tab === 'emotions') {
+          loadEmotionData();
+        } else if (tab === 'parts') {
+          loadPartsData();
+        } else if (tab === 'needs') {
+          loadNeedsData();
+        }
+      }, 100);
+    }
+
     // Animate tab indicator
     const tabIndex = tab === 'emotions' ? 0 : tab === 'parts' ? 1 : 2;
     Animated.spring(tabIndicatorPosition, {
@@ -280,12 +318,18 @@ export default function InnerspaceScreen() {
 
         {/* Bubble Chart */}
         <View style={styles.chartContainer}>
-          <EmotionsFullBubbleChart
-            data={emotionBubbles}
-            config={bubbleConfig}
-            callbacks={bubbleCallbacks}
-            loading={emotionsLoading}
-          />
+          {shouldRenderCharts && loadedChartComponents.has('emotions') ? (
+            <Suspense fallback={null}>
+              <EmotionsFullBubbleChart
+                data={emotionBubbles}
+                config={bubbleConfig}
+                callbacks={bubbleCallbacks}
+                loading={emotionsLoading}
+              />
+            </Suspense>
+          ) : (
+            null
+          )}
 
           {/* Filter Button */}
           {!emotionsLoading && emotionBubbles.length > 0 && (
@@ -337,12 +381,18 @@ export default function InnerspaceScreen() {
     <View style={[styles.tabContent, { width: screenWidth }]}>
       <View style={styles.contentContainer}>
         <View style={styles.chartContainer}>
-          <PartsFullBubbleChart
-            data={partsBubbles}
-            config={bubbleConfig}
-            callbacks={partsCallbacks}
-            loading={partsLoading}
-          />
+          {shouldRenderCharts && loadedChartComponents.has('parts') ? (
+            <Suspense fallback={null}>
+              <PartsFullBubbleChart
+                data={partsBubbles}
+                config={bubbleConfig}
+                callbacks={partsCallbacks}
+                loading={partsLoading}
+              />
+            </Suspense>
+          ) : (
+            null
+          )}
         </View>
       </View>
     </View>
@@ -352,12 +402,18 @@ export default function InnerspaceScreen() {
     <View style={[styles.tabContent, { width: screenWidth }]}>
       <View style={styles.contentContainer}>
         <View style={styles.chartContainer}>
-          <NeedsFullBubbleChart
-            data={needsBubbles}
-            config={bubbleConfig}
-            callbacks={needsCallbacks}
-            loading={needsLoading}
-          />
+          {shouldRenderCharts && loadedChartComponents.has('needs') ? (
+            <Suspense fallback={null}>
+              <NeedsFullBubbleChart
+                data={needsBubbles}
+                config={bubbleConfig}
+                callbacks={needsCallbacks}
+                loading={needsLoading}
+              />
+            </Suspense>
+          ) : (
+            null
+          )}
         </View>
       </View>
     </View>

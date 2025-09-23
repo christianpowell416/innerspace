@@ -49,10 +49,7 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
   if (loading) {
     return (
-      <ThemedView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" />
-        <ThemedText style={styles.loadingText}>Loading...</ThemedText>
-      </ThemedView>
+      <ThemedView style={styles.loadingContainer} />
     );
   }
 

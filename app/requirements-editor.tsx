@@ -64,9 +64,7 @@ export default function RequirementsEditor() {
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#000' : '#fff' }]}>
-        <ThemedView style={styles.content}>
-          <ThemedText>Loading requirements...</ThemedText>
-        </ThemedView>
+        <ThemedView style={styles.content} />
       </SafeAreaView>
     );
   }
