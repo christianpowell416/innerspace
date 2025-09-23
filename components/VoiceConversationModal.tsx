@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import {
   View,
   Text,
@@ -37,7 +37,21 @@ import {
   DetectedLists,
   DetectionCallbacks
 } from '@/lib/services/emotionPartsDetector';
+import { EmotionBubbleData } from '@/lib/types/bubbleChart';
+import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
+import {
+  transformDetectedEmotions,
+  transformDetectedParts,
+  transformDetectedNeeds,
+  resetDetectionTracking,
+  setDetectionConversationId
+} from '@/lib/utils/detectionDataTransform';
 import * as DocumentPicker from 'expo-document-picker';
+
+// Lazy load bubble chart components to prevent them from loading until needed
+const PartsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/PartsHoneycombMiniBubbleChart'));
+const NeedsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/NeedsHoneycombMiniBubbleChart'));
+const EmotionsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/EmotionsHoneycombMiniBubbleChart'));
 
 interface VoiceConversationModalProps {
   visible: boolean;
@@ -102,6 +116,19 @@ export function VoiceConversationModal({
     parts: [],
     needs: []
   });
+
+  // Bubble chart data state
+  const [detectedEmotionsData, setDetectedEmotionsData] = useState<EmotionBubbleData[]>([]);
+  const [detectedPartsData, setDetectedPartsData] = useState<PartBubbleData[]>([]);
+  const [detectedNeedsData, setDetectedNeedsData] = useState<NeedBubbleData[]>([]);
+
+  // Chart dimensions state
+  const [emotionsChartDimensions, setEmotionsChartDimensions] = useState({ width: 110, height: 110 });
+  const [partsChartDimensions, setPartsChartDimensions] = useState({ width: 110, height: 110 });
+  const [needsChartDimensions, setNeedsChartDimensions] = useState({ width: 110, height: 110 });
+
+  // Chart loading state
+  const [shouldRenderBubbleCharts, setShouldRenderBubbleCharts] = useState(false);
 
   const sessionRef = useRef<VoiceSession | null>(null);
   const textInputRef = useRef<any>(null);
@@ -560,6 +587,17 @@ export function VoiceConversationModal({
               // Analyze user voice message for emotions, parts, and needs
               emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
                 setDetectedItems(detectedLists);
+
+                // Transform detected items to bubble chart data
+                const conversationId = sessionRef.current?.sessionId || undefined;
+                setDetectedEmotionsData(transformDetectedEmotions(detectedLists.emotions, conversationId));
+                setDetectedPartsData(transformDetectedParts(detectedLists.parts, conversationId));
+                setDetectedNeedsData(transformDetectedNeeds(detectedLists.needs, conversationId));
+
+                // Enable bubble chart rendering if we have data
+                if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+                  setShouldRenderBubbleCharts(true);
+                }
               }).catch(error => {
                 console.warn('🔍 [DETECTION] Voice analysis error:', error);
               });
@@ -727,6 +765,14 @@ export function VoiceConversationModal({
     // Reset detected items
     emotionPartsDetector.reset();
     setDetectedItems({ emotions: [], parts: [], needs: [] });
+
+    // Reset bubble chart data and tracking
+    setDetectedEmotionsData([]);
+    setDetectedPartsData([]);
+    setDetectedNeedsData([]);
+    setShouldRenderBubbleCharts(false);
+    resetDetectionTracking();
+
     setIsStreaming(false);
 
     // Reset refs for callback access
@@ -876,6 +922,17 @@ export function VoiceConversationModal({
       // Analyze user message for emotions, parts, and needs
       emotionPartsDetector.addMessage(messageText).then(detectedLists => {
         setDetectedItems(detectedLists);
+
+        // Transform detected items to bubble chart data
+        const conversationId = sessionRef.current?.sessionId || undefined;
+        setDetectedEmotionsData(transformDetectedEmotions(detectedLists.emotions, conversationId));
+        setDetectedPartsData(transformDetectedParts(detectedLists.parts, conversationId));
+        setDetectedNeedsData(transformDetectedNeeds(detectedLists.needs, conversationId));
+
+        // Enable bubble chart rendering if we have data
+        if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+          setShouldRenderBubbleCharts(true);
+        }
       }).catch(error => {
         console.warn('🔍 [DETECTION] Text analysis error:', error);
       });
@@ -998,28 +1055,13 @@ export function VoiceConversationModal({
             >
             {/* Fixed Header - draggable */}
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
-                New Loop
-              </Text>
-              <View style={styles.headerControls}>
-                <Pressable
-                  style={styles.closeButton}
-                  onPress={handleClose}
-                >
-                  <Text style={styles.closeButtonText}>✕</Text>
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Elements Section */}
-            <View style={styles.elementsSection}>
               <View style={{
                 flexDirection: 'row',
-                alignItems: 'flex-start',
-                paddingHorizontal: 20,
+                alignItems: 'center',
                 gap: 12,
+                flex: 1,
               }}>
-                {/* Dropdown button moved from header */}
+                {/* Dropdown button moved from Elements section */}
                 <Pressable
                   style={[
                     styles.minimizeButton,
@@ -1030,10 +1072,10 @@ export function VoiceConversationModal({
                       borderColor: colorScheme === 'dark'
                         ? 'rgba(255, 255, 255, 0.2)'
                         : 'rgba(0, 0, 0, 0.1)',
-                      position: 'relative',
-                      top: -5,
-                      right: 0,
-                      zIndex: 1,
+                      width: 28,
+                      height: 28,
+                      alignItems: 'center',
+                      justifyContent: 'center',
                     }
                   ]}
                   onPress={() => setShowSquareCards(!showSquareCards)}
@@ -1048,22 +1090,20 @@ export function VoiceConversationModal({
                     ▼
                   </Text>
                 </Pressable>
-
-                <Text style={[
-                  styles.sectionTitle,
-                  {
-                    color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-                    fontSize: 22.5,
-                    fontWeight: '600',
-                    marginBottom: 6,
-                    fontFamily: 'Georgia',
-                    marginTop: 0,
-                  }
-                ]}>
-                  Elements
+                <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
+                  New Loop
                 </Text>
               </View>
+              <View style={styles.headerControls}>
+                <Pressable
+                  style={styles.closeButton}
+                  onPress={handleClose}
+                >
+                  <Text style={styles.closeButtonText}>✕</Text>
+                </Pressable>
+              </View>
             </View>
+
 
             {/* Square Cards Section - only show when dropdown is expanded */}
             {showSquareCards && (
@@ -1073,7 +1113,10 @@ export function VoiceConversationModal({
                       <View style={styles.squareCardWrapper}>
                         <Text style={[
                           styles.squareCardTitle,
-                          { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                          {
+                            color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+                            fontWeight: 'bold'
+                          }
                         ]}>
                           Emotions
                         </Text>
@@ -1087,38 +1130,47 @@ export function VoiceConversationModal({
                               borderColor: colorScheme === 'dark'
                                 ? 'rgba(255, 255, 255, 0.2)'
                                 : 'rgba(0, 0, 0, 0.1)',
+                              padding: 0, // Remove padding for chart
                             }
                           ]}
+                          onLayout={(event) => {
+                            const { width, height } = event.nativeEvent.layout;
+                            if (width > 0 && height > 0) {
+                              setEmotionsChartDimensions({ width, height });
+                            }
+                          }}
                         >
-                          <ScrollView style={styles.cardScrollView} showsVerticalScrollIndicator={false}>
-                            {detectedItems.emotions.length === 0 ? (
+                          {detectedEmotionsData.length === 0 ? (
+                            <View style={styles.cardEmptyContainer}>
                               <Text style={[
                                 styles.cardEmptyText,
                                 { color: colorScheme === 'dark' ? '#888888' : '#999999' }
                               ]}>
                                 No emotions detected yet...
                               </Text>
-                            ) : (
-                              detectedItems.emotions.map((emotion, index) => (
-                                <Text
-                                  key={`emotion-${index}`}
-                                  style={[
-                                    styles.cardListItem,
-                                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
-                                  ]}
-                                >
-                                  • {emotion}
-                                </Text>
-                              ))
-                            )}
-                          </ScrollView>
+                            </View>
+                          ) : shouldRenderBubbleCharts ? (
+                            <Suspense fallback={<View style={styles.cardEmptyContainer} />}>
+                              <EmotionsHoneycombMiniBubbleChart
+                                data={detectedEmotionsData}
+                                width={emotionsChartDimensions.width}
+                                height={emotionsChartDimensions.height}
+                                loading={!shouldRenderBubbleCharts}
+                              />
+                            </Suspense>
+                          ) : (
+                            <View style={styles.cardEmptyContainer} />
+                          )}
                         </View>
                       </View>
 
                       <View style={styles.squareCardWrapper}>
                         <Text style={[
                           styles.squareCardTitle,
-                          { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                          {
+                            color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+                            fontWeight: 'bold'
+                          }
                         ]}>
                           Parts
                         </Text>
@@ -1132,38 +1184,47 @@ export function VoiceConversationModal({
                               borderColor: colorScheme === 'dark'
                                 ? 'rgba(255, 255, 255, 0.2)'
                                 : 'rgba(0, 0, 0, 0.1)',
+                              padding: 0, // Remove padding for chart
                             }
                           ]}
+                          onLayout={(event) => {
+                            const { width, height } = event.nativeEvent.layout;
+                            if (width > 0 && height > 0) {
+                              setPartsChartDimensions({ width, height });
+                            }
+                          }}
                         >
-                          <ScrollView style={styles.cardScrollView} showsVerticalScrollIndicator={false}>
-                            {detectedItems.parts.length === 0 ? (
+                          {detectedPartsData.length === 0 ? (
+                            <View style={styles.cardEmptyContainer}>
                               <Text style={[
                                 styles.cardEmptyText,
                                 { color: colorScheme === 'dark' ? '#888888' : '#999999' }
                               ]}>
                                 No parts detected yet...
                               </Text>
-                            ) : (
-                              detectedItems.parts.map((part, index) => (
-                                <Text
-                                  key={`part-${index}`}
-                                  style={[
-                                    styles.cardListItem,
-                                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
-                                  ]}
-                                >
-                                  • {part}
-                                </Text>
-                              ))
-                            )}
-                          </ScrollView>
+                            </View>
+                          ) : shouldRenderBubbleCharts ? (
+                            <Suspense fallback={<View style={styles.cardEmptyContainer} />}>
+                              <PartsHoneycombMiniBubbleChart
+                                data={detectedPartsData}
+                                width={partsChartDimensions.width}
+                                height={partsChartDimensions.height}
+                                loading={!shouldRenderBubbleCharts}
+                              />
+                            </Suspense>
+                          ) : (
+                            <View style={styles.cardEmptyContainer} />
+                          )}
                         </View>
                       </View>
 
                       <View style={styles.squareCardWrapper}>
                         <Text style={[
                           styles.squareCardTitle,
-                          { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
+                          {
+                            color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+                            fontWeight: 'bold'
+                          }
                         ]}>
                           Needs
                         </Text>
@@ -1177,31 +1238,37 @@ export function VoiceConversationModal({
                               borderColor: colorScheme === 'dark'
                                 ? 'rgba(255, 255, 255, 0.2)'
                                 : 'rgba(0, 0, 0, 0.1)',
+                              padding: 0, // Remove padding for chart
                             }
                           ]}
+                          onLayout={(event) => {
+                            const { width, height } = event.nativeEvent.layout;
+                            if (width > 0 && height > 0) {
+                              setNeedsChartDimensions({ width, height });
+                            }
+                          }}
                         >
-                          <ScrollView style={styles.cardScrollView} showsVerticalScrollIndicator={false}>
-                            {detectedItems.needs.length === 0 ? (
+                          {detectedNeedsData.length === 0 ? (
+                            <View style={styles.cardEmptyContainer}>
                               <Text style={[
                                 styles.cardEmptyText,
                                 { color: colorScheme === 'dark' ? '#888888' : '#999999' }
                               ]}>
                                 No needs detected yet...
                               </Text>
-                            ) : (
-                              detectedItems.needs.map((need, index) => (
-                                <Text
-                                  key={`need-${index}`}
-                                  style={[
-                                    styles.cardListItem,
-                                    { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
-                                  ]}
-                                >
-                                  • {need}
-                                </Text>
-                              ))
-                            )}
-                          </ScrollView>
+                            </View>
+                          ) : shouldRenderBubbleCharts ? (
+                            <Suspense fallback={<View style={styles.cardEmptyContainer} />}>
+                              <NeedsHoneycombMiniBubbleChart
+                                data={detectedNeedsData}
+                                width={needsChartDimensions.width}
+                                height={needsChartDimensions.height}
+                                loading={!shouldRenderBubbleCharts}
+                              />
+                            </Suspense>
+                          ) : (
+                            <View style={styles.cardEmptyContainer} />
+                          )}
                         </View>
                       </View>
                     </View>
@@ -2146,19 +2213,6 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 12,
   },
-  voiceButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    minWidth: 80,
-    alignItems: 'center',
-  },
-  voiceButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    fontFamily: 'Georgia',
-    textTransform: 'capitalize',
-  },
   // Collapsible Section Styles
   collapsibleSection: {
     paddingHorizontal: 20,
@@ -2200,7 +2254,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   squareCardTitle: {
-    fontSize: 20,
+    fontSize: 22.5,
     fontFamily: 'Georgia',
     fontWeight: '600',
     marginBottom: 8,
@@ -2228,6 +2282,13 @@ const styles = StyleSheet.create({
     marginTop: 15,
     lineHeight: 14,
   },
+  cardEmptyContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 8,
+  },
   cardListItem: {
     fontSize: 11,
     fontFamily: 'Georgia',
@@ -2237,7 +2298,7 @@ const styles = StyleSheet.create({
   elementsSection: {
     paddingVertical: 10,
   },
-  sectionTitle: {
+  squareCardSectionTitle: {
     fontSize: 22.5,
     fontWeight: '600',
     marginBottom: 6,
@@ -2246,7 +2307,7 @@ const styles = StyleSheet.create({
   activeConversationContainer: {
     flex: 1,
     backgroundColor: 'transparent',
-    marginHorizontal: 10,
+    marginHorizontal: 20,
     marginVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
