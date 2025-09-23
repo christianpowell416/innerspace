@@ -18,14 +18,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Alert } from 'react-native';
 
 // Lazy load ALL bubble chart components to prevent them from loading until needed
-const PartsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/PartsHoneycombMiniBubbleChart').then(module => ({ default: module.PartsHoneycombMiniBubbleChart })));
-const NeedsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/NeedsHoneycombMiniBubbleChart').then(module => ({ default: module.NeedsHoneycombMiniBubbleChart })));
-const EmotionsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/EmotionsHoneycombMiniBubbleChart').then(module => ({ default: module.EmotionsHoneycombMiniBubbleChart })));
+const PartsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/PartsHoneycombMiniBubbleChart'));
+const NeedsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/NeedsHoneycombMiniBubbleChart'));
+const EmotionsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/EmotionsHoneycombMiniBubbleChart'));
 
 // Lazy load expanded charts to prevent them from loading until needed
-const PartsExpandedBubbleChart = React.lazy(() => import('@/components/PartsExpandedBubbleChart').then(module => ({ default: module.PartsExpandedBubbleChart })));
-const NeedsExpandedBubbleChart = React.lazy(() => import('@/components/NeedsExpandedBubbleChart').then(module => ({ default: module.NeedsExpandedBubbleChart })));
-const EmotionsExpandedBubbleChart = React.lazy(() => import('@/components/EmotionsExpandedBubbleChart').then(module => ({ default: module.EmotionsExpandedBubbleChart })));
+const PartsExpandedBubbleChart = React.lazy(() => import('@/components/PartsExpandedBubbleChart'));
+const NeedsExpandedBubbleChart = React.lazy(() => import('@/components/NeedsExpandedBubbleChart'));
+const EmotionsExpandedBubbleChart = React.lazy(() => import('@/components/EmotionsExpandedBubbleChart'));
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { generateTestEmotionData } from '@/lib/utils/testData';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
@@ -52,9 +52,9 @@ export default function ChatScreen() {
   const [partsData, setPartsData] = useState<PartBubbleData[]>([]);
   const [needsData, setNeedsData] = useState<NeedBubbleData[]>([]);
   const [emotionsData, setEmotionsData] = useState<EmotionBubbleData[]>([]);
-  const [partsChartDimensions, setPartsChartDimensions] = useState({ width: 180, height: 140 });
-  const [needsChartDimensions, setNeedsChartDimensions] = useState({ width: 180, height: 140 });
-  const [emotionsChartDimensions, setEmotionsChartDimensions] = useState({ width: 180, height: 140 });
+  const [partsChartDimensions, setPartsChartDimensions] = useState({ width: 110, height: 110 });
+  const [needsChartDimensions, setNeedsChartDimensions] = useState({ width: 110, height: 110 });
+  const [emotionsChartDimensions, setEmotionsChartDimensions] = useState({ width: 110, height: 110 });
   const [shouldRenderCharts, setShouldRenderCharts] = useState(false);
   const [shouldLoadMiniCharts, setShouldLoadMiniCharts] = useState(false);
   const [loadedExpandedCharts, setLoadedExpandedCharts] = useState<Set<string>>(new Set());
@@ -244,6 +244,22 @@ export default function ChatScreen() {
     setShouldRenderCharts(false); // Ensure charts don't render during animation
     setShouldLoadMiniCharts(false); // Ensure mini charts don't load during animation
 
+    // Reset expanded view state to ensure new card opens with mini charts
+    setExpandedSquareCard(null);
+    setLoadedExpandedCharts(new Set());
+
+    // Reset all animation states to ensure clean start
+    expandedOpacity.emotions.setValue(0);
+    expandedOpacity.parts.setValue(0);
+    expandedOpacity.needs.setValue(0);
+    cardOpacity.emotions.setValue(1);
+    cardOpacity.parts.setValue(1);
+    cardOpacity.needs.setValue(1);
+    titleOpacity.emotions.setValue(1);
+    titleOpacity.parts.setValue(1);
+    titleOpacity.needs.setValue(1);
+    contentTranslateY.setValue(0);
+
     // Animate modal sliding up from bottom
     Animated.timing(modalTranslateY, {
       toValue: 0,
@@ -252,27 +268,45 @@ export default function ChatScreen() {
     }).start(() => {
       // Enhanced loading sequence with caching for faster subsequent loads
       const hasCachedComponents = componentsCache.has('mini-charts');
+      console.log('📊 Animation complete, starting chart loading. Has cached:', hasCachedComponents);
 
       if (hasCachedComponents) {
         // Fast path for cached components
+        console.log('🚀 Using fast path for cached components');
         setShouldLoadMiniCharts(true);
         setShouldRenderCharts(true);
         setTimeout(() => {
-          setPartsData(generateTestPartsData(8));
-          setNeedsData(generateTestNeedsData(8));
-          setEmotionsData(generateTestEmotionData(12));
+          console.log('📈 Loading chart data (cached path)');
+          setPartsData(generateTestPartsData(Math.floor(Math.random() * 6) + 1)); // 1-6 bubbles
+          setNeedsData(generateTestNeedsData(Math.floor(Math.random() * 6) + 1)); // 1-6 bubbles
+          setEmotionsData(generateTestEmotionData(Math.floor(Math.random() * 6) + 1)); // 1-6 bubbles
+
+          // Preload expanded charts after mini charts are loaded
+          setTimeout(() => {
+            console.log('🚀 Preloading expanded charts');
+            setLoadedExpandedCharts(new Set(['emotions', 'parts', 'needs']));
+          }, 200); // Small delay to let mini charts settle
         }, 50); // Faster load for cached components
       } else {
         // Slower path for first load with caching
         setTimeout(() => {
+          console.log('📥 Loading mini chart components (first time)');
           setShouldLoadMiniCharts(true);
           setComponentsCache(prev => new Set(prev).add('mini-charts'));
           setTimeout(() => {
+            console.log('🎨 Enabling chart rendering');
             setShouldRenderCharts(true);
             setTimeout(() => {
-              setPartsData(generateTestPartsData(8));
-              setNeedsData(generateTestNeedsData(8));
-              setEmotionsData(generateTestEmotionData(12));
+              console.log('📈 Loading chart data (first time)');
+              setPartsData(generateTestPartsData(Math.floor(Math.random() * 6) + 1)); // 1-6 bubbles
+              setNeedsData(generateTestNeedsData(Math.floor(Math.random() * 6) + 1)); // 1-6 bubbles
+              setEmotionsData(generateTestEmotionData(Math.floor(Math.random() * 6) + 1)); // 1-6 bubbles
+
+              // Preload expanded charts after mini charts are loaded
+              setTimeout(() => {
+                console.log('🚀 Preloading expanded charts');
+                setLoadedExpandedCharts(new Set(['emotions', 'parts', 'needs']));
+              }, 300); // Slightly longer delay for first time load
             }, 100); // Increased delay for component loading
           }, 150); // Increased delay for mini chart loading
         }, 100); // Additional buffer after animation
@@ -291,9 +325,23 @@ export default function ChatScreen() {
     }).start(() => {
       setModalVisible(false);
       setSelectedCard(null);
+      setExpandedSquareCard(null); // Reset expanded view state
       setShouldRenderCharts(false);
       setShouldLoadMiniCharts(false);
       setLoadedExpandedCharts(new Set()); // Clear loaded expanded charts
+
+      // Reset all animation states to default
+      expandedOpacity.emotions.setValue(0);
+      expandedOpacity.parts.setValue(0);
+      expandedOpacity.needs.setValue(0);
+      cardOpacity.emotions.setValue(1);
+      cardOpacity.parts.setValue(1);
+      cardOpacity.needs.setValue(1);
+      titleOpacity.emotions.setValue(1);
+      titleOpacity.parts.setValue(1);
+      titleOpacity.needs.setValue(1);
+      contentTranslateY.setValue(0);
+
       // Clear bubble chart data to show loading state on next open
       setPartsData([]);
       setNeedsData([]);
@@ -409,6 +457,34 @@ export default function ChatScreen() {
       }),
     ]).start(() => {
       setExpandedSquareCard(null);
+    });
+  };
+
+  // Cycle between expanded charts when tapping headers
+  const cycleToExpandedChart = (targetCardType: string) => {
+    if (!expandedSquareCard || expandedSquareCard === targetCardType) {
+      return; // No change needed if already showing this chart or no expanded view
+    }
+
+    // Load the target expanded chart component
+    setLoadedExpandedCharts(prev => new Set(prev).add(targetCardType));
+
+    // Animate transition between expanded views
+    Animated.parallel([
+      // Fade out current expanded view
+      Animated.timing(expandedOpacity[expandedSquareCard as keyof typeof expandedOpacity], {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      // Fade in target expanded view
+      Animated.timing(expandedOpacity[targetCardType as keyof typeof expandedOpacity], {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setExpandedSquareCard(targetCardType);
     });
   };
 
@@ -828,12 +904,6 @@ export default function ChatScreen() {
                     ]}>
                       {selectedCard.title}
                     </Text>
-                    <Text style={[
-                      styles.modalDate,
-                      { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
-                    ]}>
-                      {selectedCard.date}
-                    </Text>
                   </View>
                   
                   {/* Scrollable Content */}
@@ -881,15 +951,18 @@ export default function ChatScreen() {
                       <View style={styles.squareCardsContainer}>
                         <View style={styles.squareCardsInner}>
                           <View style={styles.squareCardWrapper}>
-                            <Animated.Text style={[
-                              styles.squareCardTitle,
-                              { 
-                                color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
-                                opacity: titleOpacity.emotions
-                              }
-                            ]}>
-                              Emotions
-                            </Animated.Text>
+                            <Pressable onPress={() => cycleToExpandedChart('emotions')}>
+                              <Animated.Text style={[
+                                styles.squareCardTitle,
+                                {
+                                  color: (expandedSquareCard && expandedSquareCard !== 'emotions') ? '#CCCCCC' : '#FFFFFF',
+                                  opacity: titleOpacity.emotions,
+                                  fontWeight: 'bold'
+                                }
+                              ]}>
+                                Emotions
+                              </Animated.Text>
+                            </Pressable>
                             {/* Minimized card */}
                             <Animated.View style={[
                               styles.animatedCardContainer,
@@ -915,7 +988,9 @@ export default function ChatScreen() {
                                   style={styles.chartContainer}
                                   onLayout={(event) => {
                                     const { width, height } = event.nativeEvent.layout;
-                                    setEmotionsChartDimensions({ width, height });
+                                    if (width > 0 && height > 0) {
+                                      setEmotionsChartDimensions({ width, height });
+                                    }
                                   }}
                                 >
                                   {shouldRenderCharts && shouldLoadMiniCharts ? (
@@ -935,15 +1010,18 @@ export default function ChatScreen() {
                           </View>
                           
                           <View style={styles.squareCardWrapper}>
-                            <Animated.Text style={[
-                              styles.squareCardTitle,
-                              { 
-                                color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
-                                opacity: titleOpacity.parts
-                              }
-                            ]}>
-                              Parts
-                            </Animated.Text>
+                            <Pressable onPress={() => cycleToExpandedChart('parts')}>
+                              <Animated.Text style={[
+                                styles.squareCardTitle,
+                                {
+                                  color: (expandedSquareCard && expandedSquareCard !== 'parts') ? '#CCCCCC' : '#FFFFFF',
+                                  opacity: titleOpacity.parts,
+                                  fontWeight: 'bold'
+                                }
+                              ]}>
+                                Parts
+                              </Animated.Text>
+                            </Pressable>
                             {/* Minimized card */}
                             <Animated.View style={[
                               styles.animatedCardContainer,
@@ -969,7 +1047,9 @@ export default function ChatScreen() {
                                   style={styles.chartContainer}
                                   onLayout={(event) => {
                                     const { width, height } = event.nativeEvent.layout;
-                                    setPartsChartDimensions({ width, height });
+                                    if (width > 0 && height > 0) {
+                                      setPartsChartDimensions({ width, height });
+                                    }
                                   }}
                                 >
                                   {shouldRenderCharts && shouldLoadMiniCharts ? (
@@ -990,15 +1070,18 @@ export default function ChatScreen() {
                           </View>
                           
                           <View style={styles.squareCardWrapper}>
-                            <Animated.Text style={[
-                              styles.squareCardTitle,
-                              { 
-                                color: colorScheme === 'dark' ? '#CCCCCC' : '#666666',
-                                opacity: titleOpacity.needs
-                              }
-                            ]}>
-                              Needs
-                            </Animated.Text>
+                            <Pressable onPress={() => cycleToExpandedChart('needs')}>
+                              <Animated.Text style={[
+                                styles.squareCardTitle,
+                                {
+                                  color: (expandedSquareCard && expandedSquareCard !== 'needs') ? '#CCCCCC' : '#FFFFFF',
+                                  opacity: titleOpacity.needs,
+                                  fontWeight: 'bold'
+                                }
+                              ]}>
+                                Needs
+                              </Animated.Text>
+                            </Pressable>
                             {/* Minimized card */}
                             <Animated.View style={[
                               styles.animatedCardContainer,
@@ -1024,7 +1107,9 @@ export default function ChatScreen() {
                                   style={styles.chartContainer}
                                   onLayout={(event) => {
                                     const { width, height } = event.nativeEvent.layout;
-                                    setNeedsChartDimensions({ width, height });
+                                    if (width > 0 && height > 0) {
+                                      setNeedsChartDimensions({ width, height });
+                                    }
                                   }}
                                 >
                                   {shouldRenderCharts && shouldLoadMiniCharts ? (
@@ -1087,11 +1172,13 @@ export default function ChatScreen() {
                               style={styles.chartContainer}
                               onLayout={(event) => {
                                 const { width, height } = event.nativeEvent.layout;
-                                setEmotionsChartDimensions({ width, height });
+                                if (width > 0 && height > 0) {
+                                  setEmotionsChartDimensions({ width, height });
+                                }
                               }}
                             >
                               {shouldRenderCharts && loadedExpandedCharts.has('emotions') ? (
-                                <Suspense fallback={null}>
+                                <Suspense fallback={<View />}>
                                   <EmotionsExpandedBubbleChart
                                     data={emotionsData}
                                     width={emotionsChartDimensions.width}
@@ -1146,11 +1233,13 @@ export default function ChatScreen() {
                               style={styles.chartContainer}
                               onLayout={(event) => {
                                 const { width, height } = event.nativeEvent.layout;
-                                setPartsChartDimensions({ width, height });
+                                if (width > 0 && height > 0) {
+                                  setPartsChartDimensions({ width, height });
+                                }
                               }}
                             >
                               {shouldRenderCharts && loadedExpandedCharts.has('parts') ? (
-                                <Suspense fallback={null}>
+                                <Suspense fallback={<View />}>
                                   <PartsExpandedBubbleChart
                                     data={partsData}
                                     width={partsChartDimensions.width}
@@ -1205,11 +1294,13 @@ export default function ChatScreen() {
                               style={styles.chartContainer}
                               onLayout={(event) => {
                                 const { width, height } = event.nativeEvent.layout;
-                                setNeedsChartDimensions({ width, height });
+                                if (width > 0 && height > 0) {
+                                  setNeedsChartDimensions({ width, height });
+                                }
                               }}
                             >
                               {shouldRenderCharts && loadedExpandedCharts.has('needs') ? (
-                                <Suspense fallback={null}>
+                                <Suspense fallback={<View />}>
                                   <NeedsExpandedBubbleChart
                                     data={needsData}
                                     width={needsChartDimensions.width}
@@ -1222,11 +1313,13 @@ export default function ChatScreen() {
                             </View>
                           </View>
                         </Animated.View>
-                        
+
                       </View>
-                      
+
+                      {/* Summary text below charts */}
                       <Animated.View style={{
-                        transform: [{ translateY: contentTranslateY }]
+                        transform: [{ translateY: contentTranslateY }],
+                        marginTop: 15
                       }}>
                         <Text style={[
                           styles.modalDescription,
@@ -1234,8 +1327,119 @@ export default function ChatScreen() {
                         ]}>
                           {selectedCard.description}
                         </Text>
-
                       </Animated.View>
+
+                      {/* Conversation Cards Section */}
+                      <View style={{ position: 'relative', marginBottom: 16, marginTop: 20 }}>
+                        {/* Count badge in top left */}
+                        <View style={[
+                          styles.countBadge,
+                          {
+                            borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
+                            borderWidth: 2,
+                            backgroundColor: 'transparent',
+                            position: 'absolute',
+                            top: 8,
+                            left: 0,
+                            zIndex: 1,
+                          }
+                        ]}>
+                          <Text style={[
+                            styles.countBadgeText,
+                            { color: '#FFFFFF' }
+                          ]}>
+                            5
+                          </Text>
+                        </View>
+
+                        <Text style={[
+                          styles.sectionTitle,
+                          {
+                            color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+                            fontSize: 22.5,
+                            fontWeight: '600',
+                            marginBottom: 0,
+                            fontFamily: 'Georgia',
+                            paddingHorizontal: 0,
+                            marginTop: 13,
+                            marginLeft: 40,
+                          }
+                        ]}>
+                          Conversations
+                        </Text>
+
+                        {/* Conversation excerpts */}
+                        <View style={{ marginTop: 0 }}>
+                          <View style={styles.conversationList}>
+                            {[
+                              { excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
+                              { excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
+                              { excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
+                              { excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
+                              { excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
+                            ].map((item, index) => {
+                              const isDark = colorScheme === 'dark';
+
+                              return (
+                                <View
+                                  key={index}
+                                  style={[
+                                    styles.loopCardSimple,
+                                    {
+                                      marginTop: index === 0 ? 0 : -35,
+                                      borderColor: isDark
+                                        ? 'rgba(255, 255, 255, 0.2)'
+                                        : 'rgba(0, 0, 0, 0.1)',
+                                    }
+                                  ]}
+                                >
+                                  <BlurView
+                                    intensity={50}
+                                    tint={isDark ? 'dark' : 'light'}
+                                    style={[
+                                      styles.loopCardBlur,
+                                      {
+                                        backgroundColor: isDark
+                                          ? 'rgba(255, 255, 255, 0.1)'
+                                          : 'rgba(0, 0, 0, 0.05)',
+                                      }
+                                    ]}
+                                  >
+                                    <Pressable
+                                      onPress={() => {
+                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                        console.log('Conversation card pressed:', item.title);
+                                      }}
+                                      style={styles.loopCardPressable}
+                                    >
+                                      <View style={styles.loopCardHeader}>
+                                        <Text style={[
+                                          styles.loopCardTitle,
+                                          { color: isDark ? '#FFFFFF' : '#000000' }
+                                        ]}>
+                                          {item.title}
+                                        </Text>
+                                        <Text style={[
+                                          styles.loopCardDate,
+                                          { color: isDark ? '#CCCCCC' : '#666666' }
+                                        ]}>
+                                          {item.date}
+                                        </Text>
+                                      </View>
+                                      <Text style={[
+                                        styles.loopCardExcerpt,
+                                        { color: isDark ? '#DDDDDD' : '#444444' }
+                                      ]}>
+                                        {item.excerpt}
+                                      </Text>
+                                    </Pressable>
+                                  </BlurView>
+                                </View>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      </View>
                     </ScrollView>
                   </View>
                 </>
@@ -1523,7 +1727,7 @@ const styles = StyleSheet.create({
   },
   modalScrollContent: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 10,
     paddingBottom: 40,
   },
   modalHeader: {
@@ -1536,7 +1740,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   modalTitle: {
-    fontSize: 28,
+    fontSize: 35,
     fontWeight: 'bold',
     flex: 1,
     marginRight: 10,
@@ -1552,10 +1756,9 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     textAlign: 'left',
     fontFamily: 'Georgia',
-    marginBottom: 40,
   },
   squareCardsContainer: {
-    marginBottom: 25,
+    marginBottom: 16,
     width: '100%',
   },
   squareCardsInner: {
@@ -1585,9 +1788,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   squareCard: {
-    width: '100%',
-    maxWidth: 110,
-    aspectRatio: 1,
+    width: 110,
+    height: 110,
     borderRadius: 16,
     borderWidth: 1,
     justifyContent: 'center',
@@ -1600,8 +1802,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   animatedCardContainer: {
-    width: '100%',
-    maxWidth: 110,
+    width: 110,
+    height: 110,
     alignItems: 'center',
     overflow: 'hidden',
   },
@@ -1614,9 +1816,9 @@ const styles = StyleSheet.create({
   },
   expandedCardView: {
     position: 'absolute',
-    top: 27, // Perfect alignment with minimized cards
+    top: 29, // Aligned with minimized cards (adjusted +2px)
     left: 0,
-    right: 0,
+    right: 4, // Fine-tuned to align with rightmost mini container
     zIndex: 100, // Higher z-index to appear above content text
   },
   expandedCard: {
@@ -1650,9 +1852,82 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   chartContainer: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     position: 'relative',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  countBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  countBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 21,
+    fontWeight: '600',
+    fontFamily: 'Georgia',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginTop: -1,
+  },
+  sectionTitle: {
+    fontSize: 22.5,
+    fontWeight: '600',
+    marginBottom: 6,
+    fontFamily: 'Georgia',
+  },
+  conversationList: {
+    marginTop: 12,
+  },
+  loopCardSimple: {
+    borderRadius: 16,
+    height: 135,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  loopCardBlur: {
+    flex: 1,
+    borderRadius: 16,
+    padding: 15,
+    paddingBottom: 20,
+  },
+  loopCardPressable: {
+    flex: 1,
+    padding: 10,
+    paddingBottom: 10,
+  },
+  loopCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  loopCardTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    flex: 1,
+    marginRight: 10,
+    fontFamily: 'Georgia',
+  },
+  loopCardDate: {
+    fontSize: 19,
+    fontWeight: 'normal',
+    fontFamily: 'Georgia',
+  },
+  loopCardExcerpt: {
+    fontSize: 16,
+    lineHeight: 22,
+    textAlign: 'left',
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
+    marginBottom: 15,
   },
 });

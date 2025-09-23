@@ -193,14 +193,6 @@ export function EmotionDetailModal({
                   {emotion.emotion}
                 </Text>
               </View>
-              <View style={styles.headerControls}>
-                <Pressable
-                  style={styles.closeButton}
-                  onPress={handleClose}
-                >
-                  <Text style={styles.closeButtonText}>✕</Text>
-                </Pressable>
-              </View>
             </View>
 
             {/* Content Container */}
@@ -494,11 +486,11 @@ export function EmotionDetailModal({
                   <View style={{ marginTop: 0 }}>
                     <View style={styles.conversationList}>
                       {[
-                        { excerpt: "...was surprised when he showed up...", title: "Family Reunion", date: "9/15/25" },
-                        { excerpt: "...didn't expect that reaction from her...", title: "Work Meeting", date: "9/12/25" },
-                        { excerpt: "...feeling overwhelmed by all the changes...", title: "Life Transitions", date: "9/10/25" },
-                        { excerpt: "...couldn't believe what I was hearing...", title: "Personal Discovery", date: "9/8/25" },
-                        { excerpt: "...the pressure to make the right decision...", title: "Career Choice", date: "9/5/25" }
+                        { excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
+                        { excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
+                        { excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
+                        { excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
+                        { excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
                       ].map((item, index) => {
                         // Create gradient effect for cards
                         const lightness = isDark
@@ -513,7 +505,7 @@ export function EmotionDetailModal({
                             style={[
                               styles.loopCardSimple,
                               {
-                                marginTop: index === 0 ? 0 : -40, // Increased overlap
+                                marginTop: index === 0 ? 0 : -35, // Increased overlap
                                 borderColor: isDark
                                   ? 'rgba(255, 255, 255, 0.2)'
                                   : 'rgba(0, 0, 0, 0.1)',
@@ -777,7 +769,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Georgia',
   },
   sectionContent: {
-    fontSize: 16,
+    fontSize: 18,
     lineHeight: 22,
     marginBottom: 8,
     fontFamily: 'Georgia',
