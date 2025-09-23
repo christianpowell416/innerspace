@@ -23,9 +23,12 @@ interface EmotionsMiniBubbleChartProps {
 const getMiniEmotionConfig = (width: number, height: number): BubbleChartConfig => ({
   width,
   height,
-  maxRadius: Math.min(width, height) * 0.08, // Much smaller for mini charts
+  maxRadius: Math.min(width, height) * 0.1,
   minRadius: Math.min(width, height) * 0.02,
   padding: 1, // Minimal padding for tight spaces
+  centerForce: 0.02, // Very weak center force to avoid clustering
+  collisionStrength: 0.9, // Strong collision prevention
+  velocityDecay: 0.7, // Faster settling
 });
 
 export function EmotionsMiniBubbleChart({
@@ -45,9 +48,17 @@ export function EmotionsMiniBubbleChart({
     callbacks?.onBubblePress?.(bubble as EmotionBubbleData);
   }, [callbacks]);
 
+  // Transform EmotionBubbleData to match the generic BubbleData interface
+  const transformedData = React.useMemo(() => {
+    return data.map(emotion => ({
+      ...emotion,
+      name: emotion.emotion // Map emotion property to name
+    }));
+  }, [data]);
+
   return (
     <MiniBubbleChart
-      data={data}
+      data={transformedData}
       config={config}
       onBubblePress={handleBubblePress}
       loading={loading}

@@ -23,9 +23,12 @@ interface PartsMiniBubbleChartProps {
 const getMiniPartConfig = (width: number, height: number): BubbleChartConfig => ({
   width,
   height,
-  maxRadius: Math.min(width, height) * 0.08, // Much smaller for mini charts
+  maxRadius: Math.min(width, height) * 0.1,
   minRadius: Math.min(width, height) * 0.02,
   padding: 1, // Minimal padding for tight spaces
+  centerForce: 0.02, // Very weak center force to avoid clustering
+  collisionStrength: 0.9, // Strong collision prevention
+  velocityDecay: 0.7, // Faster settling
 });
 
 export function PartsMiniBubbleChart({

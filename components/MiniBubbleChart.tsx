@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, StyleSheet, Pressable, Animated, Text } from 'react-native';
 import { forceSimulation, forceCollide, forceCenter, forceManyBody } from 'd3-force';
 import * as Haptics from 'expo-haptics';
+import Hypher from 'hypher';
+import english from 'hyphenation.en-us';
 
 import { BubbleChartConfig } from '@/lib/types/partsNeedsChart';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -34,10 +36,26 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
+  // Initialize hyphenator with English patterns
+  const hyphenator = new Hypher(english);
+
+  // Use container and configuration dimensions without scaling
+  const containerWidth = config.width;
+  const containerHeight = config.height;
+  const scaledConfig = {
+    ...config,
+    // Remove 150% scaling to fit within containers
+  };
+
   const [bubbles, setBubbles] = useState<BubbleData[]>([]);
 
-  // Ensure data is always an array
-  const safeData = data || [];
+  // Ensure data is always an array, shuffle randomly, and limit to 7 bubbles - memoized to prevent re-render loops
+  const safeData = React.useMemo(() => {
+    const dataArray = data || [];
+    // Create a copy and shuffle it randomly
+    const shuffled = [...dataArray].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 7);
+  }, [data]);
   const [selectedBubble, setSelectedBubble] = useState<string | null>(null);
   const [isSimulationComplete, setIsSimulationComplete] = useState(false);
   const simulationRef = useRef<any>(null);
@@ -49,29 +67,29 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
   // Store settled bubble positions to prevent reset on re-renders
   const settledPositions = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  // Calculate optimal bubble scaling for mini charts (more aggressive scaling)
-  const calculateBubbleScaling = useCallback((bubbles: BubbleData[]): number => {
-    if (bubbles.length <= 1) return 0.8; // Smaller scaling for mini charts
+  // Calculate uniform bubble size for mini charts - all bubbles same size
+  const calculateUniformBubbleRadius = useCallback((bubbles: BubbleData[]): number => {
+    if (bubbles.length === 0) return config.minRadius;
 
-    // Calculate total area needed vs available area
+    // Calculate optimal uniform radius based on container size and number of bubbles
     const availableArea = config.width * config.height;
-    const usableArea = availableArea * 0.6; // Use less area for mini charts
+    const targetAreaPerBubble = (availableArea * 0.6) / bubbles.length; // 60% total utilization for better spacing
+    const idealRadius = Math.sqrt(targetAreaPerBubble / Math.PI);
 
-    // Calculate total bubble area with padding
-    const totalBubbleArea = bubbles.reduce((sum, bubble) => {
-      const paddedRadius = bubble.radius + config.padding * 2;
-      return sum + Math.PI * paddedRadius * paddedRadius;
-    }, 0);
+    // Constrain within min/max bounds
+    const maxAllowedRadius = Math.min(
+      (config.width / 4) - config.padding * 2, // Ensure multiple bubbles fit horizontally
+      (config.height / 4) - config.padding * 2, // Ensure multiple bubbles fit vertically
+      config.maxRadius * 0.8 // Use 80% of max radius for mini charts
+    );
 
-    // If total area exceeds usable area, calculate scale factor
-    if (totalBubbleArea > usableArea) {
-      const scaleFactor = Math.sqrt(usableArea / totalBubbleArea);
-      // Apply more aggressive minimum scale for mini charts
-      return Math.max(0.3, scaleFactor);
-    }
+    const minAllowedRadius = Math.max(config.minRadius, 8); // Minimum readable size
 
-    return 0.8; // Default smaller scale for mini charts
-  }, [config.width, config.height, config.padding]);
+    const baseRadius = Math.max(minAllowedRadius, Math.min(maxAllowedRadius, idealRadius));
+
+    // Make bubbles 27.5% larger (was 50%, now 15% smaller: 1.5 * 0.85 = 1.275)
+    return baseRadius * 1.275;
+  }, [config.width, config.height, config.padding, config.maxRadius, config.minRadius]);
 
   // Throttled update function to prevent excessive re-renders
   const updateBubbles = useCallback((newBubbles: BubbleData[]) => {
@@ -96,12 +114,12 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
 
     // If simulation is complete and we have settled positions, use them
     if (isSimulationComplete && hasSettledPositions) {
-      // Calculate scaling factor for static bubbles too
-      const scaleFactor = calculateBubbleScaling(safeData);
+      // Calculate uniform radius for all bubbles
+      const uniformRadius = calculateUniformBubbleRadius(safeData);
 
       const staticBubbles = safeData.map(bubble => ({
         ...bubble,
-        radius: Math.max(config.minRadius * 0.6, bubble.radius * scaleFactor), // Smaller min radius for mini
+        radius: uniformRadius, // All bubbles same size
         x: settledPositions.current.get(bubble.id)?.x || config.width / 2,
         y: settledPositions.current.get(bubble.id)?.y || config.height / 2,
         vx: 0,
@@ -116,16 +134,16 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
     // Reset simulation state when starting new simulation
     setIsSimulationComplete(false);
 
-    // Sort bubbles by size (largest first) for better center positioning
-    const sortedData = [...safeData].sort((a, b) => b.radius - a.radius);
+    // Keep original data order since all bubbles will be same size
+    const sortedData = [...safeData];
 
-    // Calculate optimal scaling factor to prevent overlaps
-    const scaleFactor = calculateBubbleScaling(sortedData);
+    // Calculate uniform radius for all bubbles
+    const uniformRadius = calculateUniformBubbleRadius(sortedData);
 
-    // Create a copy of the data with initial positions and scaled radii
+    // Create a copy of the data with initial positions and uniform radius
     const initialBubbles = sortedData.map((bubble, index) => {
-      // Apply scaling factor to radius with mini chart adjustments
-      const scaledRadius = Math.max(config.minRadius * 0.6, bubble.radius * scaleFactor);
+      // All bubbles use the same uniform radius
+      const scaledRadius = uniformRadius;
 
       // Use settled position if available, otherwise calculate new position
       const settledPos = settledPositions.current.get(bubble.id);
@@ -142,10 +160,20 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
         };
       }
 
-      // Tighter initial distribution for mini charts
-      const maxDistance = Math.min(config.width, config.height) * 0.15; // Much tighter spread
-      const distanceFromCenter = Math.min(maxDistance, 8 + (index * 3)); // Closer spacing
-      const angle = (index * Math.PI * 0.618) % (2 * Math.PI); // Golden ratio spiral
+      // Start all bubbles very close to center for tight clustering
+      let distanceFromCenter, angle;
+
+      if (index === 0) {
+        // First bubble goes exactly in the center
+        distanceFromCenter = 0;
+        angle = 0;
+      } else {
+        // Other bubbles start very close to center in a tight formation
+        const tightRadius = scaledRadius * 1.5; // Just slightly more than one bubble radius
+        const angleStep = (2 * Math.PI) / (sortedData.length - 1); // Evenly distribute around circle
+        angle = (index - 1) * angleStep; // Start from index-1 since index 0 is center
+        distanceFromCenter = tightRadius;
+      }
 
       return {
         ...bubble,
@@ -179,15 +207,14 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
       });
     };
 
-    // Create D3 force simulation optimized for mini charts
+    // Create D3 force simulation optimized for mini charts with tight clustering
     const simulation = forceSimulation(initialBubbles)
-      .force('charge', forceManyBody().strength(-15)) // Reduced repulsion for tighter packing
-      .force('center', forceCenter(config.width / 2, config.height / 2).strength(0.2)) // Stronger center force
-      .force('collision', forceCollide().radius((d: any) => d.radius + config.padding * 0.5).strength(config.collisionStrength))
-      .force('centerPull', centerPullForce)
-      .velocityDecay(config.velocityDecay)
-      .alpha(0.6) // Lower alpha for quicker settling
-      .alphaDecay(0.08); // Faster decay
+      .force('charge', forceManyBody().strength(-1)) // Almost no repulsion
+      .force('center', forceCenter(config.width / 2, config.height / 2).strength(0.7)) // Maximum center pull
+      .force('collision', forceCollide().radius((d: any) => d.radius * 0.95).strength(1.0)) // Slightly smaller than bubble radius for overlap/touching
+      .velocityDecay(0.4) // Higher velocity decay for faster settling
+      .alpha(0.8) // High initial alpha
+      .alphaDecay(0.1); // Faster decay for quicker settling
 
     // Boundary constraint function for mini charts
     const applyBoundaryConstraints = () => {
@@ -278,34 +305,62 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
     onBubblePress?.(bubble);
   }, [onBubblePress]);
 
-  // Calculate font size for mini bubbles
+  // Calculate font size for mini bubbles - adjusted for proper scaling
   const getFontSize = useCallback((radius: number): number => {
-    // Much smaller font sizes for mini charts
-    const baseFontSize = Math.max(4, Math.min(8, radius / 3));
+    // Scale font size more conservatively to fit within bubbles
+    const baseFontSize = Math.max(8, Math.min(16, radius / 2.2));
     return baseFontSize;
   }, []);
 
-  // Simplified text for mini bubbles - just first few characters
-  const getSimplifiedText = useCallback((text: string, radius: number): string => {
+  // Intelligent text wrapping with hyphenation for mini bubbles - returns array of lines
+  const wrapText = useCallback((text: string, radius: number): string[] => {
     const safeText = text || '';
+    if (!safeText) return [''];
 
-    // For very small bubbles, show just first character
-    if (radius < 6) {
-      return safeText.charAt(0).toUpperCase();
+    // For very small mini bubbles (single line only)
+    if (radius < 12) {
+      if (safeText.length <= 6) {
+        return [safeText];
+      }
+      // Try hyphenation for longer words
+      const hyphenated = hyphenator.hyphenate(safeText).join('-');
+      if (hyphenated.length <= 8) {
+        return [hyphenated];
+      }
+      return [safeText.substring(0, 4) + '…'];
     }
 
-    // For small bubbles, show first 2-3 characters
-    if (radius < 10) {
-      return safeText.substring(0, 2).toUpperCase();
+    // For larger mini bubbles, allow 2 lines
+    const words = safeText.split(' ');
+    if (words.length === 1) {
+      // Single word - use hyphenation to break across lines
+      const hyphenated = hyphenator.hyphenate(safeText);
+      if (hyphenated.length <= 2) {
+        return [safeText];
+      }
+      const midpoint = Math.ceil(hyphenated.length / 2);
+      return [
+        hyphenated.slice(0, midpoint).join('') + '-',
+        hyphenated.slice(midpoint).join('')
+      ];
     }
 
-    // For larger bubbles, show first 4 characters
-    return safeText.substring(0, 4);
-  }, []);
+    // Multiple words - split across lines
+    if (words.length <= 2) {
+      return words.length === 2 ? words : [safeText];
+    }
+
+    // For more than 2 words, try to balance the lines
+    const midpoint = Math.ceil(words.length / 2);
+    return [
+      words.slice(0, midpoint).join(' '),
+      words.slice(midpoint).join(' ')
+    ];
+  }, [hyphenator]);
 
   if (loading) {
     return (
-      <View style={[styles.container, { width: config.width, height: config.height }]}>
+      <View style={[styles.container, { width: containerWidth, height: containerHeight }]}>
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: isDark ? '#fff' : '#000' }]}>...</Text>
         </View>
@@ -314,13 +369,13 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
   }
 
   return (
-    <View style={[styles.container, { width: config.width, height: config.height }]}>
-      <View style={[styles.chartContainer, { width: config.width, height: config.height }]}>
+    <View style={[styles.container, { width: containerWidth, height: containerHeight, overflow: 'hidden' }]}>
+      <View style={[styles.chartContainer, { width: containerWidth, height: containerHeight, overflow: 'hidden' }]}>
         {bubbles && bubbles.length > 0 && bubbles.map((bubble) => {
           const radius = bubble?.radius || 5;
           const bubbleName = bubble?.name || '';
           const fontSize = getFontSize(radius);
-          const displayText = getSimplifiedText(bubbleName, radius);
+          const textLines = wrapText(bubbleName, radius);
           const isSelected = selectedBubble === bubble?.id;
 
           // Get animation value
@@ -357,16 +412,26 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
                   alignItems: 'center',
                 }}
               >
-                <Text
-                  style={{
-                    fontSize,
-                    color: bubble?.color || '#666',
-                    fontWeight: 'bold',
-                    textAlign: 'center',
-                  }}
-                >
-                  {displayText}
-                </Text>
+                <View style={{
+                  flex: 1,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}>
+                  {textLines.map((line, index) => (
+                    <Text
+                      key={index}
+                      style={{
+                        fontSize,
+                        color: bubble?.color || '#666',
+                        fontWeight: 'normal',
+                        textAlign: 'center',
+                        lineHeight: fontSize * 1.2,
+                      }}
+                    >
+                      {line}
+                    </Text>
+                  ))}
+                </View>
               </Pressable>
             </Animated.View>
           );
