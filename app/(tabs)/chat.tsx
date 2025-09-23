@@ -1352,24 +1352,61 @@ export default function ChatScreen() {
                           </Text>
                         </View>
 
-                        <Text style={[
-                          styles.sectionTitle,
-                          {
-                            color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-                            fontSize: 22.5,
-                            fontWeight: '600',
-                            marginBottom: 0,
-                            fontFamily: 'Georgia',
-                            paddingHorizontal: 0,
-                            marginTop: 13,
-                            marginLeft: 40,
-                          }
-                        ]}>
-                          Conversations
-                        </Text>
+                        <View style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginTop: 13,
+                          marginLeft: 40,
+                          marginRight: 0,
+                          marginBottom: -5,
+                        }}>
+                          <Text style={[
+                            styles.sectionTitle,
+                            {
+                              color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+                              fontSize: 22.5,
+                              fontWeight: '600',
+                              marginBottom: 0,
+                              fontFamily: 'Georgia',
+                              paddingHorizontal: 0,
+                              marginTop: 0,
+                              marginLeft: 0,
+                            }
+                          ]}>
+                            Conversations
+                          </Text>
+                          <Pressable
+                            onPress={() => {
+                              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                              console.log('Add conversation pressed');
+                            }}
+                            style={[
+                              styles.minimizeButton,
+                              {
+                                backgroundColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.1)'
+                                  : 'rgba(0, 0, 0, 0.05)',
+                                borderColor: colorScheme === 'dark'
+                                  ? 'rgba(255, 255, 255, 0.2)'
+                                  : 'rgba(0, 0, 0, 0.1)',
+                                position: 'relative',
+                                top: -5,
+                                right: 0,
+                                zIndex: 1,
+                              }
+                            ]}
+                          >
+                            <IconSymbol
+                              name="plus"
+                              size={18}
+                              color={colorScheme === 'dark' ? '#AAAAAA' : '#666666'}
+                            />
+                          </Pressable>
+                        </View>
 
                         {/* Conversation excerpts */}
-                        <View style={{ marginTop: 0 }}>
+                        <View style={{ marginTop: -5 }}>
                           <View style={styles.conversationList}>
                             {[
                               { excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
