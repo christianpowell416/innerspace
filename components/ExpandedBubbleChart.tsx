@@ -4,6 +4,7 @@ import { forceSimulation, forceCollide, forceCenter, forceManyBody } from 'd3-fo
 import * as Haptics from 'expo-haptics';
 import Hypher from 'hypher';
 import english from 'hyphenation.en-us';
+import { BlurView } from 'expo-blur';
 
 import { BubbleChartConfig } from '@/lib/types/partsNeedsChart';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -117,18 +118,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
       }));
       setBubbles(staticBubbles);
 
-      // Fade in cached bubbles immediately
-      staticBubbles.forEach((bubble, index) => {
-        const delay = index * 50; // Stagger the fade-in
-        setTimeout(() => {
-          const opacityAnim = getOpacityAnimation(bubble.id);
-          Animated.timing(opacityAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }).start();
-        }, delay);
-      });
+      // Cached bubbles are already visible, no need to set opacity
       return;
     }
 
@@ -255,18 +245,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
       });
       setIsSimulationComplete(true);
 
-      // Fade in all bubbles once positioned
-      initialBubbles.forEach((bubble, index) => {
-        const delay = index * 50; // Stagger the fade-in
-        setTimeout(() => {
-          const opacityAnim = getOpacityAnimation(bubble.id);
-          Animated.timing(opacityAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }).start();
-        }, delay);
-      });
+      // Bubbles are already visible, D3 simulation will handle positioning animation
     });
 
     simulationRef.current = simulation;
@@ -281,7 +260,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
   // Helper function to get or create opacity animation
   const getOpacityAnimation = useCallback((bubbleId: string): Animated.Value => {
     if (!opacityAnimations.current.has(bubbleId)) {
-      opacityAnimations.current.set(bubbleId, new Animated.Value(0)); // Start invisible
+      opacityAnimations.current.set(bubbleId, new Animated.Value(1)); // Start visible for immediate D3 animation
     }
     return opacityAnimations.current.get(bubbleId)!;
   }, []);
@@ -327,83 +306,104 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
     onBubblePress?.(bubble);
   }, [onBubblePress]);
 
-  // Text wrapping optimized for expanded view bubbles
-  const wrapText = useCallback((text: string, radius: number): string[] => {
+  // Intelligent text wrapping for circular bubbles (matches FullBubbleChart)
+  const wrapTextForBubble = useCallback((text: string, radius: number, fontSize: number): string[] => {
     try {
-      // Safety check for text
+      // Safety check for text parameter
       const safeText = text || '';
 
-      // For small bubbles in expanded view, show first word
-      if (radius < 14) {
-        return [safeText.split(' ')[0] || ''];
+      // Calculate usable width (70% of diameter to account for circular shape)
+      const usableWidth = radius * 1.4;
+
+      // Estimate character width (rough approximation for Georgia font)
+      const charWidth = fontSize * 0.5;
+      const maxCharsPerLine = Math.floor(usableWidth / charWidth);
+
+      // If text fits on one line, return as-is
+      if (safeText.length <= maxCharsPerLine) {
+        return [safeText];
       }
 
-      // For medium bubbles, try to fit in one line
-      if (radius < 22) {
-        if (safeText.length <= 10) {
-          return [safeText];
+      // Use hyphenation for better word breaks
+      const hyphenatedText = hyphenator.hyphenateText(safeText);
+      const words = hyphenatedText.split(' ');
+      const lines: string[] = [];
+      let currentLine = '';
+
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word;
+
+        if (testLine.length <= maxCharsPerLine) {
+          currentLine = testLine;
+        } else {
+          if (currentLine) {
+            lines.push(currentLine);
+            currentLine = word;
+          } else {
+            // Word is too long for one line, break it
+            if (word.length > maxCharsPerLine) {
+              lines.push(word.substring(0, maxCharsPerLine - 1) + '-');
+              currentLine = word.substring(maxCharsPerLine - 1);
+            } else {
+              currentLine = word;
+            }
+          }
         }
-        // Try hyphenation for longer words
-        const hyphenated = hyphenator.hyphenate(safeText).join('-');
-        if (hyphenated.length <= 12) {
-          return [hyphenated];
-        }
-        return [safeText.substring(0, 8) + '…'];
       }
 
-      // For larger bubbles, allow 2 lines
-      const words = safeText.split(' ');
-      if (words.length === 1) {
-        const hyphenated = hyphenator.hyphenate(safeText);
-        if (hyphenated.length <= 2) {
-          return [safeText];
-        }
-        const midpoint = Math.ceil(hyphenated.length / 2);
-        return [
-          hyphenated.slice(0, midpoint).join('') + '-',
-          hyphenated.slice(midpoint).join('')
-        ];
+      if (currentLine) {
+        lines.push(currentLine);
       }
 
-      // Multiple words - split across lines
-      const midpoint = Math.ceil(words.length / 2);
-      return [
-        words.slice(0, midpoint).join(' '),
-        words.slice(midpoint).join(' ')
-      ];
+      // Limit to 2 lines for bubble readability
+      if (lines.length > 2) {
+        lines[1] = lines[1].substring(0, Math.max(0, maxCharsPerLine - 1)) + '…';
+        return lines.slice(0, 2);
+      }
+
+      return lines;
     } catch (error) {
       // Fallback to simple truncation
       const safeText = text || '';
-      return [safeText.length > 8 ? safeText.substring(0, 7) + '…' : safeText];
+      return [safeText.length > 12 ? safeText.substring(0, 11) + '…' : safeText];
     }
   }, [hyphenator]);
 
-  // Calculate font size for expanded view bubbles
+  // Smart font sizing based on bubble radius and text length (matches FullBubbleChart)
   const getFontSize = useCallback((text: string, radius: number): number => {
-    // Safety check for text
+    // Safety check for text parameter
     const safeText = text || '';
 
-    // Base font size scaling optimized for expanded square containers
-    const baseFontSize = Math.max(8, Math.min(18, radius / 2.0)); // Slightly larger for expanded view
+    // Base font size from radius
+    const baseFontSize = Math.max(10, Math.min(16, radius / 3));
 
-    // Progressive scaling for larger bubbles
-    let sizeMultiplier = 1.0;
-    if (radius > 20) {
-      const extraSize = radius - 20;
-      sizeMultiplier = 1.0 + (extraSize / 35) * 0.9; // Scale up for larger bubbles
-      sizeMultiplier = Math.min(2.2, sizeMultiplier); // Cap at 2.2x
-    }
+    // Progressive size multiplier for larger bubbles
+    // Small bubbles (≤30): no change, Large bubbles (≥46): 100% larger
+    const sizeMultiplier = radius <= 30
+      ? 1.0
+      : Math.min(2.0, 1.0 + ((radius - 30) / 60) * 1.0);
 
     const scaledFontSize = baseFontSize * sizeMultiplier;
 
-    // Calculate available width
-    const availableWidth = radius * 1.7;
-    const charWidth = scaledFontSize * 0.45;
+    // For larger bubbles, be much more generous with space to preserve bigger fonts
+    // Small bubbles: normal constraint, Large bubbles: very generous constraint
+    const isLargeBubble = radius > 40;
+    const availableWidth = isLargeBubble ? radius * 2.2 : radius * 1.7;
+
+    // Estimate character width for Georgia font - more generous for large bubbles
+    const charWidth = scaledFontSize * (isLargeBubble ? 0.35 : 0.45);
     const estimatedTextWidth = safeText.length * charWidth;
 
+    // Only apply constraints if text is significantly too wide
     if (estimatedTextWidth > availableWidth) {
       const scaleFactor = availableWidth / estimatedTextWidth;
-      const constrainedSize = Math.max(8, scaledFontSize * Math.max(0.8, scaleFactor));
+
+      // For large bubbles, only apply mild constraint to preserve bigger fonts
+      const minConstraintFactor = isLargeBubble ? 0.85 : 0.6;
+      const finalScaleFactor = Math.max(minConstraintFactor, scaleFactor);
+
+      const constrainedSize = Math.max(8, scaledFontSize * finalScaleFactor);
+
       return constrainedSize;
     }
 
@@ -423,7 +423,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
           const radius = bubble?.radius || 10;
           const bubbleName = bubble?.name || '';
           const fontSize = getFontSize(bubbleName, radius);
-          const textLines = wrapText(bubbleName, radius);
+          const textLines = wrapTextForBubble(bubbleName, radius, fontSize);
           const isSelected = selectedBubble === bubble?.id;
 
           // Get animation values
@@ -514,7 +514,9 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
                       />
                     </>
                   )}
-                  <View
+                  <BlurView
+                    intensity={20}
+                    tint="systemMaterial"
                     style={{
                       position: 'absolute',
                       width: (radius * 2) + 6,
@@ -528,13 +530,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
                       ],
                       justifyContent: 'center',
                       alignItems: 'center',
-                      backgroundColor: isDark
-                        ? 'rgba(255, 255, 255, 0.15)'
-                        : 'rgba(255, 255, 255, 0.9)',
-                      borderWidth: 1,
-                      borderColor: isDark
-                        ? 'rgba(255, 255, 255, 0.2)'
-                        : 'rgba(0, 0, 0, 0.1)',
+                      backgroundColor: 'transparent',
                     }}
                   >
                     {/* Bubble label */}
@@ -558,7 +554,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
                         </Text>
                       ))}
                     </View>
-                  </View>
+                  </BlurView>
                 </View>
               </Pressable>
             </Animated.View>

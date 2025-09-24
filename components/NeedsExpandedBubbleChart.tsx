@@ -31,7 +31,7 @@ const getExpandedNeedConfig = (width: number, height: number): BubbleChartConfig
   velocityDecay: 0.6, // Good settling speed
 });
 
-export function NeedsExpandedBubbleChart({
+function NeedsExpandedBubbleChart({
   data,
   width,
   height,
@@ -57,3 +57,6 @@ export function NeedsExpandedBubbleChart({
     />
   );
 }
+
+export { NeedsExpandedBubbleChart };
+export default NeedsExpandedBubbleChart;

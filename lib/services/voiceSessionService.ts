@@ -3,7 +3,7 @@ import AudioModule from 'expo-audio/build/AudioModule';
 import { setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio';
 import { RecordingOptions, RecordingPresets } from 'expo-audio';
 import { FlowchartStructure } from '../types/flowchart';
-import { voiceConversationInstructions } from '../../assets/flowchart/voice_conversation_instructions.js';
+import { voiceConversationInstructions } from '../../assets/flowchart/conversation_instructions.js';
 
 const OPENAI_REALTIME_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
 const REALTIME_API_URL = 'wss://api.openai.com/v1/realtime';
@@ -21,7 +21,6 @@ const checkAudioForSpeechContent = async (wavBase64: string): Promise<boolean> =
     // Skip WAV header (typically 44 bytes) to get to audio data
     const audioDataStart = 44;
     if (bytes.length <= audioDataStart) {
-      console.log('🔇 Audio file too small, likely no content');
       return false;
     }
     
@@ -35,7 +34,6 @@ const checkAudioForSpeechContent = async (wavBase64: string): Promise<boolean> =
     }
     
     if (audioSamples.length === 0) {
-      console.log('🔇 No audio samples found');
       return false;
     }
     
@@ -70,7 +68,6 @@ const checkAudioForSpeechContent = async (wavBase64: string): Promise<boolean> =
                      avgAmplitude > MIN_AVG_AMPLITUDE &&
                      activityRatio > MIN_ACTIVITY_RATIO;
     
-    console.log(`🎵 Audio analysis: max=${maxAmplitude}, avg=${avgAmplitude.toFixed(1)}, rms=${rmsAmplitude.toFixed(1)}, activity=${(activityRatio*100).toFixed(1)}%, hasSpeech=${hasSpeech}`);
     
     return hasSpeech;
   } catch (error) {
@@ -188,18 +185,15 @@ export const generateVoiceInstructions = async (template: any | null): Promise<s
     
     
     // Create voice-specific instructions using ONLY content from the centralized prompt file
-    const templateSection = template ? `DATA STRUCTURE TEMPLATE:
-${JSON.stringify(template.structure, null, 2)}
+    // NOTE: Template section removed for voice conversations - they should be therapeutic, not data-focused
 
-` : '';
-    
     const voiceInstructions = `${systemPrompt.trim()}
 
 ${responseGuidelines.trim()}
 
 ${voiceGuidelines.trim()}
 
-${templateSection}${finalInstructions.trim()}`;
+${finalInstructions.trim()}`;
 
     return voiceInstructions;
     
@@ -217,7 +211,7 @@ export interface VoiceSessionConfig {
   enableVAD?: boolean; // Enable Voice Activity Detection for hands-free mode
 }
 
-export interface VoiceFlowchartSession {
+export interface VoiceSession {
   connect: () => Promise<void>;
   disconnect: () => void;
   startListening: () => void;
@@ -232,7 +226,7 @@ export interface VoiceFlowchartSession {
   isContinuousMode: boolean;
 }
 
-export const createVoiceFlowchartSession = (
+export const createVoiceSession = (
   config: VoiceSessionConfig,
   callbacks: {
     onConnected?: () => void;
@@ -241,12 +235,13 @@ export const createVoiceFlowchartSession = (
     onListeningStop?: () => void;
     onTranscript?: (transcript: string, isFinal: boolean) => void;
     onResponse?: (response: string) => void;
+    onResponseStreaming?: (response: string, isComplete: boolean) => void;
     onResponseStart?: (responseId: string) => void;
     onResponseComplete?: () => void;
     onFlowchartGenerated?: (flowchart: FlowchartStructure) => void;
     onError?: (error: Error) => void;
   }
-): VoiceFlowchartSession => {
+): VoiceSession => {
   
   let websocket: WebSocket | null = null;
   let isConnected = false;
@@ -277,7 +272,7 @@ export const createVoiceFlowchartSession = (
   let lastTranscriptUpdate: number = 0;
   const transcriptUpdateInterval: number = 500; // 500ms throttle
 
-  const session: VoiceFlowchartSession = {
+  const session: VoiceSession = {
     connect: async () => {
       try {
         if (!OPENAI_REALTIME_API_KEY) {
@@ -375,19 +370,17 @@ export const createVoiceFlowchartSession = (
     },
 
     disconnect: () => {
-      console.log('🔌 Disconnect called - cleaning up all resources');
 
       if (websocket) {
         websocket.close();
         websocket = null;
       }
       if (currentSound) {
-        currentSound.remove().catch(e => console.log('⚠️ Error unloading sound:', e.message));
+        currentSound.remove().catch(e => {});
         currentSound = null;
       }
       if (currentRecording) {
-        console.log('🧹 Disconnect: Cleaning up currentRecording');
-        currentRecording.stop().catch(e => console.log('⚠️ Error unloading recording:', e.message));
+        currentRecording.stop().catch(e => {});
         currentRecording = null;
       }
       if (audioStreamingInterval) {
@@ -413,7 +406,6 @@ export const createVoiceFlowchartSession = (
       currentResponseId = null; // Reset response state
       lastProcessedResponse = null; // Reset processed response
 
-      console.log('✅ Disconnect cleanup complete');
     },
 
     startListening: async () => {
@@ -424,7 +416,6 @@ export const createVoiceFlowchartSession = (
 
       // Mark that the last input was voice
       lastInputWasText = false;
-      console.log('🎤 [VOICE] Recording started - Button: RECORDING');
       
       // Check if already creating a recording
       if (isCreatingRecording) {
@@ -451,7 +442,6 @@ export const createVoiceFlowchartSession = (
             await currentSound.remove();
             // console.log('✅ AI audio successfully stopped');
           } catch (e) {
-            console.log('⚠️ Error stopping current sound:', e.message);
           }
           currentSound = null;
           isPlaying = false;
@@ -492,7 +482,6 @@ export const createVoiceFlowchartSession = (
             await currentRecording.stop();
             // console.log('✅ Previous recording cleaned up');
           } catch (e) {
-            console.log('⚠️ Error cleaning up previous recording:', e.message);
           }
           currentRecording = null;
         }
@@ -512,7 +501,6 @@ export const createVoiceFlowchartSession = (
             });
             // console.log('✅ Audio mode set for recording');
           } catch (modeError) {
-            console.log('⚠️ Error setting audio mode:', modeError.message);
           }
         }
         
@@ -537,7 +525,6 @@ export const createVoiceFlowchartSession = (
           try {
             await currentRecording.stop();
           } catch (e) {
-            console.log('⚠️ Cleanup error (continuing):', e.message);
           }
           currentRecording = null;
         }
@@ -654,7 +641,6 @@ export const createVoiceFlowchartSession = (
     },
 
     stopListening: async () => {
-      console.log('🎤 [VOICE] Recording stopped - Button: PROCESSING');
 
       if (!websocket || !isConnected || !currentRecording || !isListening) {
         return;
@@ -795,7 +781,6 @@ export const createVoiceFlowchartSession = (
 
       // Mark that the last input was text
       lastInputWasText = true;
-      console.log(`📝 [TEXT] User message: "${messageText}" - Button: PROCESSING`);
 
       const message = {
         type: 'conversation.item.create',
@@ -823,7 +808,6 @@ export const createVoiceFlowchartSession = (
         };
         websocket.send(JSON.stringify(responseMessage));
         hasActiveResponse = true;
-        console.log('📤 Requesting response with modalities: text only (no audio)');
       }
     },
 
@@ -1204,7 +1188,7 @@ export const createVoiceFlowchartSession = (
 
   const handleRealtimeMessage = (message: any) => {
     try {
-      // console.log('🔍 DEBUG: Received message type:', message.type); // Too verbose
+      // Log all response-related messages to debug missing transcripts
 
       // Simplified logging for key message types only
 
@@ -1230,12 +1214,23 @@ export const createVoiceFlowchartSession = (
 
           // Notify UI of new response start
           callbacks.onResponseStart?.(currentResponseId);
+
+          // Safety timeout for text responses to prevent getting stuck in thinking state
+          if (lastInputWasText) {
+            setTimeout(() => {
+              if (currentResponseId === (message.response?.id || Date.now().toString()) && hasActiveResponse) {
+                console.warn('⚠️ [TEXT] Safety timeout: Response may be stuck, forcing completion');
+                callbacks.onResponseComplete?.();
+                hasActiveResponse = false;
+              }
+            }, 30000); // 30 second timeout for text responses
+          }
           break;
           
         case 'response.text.delta':
           if (lastInputWasText && message.delta && currentResponseId) {
             currentTranscript += message.delta;
-            callbacks.onResponse?.(currentTranscript);
+            // Skip streaming callback - only show final response
           }
           break;
 
@@ -1243,7 +1238,12 @@ export const createVoiceFlowchartSession = (
           if (lastInputWasText && message.text) {
             console.log(`💬 [TEXT] AI Response: "${message.text.substring(0, 60)}..."`);
             currentTranscript = message.text;
-            callbacks.onResponse?.(currentTranscript);
+
+            // Only call onResponse if this text hasn't been processed yet
+            if (currentTranscript !== lastProcessedResponse) {
+              callbacks.onResponse?.(currentTranscript);
+              lastProcessedResponse = currentTranscript;
+            }
           }
           if (message.text) {
             tryParseFlowchartFromResponse(message.text);
@@ -1253,19 +1253,35 @@ export const createVoiceFlowchartSession = (
         case 'response.audio_transcript.delta':
           if (message.delta && currentResponseId) {
             currentTranscript += message.delta;
-            if (currentTranscript !== lastProcessedResponse) {
-              callbacks.onResponse?.(currentTranscript);
-            }
+            // Skip streaming callback - only show final response
           }
           break;
 
         case 'response.audio_transcript.done':
-          const finalTranscript = message.transcript || currentTranscript;
-          if (finalTranscript !== lastProcessedResponse) {
-            console.log(`💬 [AUDIO] AI Response: "${finalTranscript.substring(0, 60)}..."`);
-            callbacks.onResponse?.(finalTranscript);
+          if (!currentResponseId) {
+            console.warn(`💬 [AUDIO DONE] Skipped - no currentResponseId set`);
+            break;
           }
+
+          const finalTranscript = message.transcript || currentTranscript;
+          console.log(`💬 [AUDIO] Final vs Current: final="${finalTranscript}" | current="${currentTranscript}"`);
+          console.log(`💬 [AUDIO] Final Length: ${finalTranscript.length} | Current Length: ${currentTranscript.length}`);
+
+          // Always use the official transcript from the done event, even if it seems the same
+          // This ensures we get the complete text including final punctuation
+          console.log(`💬 [AUDIO] AI Response Full: "${finalTranscript}"`);
+          console.log(`💬 [AUDIO] Response Length: ${finalTranscript.length}`);
+          console.log(`💬 [AUDIO] Last Character: "${finalTranscript.slice(-1)}" (code: ${finalTranscript.charCodeAt(finalTranscript.length - 1)})`);
+
+          // Call streaming callback with final complete response
+          callbacks.onResponseStreaming?.(finalTranscript, true);
+
+          // Always call onResponse with final transcript (for queue processing)
+          callbacks.onResponse?.(finalTranscript);
           lastProcessedResponse = finalTranscript;
+
+          // Update current transcript to match the final one
+          currentTranscript = finalTranscript;
           break;
           
         case 'response.audio.delta':
@@ -1349,8 +1365,17 @@ export const createVoiceFlowchartSession = (
               type: 'input_audio_buffer.commit'
             };
             websocket?.send(JSON.stringify(commitMessage));
-            
-            // VAD will automatically trigger a response
+
+            // Request a response after committing the audio
+            const responseMessage = {
+              type: 'response.create',
+              response: {
+                modalities: ['text', 'audio']
+              }
+            };
+            websocket?.send(JSON.stringify(responseMessage));
+            console.log('📤 Requested AI response after speech stopped');
+
             hasActiveResponse = true;
             callbacks.onListeningStop?.();
           }

@@ -31,7 +31,7 @@ const getExpandedPartConfig = (width: number, height: number): BubbleChartConfig
   velocityDecay: 0.6, // Good settling speed
 });
 
-export function PartsExpandedBubbleChart({
+function PartsExpandedBubbleChart({
   data,
   width,
   height,
@@ -57,3 +57,6 @@ export function PartsExpandedBubbleChart({
     />
   );
 }
+
+export { PartsExpandedBubbleChart };
+export default PartsExpandedBubbleChart;

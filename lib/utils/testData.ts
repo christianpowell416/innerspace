@@ -19,9 +19,9 @@ export const generateTestEmotionData = (count: number = 20): EmotionBubbleData[]
   ];
 
   return emotions.slice(0, count).map((emotion, index) => {
-    const frequency = Math.floor(Math.random() * 15) + 1; // 1-15
+    const frequency = Math.floor(Math.random() * 10) + 1; // 1-10 (same as parts/needs)
     const intensity = Math.random() * 10; // 0-10
-    const radius = Math.max(20, Math.min(60, frequency * 3 + 10)); // Scale radius
+    const radius = Math.max(18, Math.min(45, frequency * 3.5 + 10)); // Same scaling as parts/needs
 
     return {
       id: `test-emotion-${index}`,

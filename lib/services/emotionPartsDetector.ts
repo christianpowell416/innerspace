@@ -28,6 +28,61 @@ class EmotionPartsDetector {
   }
 
   /**
+   * Make API request with retry logic
+   */
+  private async makeAPIRequest(text: string, retryCount = 0): Promise<Response> {
+    const maxRetries = 2;
+
+    try {
+      // Create abort controller for timeout handling (React Native compatible)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 15000); // 15 second timeout
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: this.getDetectionPrompt()
+            },
+            {
+              role: 'user',
+              content: text
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 200,
+        }),
+        signal: controller.signal,
+      });
+
+      // Clear timeout if request succeeds
+      clearTimeout(timeoutId);
+
+      return response;
+    } catch (error) {
+      if (retryCount < maxRetries && error instanceof Error) {
+        if (error.message.includes('Network request failed') ||
+            error.message.includes('Failed to fetch') ||
+            error.name === 'AbortError' ||
+            error.message.includes('aborted')) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (retryCount + 1))); // Exponential backoff
+          return this.makeAPIRequest(text, retryCount + 1);
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
    * AI Detection Prompt for analyzing user messages
    */
   private getDetectionPrompt(): string {
@@ -98,38 +153,14 @@ RESPONSE FORMAT: JSON only, no explanations
     }
 
     if (!this.apiKey) {
-      console.warn('🔍 [DETECTION] No OpenAI API key - skipping AI analysis');
       return this.getCurrentLists();
     }
 
-    console.log('🔍 [DETECTION] Analyzing text with AI:', text.substring(0, 100) + (text.length > 100 ? '...' : ''));
 
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o-mini',
-          messages: [
-            {
-              role: 'system',
-              content: this.getDetectionPrompt()
-            },
-            {
-              role: 'user',
-              content: text
-            }
-          ],
-          temperature: 0.3,
-          max_tokens: 200,
-        }),
-      });
+      const response = await this.makeAPIRequest(text);
 
       if (!response.ok) {
-        console.error('🔍 [DETECTION] OpenAI API error:', response.status);
         return this.getCurrentLists();
       }
 
@@ -137,11 +168,9 @@ RESPONSE FORMAT: JSON only, no explanations
       const aiResponse = result.choices[0]?.message?.content;
 
       if (!aiResponse) {
-        console.warn('🔍 [DETECTION] No response from AI');
         return this.getCurrentLists();
       }
 
-      console.log('🤖 [DETECTION] AI Response:', aiResponse);
 
       // Parse AI response
       let detected;
@@ -150,7 +179,6 @@ RESPONSE FORMAT: JSON only, no explanations
         const cleanResponse = aiResponse.replace(/```json|```/g, '').trim();
         detected = JSON.parse(cleanResponse);
       } catch (parseError) {
-        console.error('🔍 [DETECTION] Failed to parse AI response:', aiResponse);
         return this.getCurrentLists();
       }
 
@@ -196,7 +224,16 @@ RESPONSE FORMAT: JSON only, no explanations
       }
 
     } catch (error) {
-      console.error('🔍 [DETECTION] AI analysis error:', error);
+      if (error instanceof Error) {
+        if (error.name === 'AbortError' || error.message.includes('aborted')) {
+        } else if (error.message.includes('Network request failed')) {
+        } else if (error.message.includes('Failed to fetch')) {
+        } else {
+        }
+      } else {
+      }
+
+      // Continue gracefully without AI analysis
     }
 
     return this.getCurrentLists();
@@ -217,7 +254,6 @@ RESPONSE FORMAT: JSON only, no explanations
    * Add a message to analyze (async for AI analysis)
    */
   async addMessage(content: string, callbacks?: DetectionCallbacks): Promise<DetectedLists> {
-    console.log('📨 [DETECTION] Adding message for AI analysis');
     const lists = await this.analyzeText(content);
     console.log('📋 [DETECTION] Current totals:', {
       emotions: lists.emotions.length,
@@ -232,7 +268,6 @@ RESPONSE FORMAT: JSON only, no explanations
    * Reset all detected items
    */
   reset(): void {
-    console.log('🔄 [DETECTION] Resetting all detected items');
     const prevCounts = {
       emotions: this.detectedEmotions.size,
       parts: this.detectedParts.size,
@@ -243,7 +278,6 @@ RESPONSE FORMAT: JSON only, no explanations
     this.detectedParts.clear();
     this.detectedNeeds.clear();
 
-    console.log('✅ [DETECTION] Reset complete. Cleared:', prevCounts);
   }
 
   /**

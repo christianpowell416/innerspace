@@ -730,11 +730,7 @@ export default function BodygraphScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.container}>
-          <ThemedView style={styles.loadingContainer}>
-            <ThemedText>Loading flowchart...</ThemedText>
-          </ThemedView>
-        </ThemedView>
+        <ThemedView style={styles.container} />
       </SafeAreaView>
     );
   }

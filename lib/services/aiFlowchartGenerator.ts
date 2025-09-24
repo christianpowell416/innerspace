@@ -1,7 +1,7 @@
 import { FlowchartStructure } from '../types/flowchart';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Asset } from 'expo-asset';
-import { promptContent } from '../../assets/flowchart/prompt_instructions.js';
+import { promptContent } from '../../assets/flowchart/part_map_instructions.js';
 import { requirementsContent } from '../../assets/flowchart/requirements.js';
 // Note: OpenAI SDK requires polyfills for React Native
 // We'll use fetch API directly instead
@@ -42,7 +42,7 @@ export const readFlowchartPrompt = async (): Promise<{ systemPrompt: string; use
     let contentToUse = promptContent;
     
     // First try to read from document directory (updated prompt)
-    const documentPath = `${FileSystem.documentDirectory}prompt_instructions.js`;
+    const documentPath = `${FileSystem.documentDirectory}part_map_instructions.js`;
     try {
       const documentContent = await FileSystem.readAsStringAsync(documentPath);
       if (documentContent.trim()) {
@@ -199,7 +199,7 @@ export default requirementsContent;
  */
 export const updateFlowchartPrompt = async (newContent: string): Promise<void> => {
   try {
-    // Update the prompt_instructions.js file with new content
+    // Update the part_map_instructions.js file with new content
     const jsContent = `// This file exports the flowchart prompt content
 // Updated: ${new Date().toISOString().split('T')[0]} - Modified via in-app editor
 // You can edit this file directly
@@ -209,7 +209,7 @@ export const promptContent = \`${newContent.replace(/`/g, '\\`')}\`;
 export default promptContent;
 `;
     
-    const filePath = `${FileSystem.documentDirectory}prompt_instructions.js`;
+    const filePath = `${FileSystem.documentDirectory}part_map_instructions.js`;
     await FileSystem.writeAsStringAsync(filePath, jsContent);
     console.log('✅ Updated flowchart prompt at:', filePath);
   } catch (error) {
@@ -258,16 +258,16 @@ export const generateFlowchartWithAI = async (
     
     // Validate that all required sections are present in prompt file
     if (!promptData.systemPrompt) {
-      throw new Error('Missing "## System Prompt" section in prompt_instructions.js');
+      throw new Error('Missing "## System Prompt" section in part_map_instructions.js');
     }
     if (!promptData.userInstructions) {
-      throw new Error('Missing "## User Instructions" section in prompt_instructions.js');
+      throw new Error('Missing "## User Instructions" section in part_map_instructions.js');
     }
     if (!promptData.jsonFormat) {
-      throw new Error('Missing "## JSON Format Template" section in prompt_instructions.js');
+      throw new Error('Missing "## JSON Format Template" section in part_map_instructions.js');
     }
     if (!promptData.finalInstructions) {
-      throw new Error('Missing "## Final Instructions" section in prompt_instructions.js');
+      throw new Error('Missing "## Final Instructions" section in part_map_instructions.js');
     }
 
     // Use system prompt from file (no fallbacks - file must contain valid prompt)

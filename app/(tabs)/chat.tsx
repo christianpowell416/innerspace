@@ -1332,7 +1332,7 @@ export default function ChatScreen() {
                       {/* Conversation Cards Section */}
                       <View style={{ position: 'relative', marginBottom: 16, marginTop: 20 }}>
                         {/* Count badge in top left */}
-                        <View style={[
+                        <Animated.View style={[
                           styles.countBadge,
                           {
                             borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)',
@@ -1342,6 +1342,7 @@ export default function ChatScreen() {
                             top: 8,
                             left: 0,
                             zIndex: 1,
+                            transform: [{ translateY: contentTranslateY }],
                           }
                         ]}>
                           <Text style={[
@@ -1350,9 +1351,9 @@ export default function ChatScreen() {
                           ]}>
                             5
                           </Text>
-                        </View>
+                        </Animated.View>
 
-                        <View style={{
+                        <Animated.View style={{
                           flexDirection: 'row',
                           justifyContent: 'space-between',
                           alignItems: 'flex-start',
@@ -1360,6 +1361,7 @@ export default function ChatScreen() {
                           marginLeft: 40,
                           marginRight: 0,
                           marginBottom: -5,
+                          transform: [{ translateY: contentTranslateY }],
                         }}>
                           <Text style={[
                             styles.sectionTitle,
@@ -1403,10 +1405,13 @@ export default function ChatScreen() {
                               color={colorScheme === 'dark' ? '#AAAAAA' : '#666666'}
                             />
                           </Pressable>
-                        </View>
+                        </Animated.View>
 
                         {/* Conversation excerpts */}
-                        <View style={{ marginTop: -5 }}>
+                        <Animated.View style={{
+                          marginTop: -5,
+                          transform: [{ translateY: contentTranslateY }],
+                        }}>
                           <View style={styles.conversationList}>
                             {[
                               { excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
@@ -1475,7 +1480,7 @@ export default function ChatScreen() {
                               );
                             })}
                           </View>
-                        </View>
+                        </Animated.View>
                       </View>
                     </ScrollView>
                   </View>

@@ -45,7 +45,12 @@
       "WebFetch(domain:docs.expo.dev)",
       "WebFetch(domain:platform.openai.com)",
       "WebSearch",
-      "WebFetch(domain:learn.microsoft.com)"
+      "WebFetch(domain:learn.microsoft.com)",
+      "Bash(npx react-native start:*)",
+      "Bash(tail:*)",
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\SvgMaskedContainer.tsx\")",
+      "Bash(powershell.exe:*)",
+      "Bash(npm run lint:*)"
     ],
     "deny": []
   }

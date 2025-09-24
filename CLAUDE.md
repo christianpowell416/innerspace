@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+# Use this sound as a notification when you complete a task or when you have a question, or any time you require my input:
+powershell.exe -c "[console]::beep(800,200)"
+
 ## Project Overview
 
 Refer to PRD.md
@@ -53,14 +56,14 @@ npm run reset-project
 3. **Platform-Specific Components**: Separate `.ios.tsx` files for iOS-specific implementations
 4. **Haptic Feedback**: Custom HapticTab component for enhanced user experience
 5. **Typed Routes**: Expo Router experimental typed routes enabled for type-safe navigation
-6. **Centralized AI Instructions**: ALL AI prompt instructions must be in `assets/flowchart/prompt_instructions.js` - never hardcode instructions elsewhere
+6. **Specialized AI Instructions**: IFS part map generation instructions are in `assets/flowchart/part_map_instructions.js`, while therapeutic conversation instructions are in `assets/flowchart/conversation_instructions.js` - never hardcode instructions elsewhere
 
 ## AI Instruction Management
 
-**CRITICAL RULE**: All AI prompt instructions MUST be stored in `assets/flowchart/prompt_instructions.js`. This is the single source of truth for all AI interactions.
+**CRITICAL RULE**: AI instructions are specialized by function. Part map generation uses `assets/flowchart/part_map_instructions.js` while therapeutic conversations use `assets/flowchart/conversation_instructions.js`.
 
 ### Instructions Structure
-The prompt file contains these sections:
+The part map generation file contains these sections:
 - `## System Prompt` - Core AI behavior and role definition
 - `## User Instructions` - How to interpret user requests
 - `## Response Guidelines` - When and how to respond with JSON
@@ -70,15 +73,14 @@ The prompt file contains these sections:
 
 ### Enforcement Rules
 1. **Never hardcode instructions** in TypeScript/JavaScript files
-2. **All instruction changes** must be made in the centralized prompt file
-3. **All AI services** (voice, text, generation) must read from this file
+2. **All instruction changes** must be made in the appropriate specialized file
+3. **AI services** must read from their appropriate specialized instruction file
 4. **No fallback instructions** should contain hardcoded prompt logic
-5. **Function comments** about AI behavior should reference the prompt file
+5. **Function comments** about AI behavior should reference the appropriate instruction file
 
-### Files That Use Centralized Instructions
-- `lib/services/voiceFlowchartGenerator.ts` - Voice interactions
-- `lib/services/aiFlowchartGenerator.ts` - Text-based generation
-- `components/VoiceFlowchartCreator.tsx` - Voice UI interactions
+### Files That Use Specialized Instructions
+- `lib/services/aiFlowchartGenerator.ts` - Uses part_map_instructions.js for IFS flowchart generation
+- `lib/services/voiceSessionService.ts` - Uses conversation_instructions.js for therapeutic dialogue
 
 ## Configuration Files
 

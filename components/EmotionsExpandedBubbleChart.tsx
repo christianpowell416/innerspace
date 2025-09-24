@@ -31,7 +31,7 @@ const getExpandedEmotionConfig = (width: number, height: number): BubbleChartCon
   velocityDecay: 0.6, // Good settling speed
 });
 
-export function EmotionsExpandedBubbleChart({
+function EmotionsExpandedBubbleChart({
   data,
   width,
   height,
@@ -65,3 +65,6 @@ export function EmotionsExpandedBubbleChart({
     />
   );
 }
+
+export { EmotionsExpandedBubbleChart };
+export default EmotionsExpandedBubbleChart;

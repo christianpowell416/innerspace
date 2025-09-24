@@ -1,11 +1,11 @@
-// This file exports the flowchart prompt content
-// Updated: 2025-07-25 - Updated for new node shapes, labels, and voice integration
-// 
-// IMPORTANT: This is the CENTRAL SOURCE for all AI prompt instructions.
-// All other files reference this file - do not duplicate instructions elsewhere.
-// You can edit this file directly to update all AI interactions.
+// This file exports the IFS part map generation instructions
+// Updated: 2025-09-24 - Renamed from prompt_instructions.js to clarify purpose
+//
+// IMPORTANT: This is the specialized prompt for IFS part map/flowchart generation.
+// This is separate from conversation_instructions.js which handles therapeutic dialogue.
+// You can edit this file to update part map generation behavior.
 
-export const promptContent = `# AI Flowchart Generation Prompt
+export const promptContent = `# AI Part Map Generation Prompt
 
 ## System Prompt
 You are a JSON data specialist for therapeutic applications. Your role is to output structured data in JSON format based on Internal Family Systems (IFS) therapy principles.

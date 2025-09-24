@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 
 import { HapticTab } from '@/components/HapticTab';
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { CircleDotIcon } from '@/components/ui/CircleDotIcon';
 import TabBarBackground from '@/components/ui/TabBarBackground';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
@@ -143,6 +144,8 @@ export default function TabLayout() {
                     styles.logoIcon,
                     {
                       tintColor: focused ? '#FFF' : colorScheme === 'dark' ? '#FFF' : '#000',
+                      marginLeft: 2,
+                      marginTop: 2,
                     }
                   ]}
                   resizeMode="contain"
@@ -163,7 +166,7 @@ export default function TabLayout() {
         name="innerspace"
         options={{
           title: 'My Innerspace',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="sparkles" color={color} />,
+          tabBarIcon: ({ color }) => <CircleDotIcon size={28} color={color} />,
         }}
       />
     </Tabs>

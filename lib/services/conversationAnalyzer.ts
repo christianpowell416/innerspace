@@ -1,5 +1,5 @@
 import { FlowchartStructure } from '@/lib/types/flowchart';
-import { loadFlowchartTemplate } from './voiceFlowchartGenerator';
+import { loadFlowchartTemplate } from './voiceSessionService';
 import { incrementalAnalysisInstructions } from '../../assets/flowchart/incremental_analysis_instructions.js';
 
 export interface ConversationMessage {
@@ -8,13 +8,13 @@ export interface ConversationMessage {
   timestamp: Date;
 }
 
-export interface IncrementalFlowchartCallbacks {
+export interface ConversationAnalysisCallbacks {
   onFlowchartUpdate?: (flowchart: FlowchartStructure, isPartial: boolean) => void;
   onAnalysisUpdate?: (analysis: string) => void;
   onError?: (error: Error) => void;
 }
 
-class IncrementalFlowchartGenerator {
+class ConversationAnalyzer {
   private apiKey: string;
   private conversationHistory: ConversationMessage[] = [];
   private currentFlowchart: FlowchartStructure | null = null;
@@ -67,7 +67,6 @@ class IncrementalFlowchartGenerator {
       }
       
       const finalInstructions = `${systemPrompt.trim()}\n\n${analysisProcess.trim()}`;
-      console.log('📊 FLOWCHART AGENT: Generated system instructions:', finalInstructions.substring(0, 300) + '...');
       return finalInstructions;
     } catch (error) {
       console.error('❌ Error generating analysis instructions:', error);
@@ -79,9 +78,7 @@ class IncrementalFlowchartGenerator {
     this.apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
     
     if (!this.apiKey) {
-      console.warn('📊 FLOWCHART AGENT: OpenAI API key not configured - flowchart generation disabled');
     } else {
-      console.log('📊 FLOWCHART AGENT: Initialized successfully with API key');
     }
   }
 
@@ -89,19 +86,16 @@ class IncrementalFlowchartGenerator {
    * Add a new message to the conversation and trigger incremental analysis
    * This operates completely independently from the voice conversation system
    */
-  async addMessage(message: ConversationMessage, callbacks?: IncrementalFlowchartCallbacks): Promise<void> {
+  async addMessage(message: ConversationMessage, callbacks?: ConversationAnalysisCallbacks): Promise<void> {
     try {
       this.conversationHistory.push(message);
-      console.log('📊 FLOWCHART AGENT: Added message from', message.role, '- Total messages:', this.conversationHistory.length);
       
       // Clear existing debounce timer
       if (this.debounceTimer) {
         clearTimeout(this.debounceTimer);
-        console.log('📊 FLOWCHART AGENT: Cleared previous analysis timer');
       }
       
       // Debounce the analysis to avoid excessive API calls
-      console.log('📊 FLOWCHART AGENT: Setting analysis timer for', this.analysisDebounceMs, 'ms');
       this.debounceTimer = setTimeout(async () => {
         try {
           await this.analyzeAndUpdateFlowchart(callbacks);
@@ -120,7 +114,7 @@ class IncrementalFlowchartGenerator {
    * Analyze the current conversation and update the flowchart
    * This is a completely SILENT background process - no voice output
    */
-  private async analyzeAndUpdateFlowchart(callbacks?: IncrementalFlowchartCallbacks): Promise<void> {
+  private async analyzeAndUpdateFlowchart(callbacks?: ConversationAnalysisCallbacks): Promise<void> {
     if (this.isAnalyzing) {
       console.log('📊 FLOWCHART AGENT: Already analyzing, skipping');
       return;
@@ -709,7 +703,7 @@ OUTPUT FORMAT: Raw JSON only - no markdown, no code blocks, no explanations.`;
   /**
    * Force immediate analysis (useful for manual triggers)
    */
-  async forceAnalysis(callbacks?: IncrementalFlowchartCallbacks): Promise<void> {
+  async forceAnalysis(callbacks?: ConversationAnalysisCallbacks): Promise<void> {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -719,4 +713,4 @@ OUTPUT FORMAT: Raw JSON only - no markdown, no code blocks, no explanations.`;
   }
 }
 
-export const incrementalFlowchartGenerator = new IncrementalFlowchartGenerator();
+export const conversationAnalyzer = new ConversationAnalyzer();
