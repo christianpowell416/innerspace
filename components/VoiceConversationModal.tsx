@@ -91,7 +91,10 @@ export function VoiceConversationModal({
     words?: Array<{
       text: string,
       opacity: Animated.Value
-    }>
+    }>,
+    isRecording?: boolean,
+    isProcessing?: boolean,
+    isThinking?: boolean
   }>>([]);
   const [textInput, setTextInput] = useState('');
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
@@ -109,7 +112,7 @@ export function VoiceConversationModal({
   const [showSquareCards, setShowSquareCards] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentUserInputSession, setCurrentUserInputSession] = useState<string | null>(null);
-  const [aiResponseQueue, setAiResponseQueue] = useState<Array<{sessionId: string, text: string, responseId: string}>>([]);
+  // REMOVED: aiResponseQueue state - no longer needed with placeholder approach
   const [allowAIDisplay, setAllowAIDisplay] = useState(false);
   const [detectedItems, setDetectedItems] = useState<DetectedLists>({
     emotions: [],
@@ -146,110 +149,40 @@ export function VoiceConversationModal({
   // Robust check for when AI responses should display immediately
   const shouldDisplayAIImmediately = () => {
     const currentSession = currentUserInputSessionRef.current;
-    return (
+    const result = (
       allowAIDisplay && // User message animation completed
       currentSession && // Valid session exists
       userMessageAddedForSessionRef.current === currentSession // User message confirmed for this session
     );
+
+    // Debug logging for timing analysis
+    if (!result) {
+      console.log('⏱️ [TIMING] shouldDisplayAIImmediately = false:', {
+        allowAIDisplay,
+        hasCurrentSession: !!currentSession,
+        currentSession,
+        userMessageAddedForSession: userMessageAddedForSessionRef.current,
+        sessionMatch: userMessageAddedForSessionRef.current === currentSession,
+        timestamp: Date.now()
+      });
+    }
+
+    return result;
   };
 
-  // Enhanced queue processor - runs when state changes
-  useEffect(() => {
-    if (shouldDisplayAIImmediately() && aiResponseQueue.length > 0) {
-      // Process all queued responses for the current session
-      const currentSession = currentUserInputSessionRef.current;
-      const responsesToProcess = aiResponseQueue.filter(response => response.sessionId === currentSession);
+  // REMOVED: Complex queue processing system - replaced by immediate placeholder creation
+  //
+  // Previous approach: Complex timing-based queue system with fallback timers
+  // New approach: Create AI message placeholder immediately in onResponseStart,
+  //               populate with streaming in onResponseStreaming, finalize in onResponse
+  //
+  // This ensures:
+  // ✅ Proper message ordering (placeholder created at correct time)
+  // ✅ Real-time streaming (always has message to update)
+  // ✅ Works for all message lengths (no timing dependencies)
+  // ✅ Simplified, reliable logic
 
-      if (responsesToProcess.length > 0) {
-        // Remove processed responses from queue
-        setAiResponseQueue(prev => prev.filter(response => response.sessionId !== currentSession));
-
-        // Add/update all responses in conversation
-        responsesToProcess.forEach(queuedResponse => {
-          setConversation(prev => {
-            const lastMessage = prev[prev.length - 1];
-            const existingMessageIndex = prev.findIndex(msg => msg.id === queuedResponse.responseId);
-
-            if (existingMessageIndex >= 0) {
-              // Message with this ID already exists - update it
-              const updatedConversation = [...prev];
-              updatedConversation[existingMessageIndex] = {
-                ...updatedConversation[existingMessageIndex],
-                text: queuedResponse.text
-              };
-              return updatedConversation;
-            }
-
-            // If last message is assistant with same response ID, update it
-            if (lastMessage && lastMessage.type === 'assistant' && lastMessage.id === queuedResponse.responseId) {
-              // Update existing message with new content (streaming)
-              return [...prev.slice(0, -1), {
-                ...lastMessage,
-                text: queuedResponse.text
-              }];
-            } else {
-              // Create new assistant message
-              return [...prev, {
-                type: 'assistant',
-                text: queuedResponse.text,
-                id: queuedResponse.responseId,
-                sessionId: queuedResponse.sessionId
-              }];
-            }
-          });
-        });
-      }
-    }
-  }, [allowAIDisplay, aiResponseQueue, currentUserInputSession]);
-
-  // Separate queue monitor - watches for new queue items and processes immediately if ready
-  useEffect(() => {
-    if (aiResponseQueue.length > 0 && shouldDisplayAIImmediately()) {
-      // Process queued responses immediately when conditions are met
-      const currentSession = currentUserInputSessionRef.current;
-      const responsesToProcess = aiResponseQueue.filter(response => response.sessionId === currentSession);
-
-      if (responsesToProcess.length > 0) {
-        // Remove processed responses from queue
-        setAiResponseQueue(prev => prev.filter(response => response.sessionId !== currentSession));
-
-        // Add/update all responses in conversation
-        responsesToProcess.forEach(queuedResponse => {
-          setConversation(prev => {
-            const lastMessage = prev[prev.length - 1];
-            const existingMessageIndex = prev.findIndex(msg => msg.id === queuedResponse.responseId);
-
-            if (existingMessageIndex >= 0) {
-              // Message with this ID already exists - update it
-              const updatedConversation = [...prev];
-              updatedConversation[existingMessageIndex] = {
-                ...updatedConversation[existingMessageIndex],
-                text: queuedResponse.text
-              };
-              return updatedConversation;
-            }
-
-            // If last message is assistant with same response ID, update it
-            if (lastMessage && lastMessage.type === 'assistant' && lastMessage.id === queuedResponse.responseId) {
-              // Update existing message with new content (streaming)
-              return [...prev.slice(0, -1), {
-                ...lastMessage,
-                text: queuedResponse.text
-              }];
-            } else {
-              // Create new assistant message
-              return [...prev, {
-                type: 'assistant',
-                text: queuedResponse.text,
-                id: queuedResponse.responseId,
-                sessionId: queuedResponse.sessionId
-              }];
-            }
-          });
-        });
-      }
-    }
-  }, [aiResponseQueue.length]);
+  // REMOVED: Duplicate queue processor that was causing race conditions with the main processor above
 
   // Helper function to add user message with fade-in animation
   const addUserMessageWithAnimation = (text: string) => {
@@ -261,6 +194,11 @@ export function VoiceConversationModal({
     // Set ref immediately for synchronous access by AI response logic
     const currentSession = currentUserInputSessionRef.current;
     if (currentSession) {
+      console.log('📋 [REF] Setting userMessageAddedForSessionRef for text input:', {
+        timestamp: Date.now(),
+        sessionId: currentSession,
+        messageText: text.substring(0, 50) + (text.length > 50 ? '...' : '')
+      });
       userMessageAddedForSessionRef.current = currentSession;
     }
 
@@ -295,6 +233,13 @@ export function VoiceConversationModal({
         useNativeDriver: true,
       }).start(() => {
         // Animation complete - allow AI responses to display
+        const timestamp = Date.now();
+        console.log('🎬 [ANIMATION] User message animation complete - enabling AI display:', {
+          timestamp,
+          allowAIDisplay: true,
+          messageId,
+          sessionId: currentUserInputSession
+        });
         setAllowAIDisplay(true);
       });
 
@@ -485,9 +430,22 @@ export function VoiceConversationModal({
     }
   }, [isListening, isAIResponding, colorPulseAnim]);
 
-  // Recording indicator animation - only for user input, not AI responses
+  // Recording indicator animation - for all message indicators (recording, processing, thinking)
   useEffect(() => {
-    if (isListening || isProcessingUserInput) {
+    const messageIndicators = conversation.filter(msg => msg.isRecording || msg.isProcessing || msg.isThinking);
+    const hasActiveIndicators = isListening || isProcessingUserInput ||
+      conversation.some(msg => msg.isRecording || msg.isProcessing || msg.isThinking);
+
+    console.log('🎭 [ANIMATION] Checking indicators:', {
+      isListening,
+      isProcessingUserInput,
+      messageIndicators: messageIndicators.map(msg => ({ id: msg.id, isRecording: msg.isRecording, isProcessing: msg.isProcessing, isThinking: msg.isThinking })),
+      hasActiveIndicators,
+      conversationLength: conversation.length
+    });
+
+    if (hasActiveIndicators) {
+      console.log('🎭 [ANIMATION] Starting pulsating animation');
       // Start fade in/out animation
       Animated.loop(
         Animated.sequence([
@@ -504,10 +462,11 @@ export function VoiceConversationModal({
         ])
       ).start();
     } else {
+      console.log('🎭 [ANIMATION] Stopping pulsating animation');
       recordingIndicatorOpacity.stopAnimation();
       recordingIndicatorOpacity.setValue(0);
     }
-  }, [isListening, isProcessingUserInput, recordingIndicatorOpacity]);
+  }, [isListening, isProcessingUserInput, conversation, recordingIndicatorOpacity]);
 
   // Setup incremental flowchart callbacks
   // These are COMPLETELY ISOLATED from the voice conversation system
@@ -570,19 +529,200 @@ export function VoiceConversationModal({
             // Clear AI responding state when we start listening for user input
             setIsAIResponding(false);
             isAIRespondingRef.current = false; // Update ref for callbacks
+
+            // Create a new session for this user input
+            const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            setCurrentUserInputSession(sessionId);
+            currentUserInputSessionRef.current = sessionId;
+            console.log('🎤 [SESSION] Created new user input session:', sessionId);
+
+            // Add user recording indicator to conversation immediately
+            const recordingMessageId = 'recording-' + sessionId;
+            console.log('🎙️ [RECORDING] Adding user recording indicator to conversation');
+
+            setConversation(prev => {
+              // Check if recording indicator already exists (avoid duplicates)
+              const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
+              if (existingIndex >= 0) {
+                console.log('🎙️ [RECORDING] Recording indicator already exists, skipping');
+                return prev;
+              }
+
+              return [...prev, {
+                type: 'user',
+                text: '', // Empty text initially
+                id: recordingMessageId,
+                sessionId: sessionId,
+                timestamp: Date.now(),
+                isRecording: true // Flag to show recording indicator
+              }];
+            });
           },
           onListeningStop: () => {
-            // console.log('🛑 VOICE: Stopped recording');
-            // console.log('🔵 Button State: isListening=false, isAIResponding=true → BLUE');
+            console.log('🛑 [DEBUG] onListeningStop called');
+            console.log('🛑 [DEBUG] States before stop:', {
+              isListening,
+              isProcessingUserInput,
+              isAIResponding: isAIRespondingRef.current,
+              currentSession,
+              currentUserInputSession: currentUserInputSessionRef.current
+            });
+
             setIsListeningWithLogging(false);
             setIsAIResponding(true); // Set AI responding immediately when recording stops
             isAIRespondingRef.current = true; // Update ref for callbacks
+
+            console.log('🛑 [DEBUG] States after stop - button should be BLUE');
+
             // Clear any lingering transcript when recording stops
             setTimeout(() => setTranscript(''), 500);
+
+
+            // Update recording indicator to processing state
+            const currentSession = currentUserInputSessionRef.current;
+            if (currentSession) {
+              const recordingMessageId = 'recording-' + currentSession;
+              console.log('🔄 [PROCESSING] Changing recording indicator to processing state');
+
+              setConversation(prev => {
+                const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
+                if (existingIndex >= 0) {
+                  const updatedConversation = [...prev];
+                  updatedConversation[existingIndex] = {
+                    ...updatedConversation[existingIndex],
+                    isRecording: false,
+                    isProcessing: true // Flag to show processing state
+                  };
+                  return updatedConversation;
+                } else {
+                  console.warn('🔄 [PROCESSING] Recording indicator not found for processing update');
+                  return prev;
+                }
+              });
+
+              // Fallback for empty recordings: if no transcript comes within 3 seconds, assume empty
+              setTimeout(() => {
+                console.log('🔇 [FALLBACK] Checking for empty recording after 3 seconds');
+
+                // Check if we still have a processing indicator (meaning no transcript came)
+                setConversation(currentConversation => {
+                  const processingMessage = currentConversation.find(msg => msg.id === recordingMessageId && msg.isProcessing);
+
+                  if (processingMessage) {
+                    console.log('🔇 [FALLBACK] Processing indicator still active - treating as empty recording');
+
+                    // Remove the processing indicator
+                    const filtered = currentConversation.filter(msg => msg.id !== recordingMessageId);
+
+                    // Reset all states to idle (simulate empty transcript handling)
+                    setIsListeningWithLogging(false);
+                    setIsProcessingUserInput(false);
+                    setIsAIResponding(false);
+                    setCurrentResponseId(null);
+                    setIsStreaming(false);
+
+                    // Reset refs
+                    isAIRespondingRef.current = false;
+                    isStreamingRef.current = false;
+                    currentResponseIdRef.current = null;
+
+                    // Show tooltip
+                    setShowWelcomeTooltip(true);
+                    setTimeout(() => setShowWelcomeTooltip(false), 3000);
+
+                    console.log('🔇 [FALLBACK] Empty recording cleanup complete');
+                    return filtered;
+                  } else {
+                    console.log('🔇 [FALLBACK] Processing indicator not found - transcript likely received normally');
+                    return currentConversation;
+                  }
+                });
+              }, 3000); // 3 second timeout for empty recording detection
+            }
           },
           onTranscript: (transcriptText, isFinal) => {
+            console.log('📝 [DEBUG] onTranscript called:', {
+              transcriptText: `"${transcriptText}"`,
+              isFinal,
+              type: typeof transcriptText,
+              length: transcriptText?.length,
+              trimmedLength: transcriptText?.trim().length,
+              currentStates: {
+                isListening,
+                isProcessingUserInput,
+                isAIResponding: isAIRespondingRef.current
+              }
+            });
+
             if (isFinal) {
-              console.log('📝 TRANSCRIPTION:', transcriptText);
+              console.log('📝 FINAL TRANSCRIPTION:', transcriptText);
+
+              // Check if the transcript is empty or just whitespace
+              if (!transcriptText || transcriptText.trim().length === 0) {
+                console.log('🔇 [EMPTY] Empty transcript detected - cleaning up and showing tooltip');
+                console.log('🔇 [EMPTY] Current session IDs:', {
+                  currentSession,
+                  currentUserInputSession: currentUserInputSessionRef.current
+                });
+
+                // Remove the recording indicator from conversation - use USER INPUT session (not currentSession)
+                const userInputSession = currentUserInputSessionRef.current;
+                if (!userInputSession) {
+                  console.error('🔇 [EMPTY] No user input session found - cannot remove recording indicator');
+                  return;
+                }
+
+                const recordingMessageId = 'recording-' + userInputSession;
+                console.log('🔇 [EMPTY] Attempting to remove recording message:', recordingMessageId, 'using userInputSession:', userInputSession);
+
+                setConversation(prev => {
+                  const beforeCount = prev.length;
+                  const filtered = prev.filter(msg => {
+                    const shouldKeep = msg.id !== recordingMessageId;
+                    if (!shouldKeep) {
+                      console.log('🔇 [EMPTY] Removing message:', { id: msg.id, isRecording: msg.isRecording, isProcessing: msg.isProcessing });
+                    }
+                    return shouldKeep;
+                  });
+                  const afterCount = filtered.length;
+                  console.log('🔇 [EMPTY] Conversation messages:', { before: beforeCount, after: afterCount, removed: beforeCount - afterCount });
+                  return filtered;
+                });
+
+                // Reset all recording/processing states to idle - simulate complete response cycle
+                console.log('🔇 [EMPTY] Resetting states - before:', {
+                  isListening,
+                  isProcessingUserInput,
+                  isAIResponding: isAIRespondingRef.current,
+                  currentResponseId
+                });
+
+                // Complete state reset - simulate onResponseComplete logic
+                setIsListeningWithLogging(false);
+                setIsProcessingUserInput(false);
+                setIsAIResponding(false);
+                setCurrentResponseId(null);
+                setIsStreaming(false);
+
+                // Reset all refs
+                isAIRespondingRef.current = false;
+                isStreamingRef.current = false;
+                currentResponseIdRef.current = null;
+
+                console.log('🔇 [EMPTY] Complete state reset - simulated onResponseComplete for empty recording');
+
+                // Show tooltip to guide user
+                setShowWelcomeTooltip(true);
+                console.log('🔇 [EMPTY] Showing welcome tooltip');
+
+                // Hide tooltip after 3 seconds
+                setTimeout(() => {
+                  setShowWelcomeTooltip(false);
+                  console.log('🔇 [EMPTY] Hiding welcome tooltip');
+                }, 3000);
+
+                return; // Don't process empty transcript further
+              }
 
               // Analyze user voice message for emotions, parts, and needs
               emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
@@ -594,9 +734,10 @@ export function VoiceConversationModal({
                 setDetectedPartsData(transformDetectedParts(detectedLists.parts, conversationId));
                 setDetectedNeedsData(transformDetectedNeeds(detectedLists.needs, conversationId));
 
-                // Enable bubble chart rendering if we have data
+                // Enable bubble chart rendering and expand cards if we have data
                 if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
                   setShouldRenderBubbleCharts(true);
+                  setShowSquareCards(true); // Auto-expand when new items detected
                 }
               }).catch(error => {
                 console.warn('🔍 [DETECTION] Voice analysis error:', error);
@@ -606,10 +747,15 @@ export function VoiceConversationModal({
               console.log('🟡 Starting processing indicator for transcript');
               setIsProcessingUserInput(true);
 
-              // Generate session ID here BEFORE adding user message to ensure proper ordering
-              const newSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-              setCurrentUserInputSession(newSessionId);
-              currentUserInputSessionRef.current = newSessionId;
+              // Use existing session ID from onListeningStart (don't create new one)
+              const currentSession = currentUserInputSessionRef.current;
+
+              if (!currentSession) {
+                console.error('📝 [TRANSCRIPT] No current session found - creating fallback');
+                const fallbackSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+                setCurrentUserInputSession(fallbackSessionId);
+                currentUserInputSessionRef.current = fallbackSessionId;
+              }
 
               // Reset AI display permission for new session
               setAllowAIDisplay(false);
@@ -620,8 +766,64 @@ export function VoiceConversationModal({
               // Set pending message to ensure it's added before response
               setPendingUserMessage(transcriptText);
 
-              // Add user message to conversation with fade-in animation
-              addUserMessageWithAnimation(transcriptText);
+              // Set ref immediately for synchronous access by AI response logic
+              if (currentSession) {
+                console.log('📋 [REF] Setting userMessageAddedForSessionRef for voice input:', {
+                  timestamp: Date.now(),
+                  sessionId: currentSession,
+                  transcriptText: transcriptText.substring(0, 50) + (transcriptText.length > 50 ? '...' : '')
+                });
+                userMessageAddedForSessionRef.current = currentSession;
+              }
+
+              // Replace recording indicator with actual user message
+              const recordingMessageId = 'recording-' + (currentSession || currentUserInputSessionRef.current);
+              console.log('📝 [TRANSCRIPT] Replacing recording indicator with user message');
+
+              setConversation(prev => {
+                const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
+                if (existingIndex >= 0) {
+                  // Replace recording indicator with actual message with fade-in animation
+                  const fadeAnim = new Animated.Value(0);
+                  const updatedConversation = [...prev];
+                  updatedConversation[existingIndex] = {
+                    type: 'user',
+                    text: transcriptText,
+                    id: recordingMessageId, // Keep same ID for seamless transition
+                    sessionId: currentSession || currentUserInputSessionRef.current,
+                    timestamp: Date.now(),
+                    isRecording: false,
+                    isProcessing: false,
+                    fadeAnim
+                  };
+
+                  // Start fade-in animation
+                  Animated.timing(fadeAnim, {
+                    toValue: 1,
+                    duration: 300,
+                    useNativeDriver: true,
+                  }).start();
+
+                  return updatedConversation;
+                } else {
+                  // Fallback: add as new message if recording indicator not found
+                  console.warn('📝 [TRANSCRIPT] Recording indicator not found, adding as new message');
+                  const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+                  return [...prev, {
+                    type: 'user',
+                    text: transcriptText,
+                    id: messageId,
+                    sessionId: currentSession || currentUserInputSessionRef.current,
+                    timestamp: Date.now()
+                  }];
+                }
+              });
+
+              // Enable AI display after message is added
+              setTimeout(() => {
+                console.log('🎬 [ANIMATION] User message replaced - enabling AI display');
+                setAllowAIDisplay(true);
+              }, 50); // Small delay to ensure message update is processed
 
               // Add a small delay to ensure user message gets processed before AI response
               setTimeout(() => {
@@ -647,55 +849,146 @@ export function VoiceConversationModal({
             isAIRespondingRef.current = true;
             isStreamingRef.current = true;
             currentResponseIdRef.current = responseId;
+
+            // Create AI thinking indicator immediately
+            const currentSession = currentUserInputSessionRef.current;
+            if (currentSession) {
+              console.log('🤖 [AI THINKING] Creating AI thinking indicator:', {
+                responseId,
+                sessionId: currentSession,
+                timestamp: Date.now()
+              });
+
+              setConversation(prev => {
+                // Check if message already exists (avoid duplicates)
+                const existingIndex = prev.findIndex(msg => msg.id === responseId);
+                if (existingIndex >= 0) {
+                  console.log('🤖 [AI THINKING] AI message already exists, skipping creation');
+                  return prev;
+                }
+
+                // Create AI thinking indicator for streaming to populate
+                return [...prev, {
+                  type: 'assistant',
+                  text: '', // Empty initially, will be populated by streaming
+                  id: responseId,
+                  sessionId: currentSession,
+                  timestamp: Date.now(),
+                  isThinking: true // Flag to show thinking indicator
+                }];
+              });
+            }
           },
-          onResponse: (response) => {
+          onResponseStreaming: (response, isComplete) => {
+            // Handle real-time streaming display - update placeholder created in onResponseStart
             if (!response) return;
 
-            // Don't start AI response if user is actively recording
-            if (isListening) {
+            const currentSession = currentUserInputSessionRef.current;
+            const responseId = currentResponseIdRef.current;
+
+            if (!responseId || !currentSession) {
+              console.warn('💬 [STREAMING] Missing responseId or session:', { responseId, currentSession });
+              return;
+            }
+
+            console.log('💬 [STREAMING] Real-time update:', {
+              sessionId: currentSession,
+              responseId,
+              responseLength: response.length,
+              isComplete,
+              lastChars: response.slice(-10)
+            });
+
+            // Update the AI thinking indicator with streaming text
+            setConversation(prev => {
+              const existingMessageIndex = prev.findIndex(msg => msg.id === responseId);
+
+              if (existingMessageIndex >= 0) {
+                // ✅ Update AI thinking indicator with streaming text
+                const updatedConversation = [...prev];
+                updatedConversation[existingMessageIndex] = {
+                  ...updatedConversation[existingMessageIndex],
+                  text: response,
+                  isThinking: false // Remove thinking state once streaming starts
+                };
+                return updatedConversation;
+              } else {
+                // This should not happen if thinking indicator was created in onResponseStart
+                console.warn('💬 [STREAMING] AI thinking indicator not found for responseId:', responseId);
+                return prev;
+              }
+            });
+          },
+          onResponse: (response) => {
+            // Handle final response completion - ensure placeholder has complete punctuation
+            if (!response) {
+              console.log('💬 [AI] Empty response received, skipping');
               return;
             }
 
             const currentSession = currentUserInputSessionRef.current;
-            const responseId = currentResponseIdRef.current || (currentSession ? `response_${currentSession}` : (Date.now().toString() + Math.random().toString(36).substr(2, 9)));
+            const responseId = currentResponseIdRef.current;
 
-            // Always queue responses first - let the queue processor decide when to display
-            if (currentSession) {
-              setAiResponseQueue(prev => {
-                // Update existing queued response or add new one
-                const existingIndex = prev.findIndex(item => item.responseId === responseId);
-                if (existingIndex >= 0) {
-                  const updated = [...prev];
-                  updated[existingIndex] = { sessionId: currentSession, text: response, responseId };
-                  return updated;
-                } else {
-                  return [...prev, { sessionId: currentSession, text: response, responseId }];
-                }
-              });
+            if (!responseId || !currentSession) {
+              console.warn('💬 [AI] Missing responseId or session for final response:', { responseId, currentSession });
+              return;
             }
+
+            console.log('💬 [AI] Final response received - ensuring complete punctuation:', {
+              sessionId: currentSession,
+              responseId,
+              responseLength: response.length,
+              lastChars: response.slice(-5),
+              timestamp: Date.now()
+            });
+
+            // Update placeholder message with final complete response (ensures punctuation)
+            setConversation(prev => {
+              const existingMessageIndex = prev.findIndex(msg => msg.id === responseId);
+
+              if (existingMessageIndex >= 0) {
+                // ✅ Update placeholder with final complete response
+                console.log('💬 [AI] Finalizing placeholder with complete response');
+                const updatedConversation = [...prev];
+                updatedConversation[existingMessageIndex] = {
+                  ...updatedConversation[existingMessageIndex],
+                  text: response, // Final response with complete punctuation
+                  isThinking: false // Ensure thinking state is removed
+                };
+                return updatedConversation;
+              } else {
+                // This should not happen if placeholder was created in onResponseStart
+                console.warn('💬 [AI] Placeholder message not found for final response:', responseId);
+                return prev;
+              }
+            });
           },
           onResponseComplete: () => {
-            console.log('⚪ Button: IDLE');
+            console.log('⚪ [DEBUG] onResponseComplete called');
+            console.log('⚪ [DEBUG] States before complete:', {
+              isListening,
+              isProcessingUserInput,
+              isAIResponding: isAIRespondingRef.current,
+              currentResponseId,
+              conversationLength: conversation.length
+            });
+
             setIsAIResponding(false);
             setCurrentResponseId(null); // Reset response ID
             setIsStreaming(false); // Reset streaming state
 
-            // Only clear queue for the current session to avoid clearing queued responses for new sessions
-            const currentSession = currentUserInputSessionRef.current;
-            if (currentSession) {
-              setAiResponseQueue(prev => prev.filter(response => response.sessionId !== currentSession));
-            }
-
             // Reset refs for callback access
             isAIRespondingRef.current = false;
             isStreamingRef.current = false;
-            currentResponseIdRef.current = null;
-            userMessageAddedForSessionRef.current = null; // Reset for next session
 
-            // Clear user input session to prevent duplicate responses
-            // Note: Don't reset currentUserInputSession state here as it's needed for React rendering
-            // Only reset the ref to signal that this session is complete
-            // The state will be updated when the next user input starts a new session
+            console.log('⚪ [DEBUG] States after complete - button should be GREEN/RED');
+            currentResponseIdRef.current = null;
+
+            // Reset session tracking for next interaction
+            setTimeout(() => {
+              console.log('💬 [CLEANUP] Resetting session refs after response completion');
+              userMessageAddedForSessionRef.current = null; // Reset for next session
+            }, 100); // Small delay to ensure any final updates complete
           },
           onFlowchartGenerated: (flowchart) => {
             // Flowchart generation temporarily disabled
@@ -929,9 +1222,10 @@ export function VoiceConversationModal({
         setDetectedPartsData(transformDetectedParts(detectedLists.parts, conversationId));
         setDetectedNeedsData(transformDetectedNeeds(detectedLists.needs, conversationId));
 
-        // Enable bubble chart rendering if we have data
+        // Enable bubble chart rendering and expand cards if we have data
         if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
           setShouldRenderBubbleCharts(true);
+          setShowSquareCards(true); // Auto-expand when new items detected
         }
       }).catch(error => {
         console.warn('🔍 [DETECTION] Text analysis error:', error);
@@ -974,8 +1268,9 @@ export function VoiceConversationModal({
       }
       
       // Send to OpenAI
+      console.log('📤 [TEXT INPUT] Sending message to voice session:', finalMessage);
       sessionRef.current.sendMessage(finalMessage);
-      
+
       // Clear input but keep text input visible and focused
       setTextInput('');
       
@@ -1362,42 +1657,84 @@ export function VoiceConversationModal({
                 } : {}
               ]}
             >
-              <Text style={[
-                styles.messageText,
-                { 
-                  color: message.type === 'user' 
-                    ? (isDark ? '#CCCCCC' : '#555555') 
-                    : (isDark ? '#FFFFFF' : '#000000'),
-                  fontWeight: 'normal',
-                  textAlign: message.type === 'user' ? 'right' : 'left'
-                }
-              ]}>
-                {message.text}
-              </Text>
+              {/* Show indicator or message text based on state */}
+              {message.isRecording ? (
+                // User recording indicator
+                <View style={[styles.recordingIndicatorContainer, { justifyContent: 'flex-end' }]}>
+                  <Animated.View style={[
+                    styles.recordingIndicator,
+                    {
+                      backgroundColor: isDark ? '#CCCCCC' : '#555555',
+                      opacity: recordingIndicatorOpacity
+                    }
+                  ]}>
+                    <Text style={[
+                      styles.recordingText,
+                      { color: isDark ? '#000000' : '#FFFFFF' }
+                    ]}>
+                      ●
+                    </Text>
+                  </Animated.View>
+                </View>
+              ) : message.isProcessing ? (
+                // User processing indicator with pulsating animation
+                <View style={[styles.recordingIndicatorContainer, { justifyContent: 'flex-end' }]}>
+                  <Animated.View style={[
+                    styles.recordingIndicator,
+                    {
+                      backgroundColor: isDark ? '#999999' : '#777777',
+                      opacity: recordingIndicatorOpacity
+                    }
+                  ]}>
+                    <Text style={[
+                      styles.recordingText,
+                      { color: isDark ? '#000000' : '#FFFFFF' }
+                    ]}>
+                      ●
+                    </Text>
+                  </Animated.View>
+                </View>
+              ) : message.isThinking ? (
+                // AI thinking indicator
+                <View style={[styles.recordingIndicatorContainer, { justifyContent: 'flex-start' }]}>
+                  <Animated.View style={[
+                    styles.recordingIndicator,
+                    {
+                      backgroundColor: isDark ? '#999999' : '#777777',
+                      opacity: recordingIndicatorOpacity
+                    }
+                  ]}>
+                    <Text style={[
+                      styles.recordingText,
+                      { color: isDark ? '#000000' : '#FFFFFF' }
+                    ]}>
+                      ●
+                    </Text>
+                  </Animated.View>
+                </View>
+              ) : (
+                // Normal message text - wrapped in same container structure as indicators
+                <View style={[styles.recordingIndicatorContainer, {
+                  justifyContent: message.type === 'user' ? 'flex-end' : 'flex-start'
+                }]}>
+                  <Text style={[
+                    styles.messageText,
+                    {
+                      color: message.type === 'user'
+                        ? (isDark ? '#CCCCCC' : '#555555')
+                        : (isDark ? '#FFFFFF' : '#000000'),
+                      fontWeight: 'normal',
+                      textAlign: message.type === 'user' ? 'right' : 'left'
+                    }
+                  ]}>
+                    {message.text}
+                  </Text>
+                </View>
+              )}
             </Animated.View>
           ))}
-          
-          {/* Recording Indicator */}
-          {(isListening || isProcessingUserInput) && (
-            <View style={styles.messageTextContainer}>
-              <View style={[styles.recordingIndicatorContainer, { justifyContent: 'flex-end' }]}>
-                <Animated.View style={[
-                  styles.recordingIndicator,
-                  { 
-                    backgroundColor: isDark ? '#CCCCCC' : '#555555',
-                    opacity: recordingIndicatorOpacity
-                  }
-                ]}>
-                  <Text style={[
-                    styles.recordingText,
-                    { color: isDark ? '#000000' : '#FFFFFF' }
-                  ]}>
-                    ●
-                  </Text>
-                </Animated.View>
-              </View>
-            </View>
-          )}
+
+          {/* REMOVED: Old floating recording indicator - now using message-based indicators */}
 
           </ScrollView>
         </View>
@@ -1407,11 +1744,11 @@ export function VoiceConversationModal({
           <View style={[
             styles.textInputContainer,
             {
-              paddingHorizontal: 10,
+              paddingHorizontal: 20,
               paddingVertical: 15,
               minHeight: 60,
               marginBottom: -15,
-              backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.9)',
+              backgroundColor: 'transparent',
             }
           ]}>
             <Pressable
@@ -1522,7 +1859,7 @@ export function VoiceConversationModal({
                       { backgroundColor: isDark ? '#333333' : '#000000' }
                     ]}>
                       <Text style={styles.welcomeTooltipText}>
-                        Tap to toggle recording
+                        Tap to{'\n'}record
                       </Text>
                       <View style={styles.tooltipArrowContainer}>
                         <View style={[
@@ -1792,6 +2129,8 @@ const styles = StyleSheet.create({
   },
   messageTextContainer: {
     marginVertical: 12,
+    minHeight: 24, // Match recording indicator container
+    paddingTop: 2, // Match recording indicator container baseline alignment
   },
   messageText: {
     fontSize: 19,
@@ -1801,12 +2140,14 @@ const styles = StyleSheet.create({
   },
   recordingIndicatorContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    minHeight: 24, // Match message text line height
+    paddingTop: 2, // Align with text baseline
   },
   recordingIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1854,8 +2195,8 @@ const styles = StyleSheet.create({
   },
   welcomeTooltipText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
+    fontWeight: 'normal',
     textAlign: 'center',
     fontFamily: 'Georgia',
   },
@@ -1868,7 +2209,7 @@ const styles = StyleSheet.create({
   tooltipArrow: {
     position: 'absolute',
     left: '50%',
-    marginLeft: 3, // Fine adjustment to move slightly right
+    marginLeft: 6, // Center the arrow
     width: 0,
     height: 0,
     borderLeftWidth: 6,
