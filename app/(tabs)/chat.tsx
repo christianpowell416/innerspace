@@ -9,6 +9,7 @@ import * as Haptics from 'expo-haptics';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { VoiceConversationModal } from '@/components/VoiceConversationModal';
+import { ConversationHistoryModal } from '@/components/ConversationHistoryModal';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { useColorScheme } from '@/hooks/useColorScheme';
@@ -30,6 +31,7 @@ import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsN
 import { generateTestEmotionData } from '@/lib/utils/testData';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
+import { getConversationById, ConversationData } from '@/lib/services/conversationService';
 
 const CARD_BORDER_RADIUS = 24;
 
@@ -49,6 +51,9 @@ export default function ChatScreen() {
   const [selectedCard, setSelectedCard] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [expandedSquareCard, setExpandedSquareCard] = useState<string | null>(null);
+  const [conversationHistoryVisible, setConversationHistoryVisible] = useState(false);
+  const [selectedHistoryConversation, setSelectedHistoryConversation] = useState<ConversationData | null>(null);
+  const [voiceModalOpenedFromDetail, setVoiceModalOpenedFromDetail] = useState(false);
   const [partsData, setPartsData] = useState<PartBubbleData[]>([]);
   const [needsData, setNeedsData] = useState<NeedBubbleData[]>([]);
   const [emotionsData, setEmotionsData] = useState<EmotionBubbleData[]>([]);
@@ -115,6 +120,44 @@ export default function ChatScreen() {
   const handleVoiceModalClose = () => {
     setVoiceModalVisible(false);
     setSelectedTopic('');
+
+    // If voice modal was opened from detail modal, reopen the detail modal with slide animation
+    if (voiceModalOpenedFromDetail) {
+      setVoiceModalOpenedFromDetail(false);
+      modalTranslateY.setValue(Dimensions.get('window').height);
+      setTimeout(() => {
+        setModalVisible(true);
+        Animated.timing(modalTranslateY, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      }, 100);
+    }
+  };
+
+  const handleConversationHistoryPress = (conversationId: number) => {
+    const conversationWithMessages = getConversationById(conversationId, conversationData);
+    if (conversationWithMessages) {
+      // Open history modal immediately
+      setSelectedHistoryConversation(conversationWithMessages);
+      setConversationHistoryVisible(true);
+    }
+  };
+
+  const handleConversationHistoryClose = () => {
+    setConversationHistoryVisible(false);
+    setSelectedHistoryConversation(null);
+
+    // Slide detail modal back up when history modal closes
+    modalTranslateY.setValue(Dimensions.get('window').height);
+    setTimeout(() => {
+      Animated.timing(modalTranslateY, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }, 100);
   };
 
   const handleFlowchartCreated = async (flowchart: FlowchartStructure) => {
@@ -869,9 +912,15 @@ export default function ChatScreen() {
         onFlowchartCreated={handleFlowchartCreated}
       />
 
+      <ConversationHistoryModal
+        visible={conversationHistoryVisible}
+        onClose={handleConversationHistoryClose}
+        conversationData={selectedHistoryConversation}
+      />
+
       {/* Card Detail Modal */}
       <Modal
-        visible={modalVisible}
+        visible={modalVisible && !conversationHistoryVisible}
         transparent={true}
         animationType="none"
         onRequestClose={closeModal}
@@ -1381,7 +1430,10 @@ export default function ChatScreen() {
                           <Pressable
                             onPress={() => {
                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                              console.log('Add conversation pressed');
+                              setModalVisible(false);
+                              setVoiceModalOpenedFromDetail(true);
+                              setSelectedTopic('general');
+                              setVoiceModalVisible(true);
                             }}
                             style={[
                               styles.minimizeButton,
@@ -1414,11 +1466,11 @@ export default function ChatScreen() {
                         }}>
                           <View style={styles.conversationList}>
                             {[
-                              { excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
-                              { excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
-                              { excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
-                              { excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
-                              { excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
+                              { id: 4, excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
+                              { id: 5, excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
+                              { id: 2, excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
+                              { id: 9, excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
+                              { id: 7, excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
                             ].map((item, index) => {
                               const isDark = colorScheme === 'dark';
 
@@ -1450,7 +1502,7 @@ export default function ChatScreen() {
                                     <Pressable
                                       onPress={() => {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                        console.log('Conversation card pressed:', item.title);
+                                        handleConversationHistoryPress(item.id);
                                       }}
                                       style={styles.loopCardPressable}
                                     >

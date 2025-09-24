@@ -20,7 +20,6 @@ function ChatTabButton(props: any) {
   const handlePress = () => {
     if (isOnChatTab) {
       // Already on chat tab, trigger a new chat
-      // We'll use a global event or navigation params to trigger new chat
       router.push('/(tabs)/chat?newChat=true');
     } else {
       // Navigate to chat tab normally

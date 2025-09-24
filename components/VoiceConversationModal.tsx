@@ -14,6 +14,9 @@ import {
   Image,
   Dimensions,
   AppState,
+  BackHandler,
+  Keyboard,
+  PanResponder,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -73,6 +76,7 @@ export function VoiceConversationModal({
   const [selectedVoice, setSelectedVoiceState] = useState<VoiceType>('alloy');
   const modalTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const recordingIndicatorOpacity = useRef(new Animated.Value(0)).current;
+  const textInputMarginBottom = useRef(new Animated.Value(10)).current;
   const [isProcessingUserInput, setIsProcessingUserInput] = useState(false);
   
   // Debug wrapper for setIsListening to track state changes
@@ -110,11 +114,11 @@ export function VoiceConversationModal({
   const [showTextInput, setShowTextInput] = useState(false);
   const [showWelcomeTooltip, setShowWelcomeTooltip] = useState(false);
   const [showSquareCards, setShowSquareCards] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [currentUserInputSession, setCurrentUserInputSession] = useState<string | null>(null);
   // REMOVED: aiResponseQueue state - no longer needed with placeholder approach
   const [allowAIDisplay, setAllowAIDisplay] = useState(false);
-  const [pendingSend, setPendingSend] = useState(false);
   const [detectedItems, setDetectedItems] = useState<DetectedLists>({
     emotions: [],
     parts: [],
@@ -139,6 +143,36 @@ export function VoiceConversationModal({
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const colorPulseAnim = useRef(new Animated.Value(0)).current;
+
+  // Create pan responder for swipe-down gesture (header)
+  const headerPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only respond to downward swipes
+        return gestureState.dy > 0;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        // Move modal with finger
+        if (gestureState.dy > 0) {
+          modalTranslateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        // If swiped down more than 100px or with velocity, close modal
+        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
+          handleClose();
+        } else {
+          // Snap back to top
+          Animated.timing(modalTranslateY, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
 
   // Refs for callback state to prevent closure issues
   const isAIRespondingRef = useRef(false);
@@ -318,6 +352,7 @@ export function VoiceConversationModal({
       // Always start with voice mode (big green button)
       setShowTextInput(false);
       setShowWelcomeTooltip(false);
+      setShowSquareCards(false); // Always hide mini charts on open
       
       loadVoiceSettingAndInitialize();
       
@@ -344,6 +379,8 @@ export function VoiceConversationModal({
     
     return () => cleanupSession();
   }, [visible]);
+
+
 
   // Handle app state changes to prevent UI issues when backgrounding/foregrounding
   useEffect(() => {
@@ -380,6 +417,37 @@ export function VoiceConversationModal({
     const color = isListening ? 'RED' : (isAIResponding ? 'BLUE' : 'GREEN');
     // console.log(`🎨 Button Color: ${color} (isListening=${isListening}, isAIResponding=${isAIResponding})`);
   }, [isListening, isAIResponding]);
+
+  // Track keyboard visibility and animate margin
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setIsKeyboardVisible(true);
+        Animated.timing(textInputMarginBottom, {
+          toValue: -5,
+          duration: 0,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+    const keyboardWillHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setIsKeyboardVisible(false);
+        Animated.timing(textInputMarginBottom, {
+          toValue: 10,
+          duration: 0,
+          useNativeDriver: false,
+        }).start();
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+      keyboardWillHideListener.remove();
+    };
+  }, []);
 
   // Color pulse animation for recording or AI responding states
   useEffect(() => {
@@ -1122,30 +1190,16 @@ export function VoiceConversationModal({
 
   const handleSendText = () => {
     if (sessionRef.current && isConnected && textInput.trim()) {
-      // Set flag that we want to send the message
-      setPendingSend(true);
-      // Blur input to accept autocorrect and trigger onEndEditing
-      textInputRef.current?.blur();
+      // Process the message directly without blurring
+      processSendText(textInput);
     }
   };
 
   const handleTextEndEditing = (event: any) => {
-    if (pendingSend) {
-      // Reset the flag first
-      setPendingSend(false);
-      // Use the final text from the event (includes autocorrect)
-      const finalText = event.nativeEvent.text;
-      if (finalText && finalText.trim()) {
-        // Update the input state with corrected text first
-        setTextInput(finalText);
-        // Small delay to ensure state update, then process
-        setTimeout(() => {
-          processSendText(finalText);
-        }, 10);
-      } else {
-        // Re-focus if empty
-        textInputRef.current?.focus();
-      }
+    // Just update the text with any autocorrect changes
+    const finalText = event.nativeEvent.text;
+    if (finalText !== textInput) {
+      setTextInput(finalText);
     }
   };
 
@@ -1189,23 +1243,18 @@ export function VoiceConversationModal({
     );
   }
 
-  return (
-    <Modal
-      animationType="none"
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <View style={styles.modalOverlay}>
-        <Pressable style={styles.modalBackdrop} onPress={handleClose} />
-        <Animated.View 
-          style={[
-            styles.modalContainer,
-            {
-              transform: [{ translateY: modalTranslateY }],
-            }
-          ]}
-        >
+  // Modal content
+  const modalContent = (
+    <View style={styles.modalOverlay}>
+      <Pressable style={styles.modalBackdrop} onPress={handleClose} />
+      <Animated.View
+        style={[
+          styles.modalContainer,
+          {
+            transform: [{ translateY: modalTranslateY }],
+          }
+        ]}
+      >
           <BlurView
             intensity={80}
             tint={colorScheme === 'dark' ? 'dark' : 'light'}
@@ -1217,7 +1266,10 @@ export function VoiceConversationModal({
               keyboardVerticalOffset={Platform.OS === 'ios' ? 110 : 0}
             >
             {/* Fixed Header - draggable */}
-            <View style={styles.modalHeader}>
+            <View
+              style={styles.modalHeader}
+              {...headerPanResponder.panHandlers}
+            >
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -1254,16 +1306,8 @@ export function VoiceConversationModal({
                   </Text>
                 </Pressable>
                 <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
-                  New Loop
+                  New Conversation
                 </Text>
-              </View>
-              <View style={styles.headerControls}>
-                <Pressable
-                  style={styles.closeButton}
-                  onPress={handleClose}
-                >
-                  <Text style={styles.closeButtonText}>✕</Text>
-                </Pressable>
               </View>
             </View>
 
@@ -1505,7 +1549,10 @@ export function VoiceConversationModal({
         )}
 
         {/* Active Conversation Container */}
-        <View style={styles.activeConversationContainer}>
+        <View style={[
+          styles.activeConversationContainer,
+          { borderColor: isDark ? '#555555' : '#C7C7CC' }
+        ]}>
           {/* Conversation */}
           <ScrollView
             ref={scrollViewRef}
@@ -1609,13 +1656,13 @@ export function VoiceConversationModal({
 
         {/* Conditional Text Input - positioned above controls */}
         {showTextInput && (
-          <View style={[
+          <Animated.View style={[
             styles.textInputContainer,
             {
               paddingHorizontal: 20,
               paddingVertical: 15,
               minHeight: 60,
-              marginBottom: -15,
+              marginBottom: textInputMarginBottom,
               backgroundColor: 'transparent',
             }
           ]}>
@@ -1660,6 +1707,7 @@ export function VoiceConversationModal({
                 multiline
                 editable={isConnected}
                 autoFocus={true}
+                blurOnSubmit={false}
               />
               <Pressable
                 style={[
@@ -1676,7 +1724,7 @@ export function VoiceConversationModal({
                 />
               </Pressable>
             </View>
-          </View>
+          </Animated.View>
         )}
 
         {/* Controls - Transparent Container */}
@@ -1799,8 +1847,9 @@ export function VoiceConversationModal({
           </BlurView>
         </Animated.View>
       </View>
-
-      {/* Voice Settings Modal */}
+    );
+    // Voice Settings Modal - separate modal that always uses Modal wrapper
+    const voiceSettingsModal = (
       <Modal
         animationType="slide"
         transparent={true}
@@ -1815,53 +1864,60 @@ export function VoiceConversationModal({
                 <Text style={[styles.settingsTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
                   Voice Settings
                 </Text>
-                <Pressable
-                  style={styles.settingsCloseButton}
-                  onPress={() => setShowVoiceSettings(false)}
-                >
-                  <Text style={styles.settingsCloseText}>✕</Text>
+                <Pressable onPress={() => setShowVoiceSettings(false)}>
+                  <Text style={[styles.closeButton, { color: isDark ? '#FFFFFF' : '#000000' }]}>×</Text>
                 </Pressable>
               </View>
 
               {/* Voice Selection */}
-              <View style={styles.voiceSettingsContent}>
-                <Text style={[styles.settingsSectionTitle, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                  Voice Assistant
-                </Text>
-                <Text style={[styles.settingsSectionDescription, { color: isDark ? '#CCCCCC' : '#666666' }]}>
-                  Choose the voice for your AI therapy companion
-                </Text>
-                
-                <View style={styles.voiceGrid}>
-                  {getAllVoices().map((voice) => (
-                    <Pressable
-                      key={voice}
-                      style={[
-                        styles.voiceButton,
-                        {
-                          backgroundColor: selectedVoice === voice 
-                            ? '#2E7D32' 
-                            : (isDark ? '#333333' : '#E0E0E0'),
-                        }
-                      ]}
-                      onPress={() => handleVoiceChange(voice)}
-                    >
-                      <Text style={[
-                        styles.voiceButtonText,
-                        { color: selectedVoice === voice ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
-                      ]}>
-                        {voice}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+              <Text style={[styles.sectionLabel, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                Select Voice:
+              </Text>
+              <View style={styles.voiceGrid}>
+                {getAllVoices().map((voice) => (
+                  <Pressable
+                    key={voice}
+                    style={[
+                      styles.voiceButton,
+                      {
+                        backgroundColor: selectedVoice === voice
+                          ? '#2E7D32'
+                          : (isDark ? '#333333' : '#E0E0E0'),
+                      }
+                    ]}
+                    onPress={() => handleVoiceChange(voice)}
+                  >
+                    <Text style={[
+                      styles.voiceButtonText,
+                      { color: selectedVoice === voice ? '#FFFFFF' : (isDark ? '#FFFFFF' : '#000000') }
+                    ]}>
+                      {voice}
+                    </Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
           </BlurView>
         </View>
       </Modal>
-    </Modal>
-  );
+    );
+
+    // Main modal rendering: simple Modal approach + voice settings modal
+    return (
+      <>
+        <Modal
+          animationType="none"
+          transparent={true}
+          visible={visible}
+          onRequestClose={onClose}
+          statusBarTranslucent={true}
+          presentationStyle="overFullScreen"
+        >
+          {modalContent}
+        </Modal>
+        {voiceSettingsModal}
+      </>
+    );
 }
 
 const styles = StyleSheet.create({
@@ -1872,6 +1928,7 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 1000,
   },
   modalBackdrop: {
     position: 'absolute',
@@ -2516,7 +2573,6 @@ const styles = StyleSheet.create({
     marginVertical: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
     overflow: 'hidden',
   },
 });
