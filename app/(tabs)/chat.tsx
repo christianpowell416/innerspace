@@ -87,7 +87,7 @@ export default function ChatScreen() {
   const lastScrollTime = useRef(Date.now());
   const velocityDecayTimer = useRef<number | null>(null);
   const modalTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
-  const modalTopPosition = 80; // Position below the Loops header
+  const modalTopPosition = 80; // Position below the Complexes header
 
   // Listen for new chat trigger
   useEffect(() => {
@@ -734,7 +734,7 @@ export default function ChatScreen() {
             textAlign: 'left',
             fontFamily: 'Georgia',
             lineHeight: 50
-          }}>Loops</Text>
+          }}>Complexes</Text>
           
           {/* Gradient blur at bottom of header - hidden when search bar is active */}
           {!isSearchBarRevealed && (
@@ -1478,7 +1478,7 @@ export default function ChatScreen() {
                                 <View
                                   key={index}
                                   style={[
-                                    styles.loopCardSimple,
+                                    styles.complexCardSimple,
                                     {
                                       marginTop: index === 0 ? 0 : -35,
                                       borderColor: isDark
@@ -1491,7 +1491,7 @@ export default function ChatScreen() {
                                     intensity={50}
                                     tint={isDark ? 'dark' : 'light'}
                                     style={[
-                                      styles.loopCardBlur,
+                                      styles.complexCardBlur,
                                       {
                                         backgroundColor: isDark
                                           ? 'rgba(255, 255, 255, 0.1)'
@@ -1504,24 +1504,24 @@ export default function ChatScreen() {
                                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                                         handleConversationHistoryPress(item.id);
                                       }}
-                                      style={styles.loopCardPressable}
+                                      style={styles.complexCardPressable}
                                     >
-                                      <View style={styles.loopCardHeader}>
+                                      <View style={styles.complexCardHeader}>
                                         <Text style={[
-                                          styles.loopCardTitle,
+                                          styles.complexCardTitle,
                                           { color: isDark ? '#FFFFFF' : '#000000' }
                                         ]}>
                                           {item.title}
                                         </Text>
                                         <Text style={[
-                                          styles.loopCardDate,
+                                          styles.complexCardDate,
                                           { color: isDark ? '#CCCCCC' : '#666666' }
                                         ]}>
                                           {item.date}
                                         </Text>
                                       </View>
                                       <Text style={[
-                                        styles.loopCardExcerpt,
+                                        styles.complexCardExcerpt,
                                         { color: isDark ? '#DDDDDD' : '#444444' }
                                       ]}>
                                         {item.excerpt}
@@ -1981,42 +1981,42 @@ const styles = StyleSheet.create({
   conversationList: {
     marginTop: 12,
   },
-  loopCardSimple: {
+  complexCardSimple: {
     borderRadius: 16,
     height: 135,
     borderWidth: 1,
     overflow: 'hidden',
   },
-  loopCardBlur: {
+  complexCardBlur: {
     flex: 1,
     borderRadius: 16,
     padding: 15,
     paddingBottom: 20,
   },
-  loopCardPressable: {
+  complexCardPressable: {
     flex: 1,
     padding: 10,
     paddingBottom: 10,
   },
-  loopCardHeader: {
+  complexCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  loopCardTitle: {
+  complexCardTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     flex: 1,
     marginRight: 10,
     fontFamily: 'Georgia',
   },
-  loopCardDate: {
+  complexCardDate: {
     fontSize: 19,
     fontWeight: 'normal',
     fontFamily: 'Georgia',
   },
-  loopCardExcerpt: {
+  complexCardExcerpt: {
     fontSize: 16,
     lineHeight: 22,
     textAlign: 'left',

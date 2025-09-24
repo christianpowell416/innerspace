@@ -110,7 +110,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="chat"
         options={{
-          title: 'Loops',
+          title: 'Complexes',
           tabBarIcon: ({ color, focused }) => (
             <View
               style={[

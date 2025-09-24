@@ -48,7 +48,7 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
 
   const [bubbles, setBubbles] = useState<BubbleData[]>([]);
 
-  // Ensure data is always an array, shuffle randomly, and limit to 7 bubbles - memoized to prevent re-render loops
+  // Ensure data is always an array, shuffle randomly, and limit to 7 bubbles - memoized to prevent re-render complexes
   const safeData = React.useMemo(() => {
     const dataArray = data || [];
     // Create a copy and shuffle it randomly

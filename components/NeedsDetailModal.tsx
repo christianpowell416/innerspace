@@ -15,34 +15,36 @@ import {
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { NeedBubbleData } from '@/lib/types/partsNeedsChart';
+import { generateTestEmotionData } from '@/lib/utils/testData';
+import { generateTestPartsData } from '@/lib/utils/partsNeedsTestData';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
-import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
-import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
+import { PartBubbleData } from '@/lib/types/partsNeedsChart';
 
 // Lazy load detail chart components to prevent loading during modal animation
+const EmotionsDetailBubbleChart = React.lazy(() => import('@/components/EmotionsDetailBubbleChart').then(module => ({ default: module.EmotionsDetailBubbleChart })));
 const PartsDetailBubbleChart = React.lazy(() => import('@/components/PartsDetailBubbleChart').then(module => ({ default: module.PartsDetailBubbleChart })));
-const NeedsDetailBubbleChart = React.lazy(() => import('@/components/NeedsDetailBubbleChart').then(module => ({ default: module.NeedsDetailBubbleChart })));
 
-interface EmotionDetailModalProps {
+interface NeedsDetailModalProps {
   visible: boolean;
   onClose: () => void;
-  emotion: EmotionBubbleData | null;
+  need: NeedBubbleData | null;
 }
 
-export function EmotionDetailModal({
+export function NeedsDetailModal({
   visible,
   onClose,
-  emotion
-}: EmotionDetailModalProps) {
+  need
+}: NeedsDetailModalProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const modalTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
   const [scrollPosition, setScrollPosition] = React.useState(0);
   const [internalVisible, setInternalVisible] = React.useState(false);
+  const [emotionsData, setEmotionsData] = React.useState<EmotionBubbleData[]>([]);
   const [partsData, setPartsData] = React.useState<PartBubbleData[]>([]);
-  const [needsData, setNeedsData] = React.useState<NeedBubbleData[]>([]);
+  const [emotionsChartDimensions, setEmotionsChartDimensions] = React.useState({ width: 180, height: 140 });
   const [partsChartDimensions, setPartsChartDimensions] = React.useState({ width: 180, height: 140 });
-  const [needsChartDimensions, setNeedsChartDimensions] = React.useState({ width: 180, height: 140 });
   const [shouldLoadDetailCharts, setShouldLoadDetailCharts] = React.useState(false);
   const [shouldRenderCharts, setShouldRenderCharts] = React.useState(false);
 
@@ -63,8 +65,8 @@ export function EmotionDetailModal({
       setShouldLoadDetailCharts(false);
       setShouldRenderCharts(false);
       // Clear data for next open
+      setEmotionsData([]);
       setPartsData([]);
-      setNeedsData([]);
       onClose();
     });
   };
@@ -122,9 +124,9 @@ export function EmotionDetailModal({
         setTimeout(() => {
           setShouldRenderCharts(true);
           setTimeout(() => {
-            if (emotion) {
+            if (need) {
+              setEmotionsData(generateTestEmotionData(5));
               setPartsData(generateTestPartsData(5));
-              setNeedsData(generateTestNeedsData(5));
             }
           }, 50); // Small delay for component loading
         }, 100); // Delay for chart component loading
@@ -136,22 +138,22 @@ export function EmotionDetailModal({
       setShouldLoadDetailCharts(false);
       setShouldRenderCharts(false);
     }
-  }, [visible, emotion]);
+  }, [visible, need]);
 
   // Data loading is now handled in the modal animation completion callback
 
   // Handle bubble press events
+  const handleEmotionPress = (emotion: EmotionBubbleData) => {
+    console.log('Emotion pressed:', emotion.emotion);
+    // TODO: Show emotion detail modal or additional info
+  };
+
   const handlePartPress = (part: PartBubbleData) => {
     console.log('Part pressed:', part.name);
     // TODO: Show part detail modal or additional info
   };
 
-  const handleNeedPress = (need: NeedBubbleData) => {
-    console.log('Need pressed:', need.name);
-    // TODO: Show need detail modal or additional info
-  };
-
-  if (!emotion) {
+  if (!need) {
     return null;
   }
 
@@ -185,12 +187,12 @@ export function EmotionDetailModal({
               <View style={styles.titleContainer}>
                 <View
                   style={[
-                    styles.emotionColorCircle,
-                    { backgroundColor: emotion.color }
+                    styles.needColorCircle,
+                    { backgroundColor: need.color }
                   ]}
                 />
                 <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }]}>
-                  {emotion.emotion}
+                  {need.name}
                 </Text>
               </View>
             </View>
@@ -277,8 +279,8 @@ export function EmotionDetailModal({
                         style={[
                           styles.sliderThumb,
                           {
-                            left: `${(emotion.intensity / 10) * 100}%`,
-                            backgroundColor: emotion.color
+                            left: `${(need.intensity / 10) * 100}%`,
+                            backgroundColor: need.color
                           }
                         ]}
                       />
@@ -287,12 +289,12 @@ export function EmotionDetailModal({
                         style={[
                           styles.sliderScore,
                           {
-                            left: `${(emotion.intensity / 10) * 100}%`,
+                            left: `${(need.intensity / 10) * 100}%`,
                             color: isDark ? '#FFFFFF' : '#000000'
                           }
                         ]}
                       >
-                        {emotion.intensity.toFixed(1)}
+                        {need.intensity.toFixed(1)}
                       </Text>
                     </View>
                   </View>
@@ -321,9 +323,9 @@ export function EmotionDetailModal({
                     paddingHorizontal: 0,
                   }
                 ]}>
-                  {emotion.frequency === 1
-                    ? "This emotion appeared once in your conversations."
-                    : `This emotion has been a recurring theme, appearing ${emotion.frequency} times.`
+                  {need.frequency === 1
+                    ? "This need appeared once in your conversations."
+                    : `This need has been a recurring theme, appearing ${need.frequency} times.`
                   }
                 </Text>
                 <Text style={[
@@ -334,16 +336,32 @@ export function EmotionDetailModal({
                     paddingHorizontal: 0,
                   }
                 ]}>
-                  {emotion.intensity > 7
-                    ? "The intensity suggests this emotion was felt quite strongly."
-                    : emotion.intensity > 4
-                      ? "The intensity indicates moderate emotional engagement."
-                      : "The intensity suggests this emotion was felt subtly."
+                  {need.intensity > 7
+                    ? "The intensity suggests this need was felt quite strongly."
+                    : need.intensity > 4
+                      ? "The intensity indicates moderate engagement with this need."
+                      : "The intensity suggests this need was felt subtly."
                   }
                 </Text>
 
-                {/* Parts and Needs Headers */}
+                {/* Emotions and Parts Headers */}
                 <View style={[styles.sideBySideContainer, { marginBottom: 6 }]}>
+                  <Text style={[
+                    styles.sectionTitle,
+                    {
+                      color: isDark ? '#FFFFFF' : '#000000',
+                      fontSize: 22.5,
+                      fontWeight: '600',
+                      marginBottom: 0,
+                      fontFamily: 'Georgia',
+                      paddingHorizontal: 0,
+                      marginTop: 10,
+                      flex: 1,
+                      textAlign: 'center',
+                    }
+                  ]}>
+                    Emotions
+                  </Text>
                   <Text style={[
                     styles.sectionTitle,
                     {
@@ -360,26 +378,42 @@ export function EmotionDetailModal({
                   ]}>
                     Parts
                   </Text>
-                  <Text style={[
-                    styles.sectionTitle,
-                    {
-                      color: isDark ? '#FFFFFF' : '#000000',
-                      fontSize: 22.5,
-                      fontWeight: '600',
-                      marginBottom: 0,
-                      fontFamily: 'Georgia',
-                      paddingHorizontal: 0,
-                      marginTop: 10,
-                      flex: 1,
-                      textAlign: 'center',
-                    }
-                  ]}>
-                    Needs
-                  </Text>
                 </View>
 
-                {/* Parts and Needs Charts */}
+                {/* Emotions and Parts Charts */}
                 <View style={styles.sideBySideContainer}>
+                  {/* Emotions Section */}
+                  <View style={[
+                    styles.halfSectionCard,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(255, 255, 255, 0.1)'
+                        : 'rgba(0, 0, 0, 0.05)',
+                      borderColor: isDark
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'rgba(0, 0, 0, 0.1)',
+                    }
+                  ]}>
+                    <View
+                      style={[styles.chartContainer, { marginTop: 5 }]}
+                      onLayout={(event) => {
+                        const { width, height } = event.nativeEvent.layout;
+                        setEmotionsChartDimensions({ width, height });
+                      }}
+                    >
+                      {shouldRenderCharts && shouldLoadDetailCharts ? (
+                        <Suspense fallback={null}>
+                          <EmotionsDetailBubbleChart
+                            data={emotionsData}
+                            width={emotionsChartDimensions.width}
+                            height={emotionsChartDimensions.height}
+                            callbacks={{ onBubblePress: handleEmotionPress }}
+                          />
+                        </Suspense>
+                      ) : null}
+                    </View>
+                  </View>
+
                   {/* Parts Section */}
                   <View style={[
                     styles.halfSectionCard,
@@ -411,38 +445,6 @@ export function EmotionDetailModal({
                       ) : null}
                     </View>
                   </View>
-
-                  {/* Needs Section */}
-                  <View style={[
-                    styles.halfSectionCard,
-                    {
-                      backgroundColor: isDark
-                        ? 'rgba(255, 255, 255, 0.1)'
-                        : 'rgba(0, 0, 0, 0.05)',
-                      borderColor: isDark
-                        ? 'rgba(255, 255, 255, 0.2)'
-                        : 'rgba(0, 0, 0, 0.1)',
-                    }
-                  ]}>
-                    <View
-                      style={[styles.chartContainer, { marginTop: 5 }]}
-                      onLayout={(event) => {
-                        const { width, height } = event.nativeEvent.layout;
-                        setNeedsChartDimensions({ width, height });
-                      }}
-                    >
-                      {shouldRenderCharts && shouldLoadDetailCharts ? (
-                        <Suspense fallback={null}>
-                          <NeedsDetailBubbleChart
-                            data={needsData}
-                            width={needsChartDimensions.width}
-                            height={needsChartDimensions.height}
-                            callbacks={{ onBubblePress: handleNeedPress }}
-                          />
-                        </Suspense>
-                      ) : null}
-                    </View>
-                  </View>
                 </View>
 
                 {/* Complexes Section */}
@@ -451,7 +453,7 @@ export function EmotionDetailModal({
                   <View style={[
                     styles.countBadge,
                     {
-                      borderColor: emotion.color,
+                      borderColor: need.color,
                       borderWidth: 2,
                       backgroundColor: 'transparent',
                       position: 'absolute',
@@ -464,7 +466,7 @@ export function EmotionDetailModal({
                       styles.countBadgeText,
                       { color: '#FFFFFF' }
                     ]}>
-                      {emotion.conversationIds.length}
+                      {need.conversationIds.length}
                     </Text>
                   </View>
 
@@ -622,7 +624,7 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
   },
-  emotionColorCircle: {
+  needColorCircle: {
     width: 16,
     height: 16,
     borderRadius: 8,
@@ -671,13 +673,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  emotionColorIndicator: {
+  needColorIndicator: {
     width: 16,
     height: 16,
     borderRadius: 8,
     marginRight: 8,
   },
-  emotionCategory: {
+  needCategory: {
     fontSize: 14,
     fontWeight: '600',
     textTransform: 'uppercase',
@@ -845,7 +847,7 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   complexCardSimple: {
-    borderRadius: 16, // Match Parts/Needs border radius
+    borderRadius: 16, // Match Emotions/Parts border radius
     height: 135,
     borderWidth: 1,
     overflow: 'hidden',

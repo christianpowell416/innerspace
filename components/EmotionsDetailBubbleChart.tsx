@@ -44,9 +44,18 @@ export function EmotionsDetailBubbleChart({
     [width, height]
   );
 
+  // Transform emotion data to match DetailBubbleChart interface (emotion -> name)
+  const transformedData = React.useMemo(() =>
+    data.map(emotion => ({
+      ...emotion,
+      name: emotion.emotion // Map emotion property to name for DetailBubbleChart
+    })),
+    [data]
+  );
+
   return (
     <DetailBubbleChart
-      data={data}
+      data={transformedData}
       config={config}
       onBubblePress={callbacks?.onBubblePress}
       loading={loading}

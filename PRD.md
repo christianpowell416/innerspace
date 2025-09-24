@@ -132,7 +132,7 @@ Users return to reflect on evolving emotional states.
 
 Update or review maps, parts, or journals.
 
-4c. Retention Loop
+4c. Retention Complex
 
 Increased depth and accuracy in maps leads to more trust and continued use.
 

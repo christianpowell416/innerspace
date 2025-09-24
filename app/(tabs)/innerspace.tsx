@@ -39,6 +39,8 @@ import {
 import { generateTestEmotionData, createTestEmotionStats } from '@/lib/utils/testData';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { EmotionDetailModal } from '@/components/EmotionDetailModal';
+import { PartsDetailModal } from '@/components/PartsDetailModal';
+import { NeedsDetailModal } from '@/components/NeedsDetailModal';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -56,6 +58,10 @@ export default function InnerspaceScreen() {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [selectedEmotion, setSelectedEmotion] = useState<EmotionBubbleData | null>(null);
   const [showEmotionDetail, setShowEmotionDetail] = useState(false);
+  const [selectedPart, setSelectedPart] = useState<PartBubbleData | null>(null);
+  const [showPartsDetail, setShowPartsDetail] = useState(false);
+  const [selectedNeed, setSelectedNeed] = useState<NeedBubbleData | null>(null);
+  const [showNeedsDetail, setShowNeedsDetail] = useState(false);
 
   // Animation values for tab indicator
   const tabIndicatorPosition = useRef(new Animated.Value(0)).current;
@@ -266,16 +272,16 @@ export default function InnerspaceScreen() {
   // Parts bubble chart callbacks
   const partsCallbacks: PartsBubbleChartCallbacks = {
     onBubblePress: (part) => {
-      console.log('Parts bubble pressed:', part.name);
-      // TODO: Implement parts detail modal
+      setSelectedPart(part);
+      setShowPartsDetail(true);
     },
   };
 
   // Needs bubble chart callbacks
   const needsCallbacks: NeedsBubbleChartCallbacks = {
     onBubblePress: (need) => {
-      console.log('Needs bubble pressed:', need.name);
-      // TODO: Implement needs detail modal
+      setSelectedNeed(need);
+      setShowNeedsDetail(true);
     },
   };
 
@@ -517,6 +523,26 @@ export default function InnerspaceScreen() {
           setSelectedEmotion(null);
         }}
         emotion={selectedEmotion}
+      />
+
+      {/* Parts Detail Modal */}
+      <PartsDetailModal
+        visible={showPartsDetail}
+        onClose={() => {
+          setShowPartsDetail(false);
+          setSelectedPart(null);
+        }}
+        part={selectedPart}
+      />
+
+      {/* Needs Detail Modal */}
+      <NeedsDetailModal
+        visible={showNeedsDetail}
+        onClose={() => {
+          setShowNeedsDetail(false);
+          setSelectedNeed(null);
+        }}
+        need={selectedNeed}
       />
     </GradientBackground>
   );

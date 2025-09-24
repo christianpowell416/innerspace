@@ -39,7 +39,7 @@ export default function SettingsScreen() {
             <IconSymbol size={24} name="chevron.left" color={colorScheme === 'dark' ? '#fff' : '#000'} />
           </TouchableOpacity>
           <View style={styles.titleContainer}>
-            <ThemedText type="title" style={styles.title}>Loops Settings</ThemedText>
+            <ThemedText type="title" style={styles.title}>Complexes Settings</ThemedText>
           </View>
           <View style={styles.rightSpacer} />
         </ThemedView>
