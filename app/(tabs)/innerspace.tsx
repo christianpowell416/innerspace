@@ -8,7 +8,7 @@ import {
   Dimensions,
   Alert
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
 import { GradientBackground } from '@/components/ui/GradientBackground';
@@ -38,9 +38,7 @@ import {
 } from '@/lib/types/partsNeedsChart';
 import { generateTestEmotionData, createTestEmotionStats } from '@/lib/utils/testData';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
-import { EmotionDetailModal } from '@/components/EmotionDetailModal';
-import { PartsDetailModal } from '@/components/PartsDetailModal';
-import { NeedsDetailModal } from '@/components/NeedsDetailModal';
+import { router } from 'expo-router';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -53,15 +51,10 @@ const USE_TEST_DATA = __DEV__ && true; // Set to true for testing
 export default function InnerspaceScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<TabType>('emotions');
   const [sortBy, setSortBy] = useState<SortType>('frequency');
   const [showSortMenu, setShowSortMenu] = useState(false);
-  const [selectedEmotion, setSelectedEmotion] = useState<EmotionBubbleData | null>(null);
-  const [showEmotionDetail, setShowEmotionDetail] = useState(false);
-  const [selectedPart, setSelectedPart] = useState<PartBubbleData | null>(null);
-  const [showPartsDetail, setShowPartsDetail] = useState(false);
-  const [selectedNeed, setSelectedNeed] = useState<NeedBubbleData | null>(null);
-  const [showNeedsDetail, setShowNeedsDetail] = useState(false);
 
   // Animation values for tab indicator
   const tabIndicatorPosition = useRef(new Animated.Value(0)).current;
@@ -72,7 +65,7 @@ export default function InnerspaceScreen() {
   const [needsBubbles, setNeedsBubbles] = useState<NeedBubbleData[]>([]);
   const { height: screenHeight } = Dimensions.get('window');
   const availableHeight = screenHeight - 354; // Account for header, stats, tab bar, and padding
-  const [bubbleConfig, setBubbleConfig] = useState<EmotionsFullBubbleChartConfig>(
+  const [bubbleConfig, setBubbleConfig] = useState<BubbleChartConfig>(
     getDefaultBubbleConfig(screenWidth, availableHeight)
   );
   const [emotionsLoading, setEmotionsLoading] = useState(true);
@@ -260,28 +253,52 @@ export default function InnerspaceScreen() {
   // Bubble chart callbacks
   const bubbleCallbacks: BubbleChartCallbacks = {
     onBubblePress: (bubble) => {
-      setSelectedEmotion(bubble);
-      setShowEmotionDetail(true);
+      try {
+        router.push({
+          pathname: '/emotion-detail',
+          params: { data: JSON.stringify(bubble) }
+        });
+      } catch (error) {
+        console.error('Error navigating to emotion detail:', error);
+      }
     },
     onBubbleLongPress: (bubble) => {
-      setSelectedEmotion(bubble);
-      setShowEmotionDetail(true);
+      try {
+        router.push({
+          pathname: '/emotion-detail',
+          params: { data: JSON.stringify(bubble) }
+        });
+      } catch (error) {
+        console.error('Error navigating to emotion detail:', error);
+      }
     },
   };
 
   // Parts bubble chart callbacks
   const partsCallbacks: PartsBubbleChartCallbacks = {
     onBubblePress: (part) => {
-      setSelectedPart(part);
-      setShowPartsDetail(true);
+      try {
+        router.push({
+          pathname: '/parts-detail',
+          params: { data: JSON.stringify(part) }
+        });
+      } catch (error) {
+        console.error('Error navigating to parts detail:', error);
+      }
     },
   };
 
   // Needs bubble chart callbacks
   const needsCallbacks: NeedsBubbleChartCallbacks = {
     onBubblePress: (need) => {
-      setSelectedNeed(need);
-      setShowNeedsDetail(true);
+      try {
+        router.push({
+          pathname: '/needs-detail',
+          params: { data: JSON.stringify(need) }
+        });
+      } catch (error) {
+        console.error('Error navigating to needs detail:', error);
+      }
     },
   };
 
@@ -427,7 +444,7 @@ export default function InnerspaceScreen() {
 
   return (
     <GradientBackground>
-      <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.safeArea, { paddingTop: insets.top }]}>
         <View style={styles.container}>
           {/* Header */}
           <View style={styles.headerContainer}>
@@ -513,37 +530,8 @@ export default function InnerspaceScreen() {
             {activeTab === 'needs' && renderNeedsContent()}
           </View>
         </View>
-      </SafeAreaView>
+      </View>
 
-      {/* Emotion Detail Modal */}
-      <EmotionDetailModal
-        visible={showEmotionDetail}
-        onClose={() => {
-          setShowEmotionDetail(false);
-          setSelectedEmotion(null);
-        }}
-        emotion={selectedEmotion}
-      />
-
-      {/* Parts Detail Modal */}
-      <PartsDetailModal
-        visible={showPartsDetail}
-        onClose={() => {
-          setShowPartsDetail(false);
-          setSelectedPart(null);
-        }}
-        part={selectedPart}
-      />
-
-      {/* Needs Detail Modal */}
-      <NeedsDetailModal
-        visible={showNeedsDetail}
-        onClose={() => {
-          setShowNeedsDetail(false);
-          setSelectedNeed(null);
-        }}
-        need={selectedNeed}
-      />
     </GradientBackground>
   );
 }

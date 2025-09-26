@@ -50,7 +50,18 @@
       "Bash(tail:*)",
       "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\SvgMaskedContainer.tsx\")",
       "Bash(powershell.exe:*)",
-      "Bash(npm run lint:*)"
+      "Bash(npm run lint:*)",
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\ConversationDetailModal.tsx\")",
+      "Bash(git restore:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(cat:*)",
+      "Bash(netstat:*)",
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\EmotionDetailModal.tsx\")",
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\PartsDetailModal.tsx\")",
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\NeedsDetailModal.tsx\")",
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\VoiceConversationModal.tsx\")",
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\ConversationHistoryModal.tsx\")"
     ],
     "deny": []
   }

@@ -5,7 +5,6 @@ import {
   Pressable,
   StyleSheet,
   ScrollView,
-  Modal,
   KeyboardAvoidingView,
   Platform,
   Animated,
@@ -13,9 +12,13 @@ import {
   PanResponder,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { router, useLocalSearchParams } from 'expo-router';
+import { GradientBackground } from '@/components/ui/GradientBackground';
 import { ConversationData } from '@/lib/services/conversationService';
+import { IconSymbol } from '@/components/ui/IconSymbol';
 import { generateTestEmotionData } from '@/lib/utils/testData';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
@@ -26,83 +29,32 @@ const PartsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/Part
 const NeedsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/NeedsHoneycombMiniBubbleChart'));
 const EmotionsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/EmotionsHoneycombMiniBubbleChart'));
 
-interface ConversationHistoryModalProps {
-  visible: boolean;
-  onClose: () => void;
-  conversationData: ConversationData | null;
-}
-
-export function ConversationHistoryModal({
-  visible,
-  onClose,
-  conversationData
-}: ConversationHistoryModalProps) {
+export default function ConversationHistoryScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const { data } = useLocalSearchParams();
 
-  const modalTranslateY = useRef(new Animated.Value(Dimensions.get('window').height)).current;
+  // Parse conversation data from URL parameter
+  const conversationData: ConversationData | null = React.useMemo(() => {
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch (error) {
+        console.error('Error parsing conversation data:', error);
+        return null;
+      }
+    }
+    return null;
+  }, [data]);
+
   const [showSquareCards, setShowSquareCards] = useState(true);
+  const [isConversationMaximized, setIsConversationMaximized] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Create pan responder for swipe-down gesture (header)
-  const headerPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to downward swipes
-        return gestureState.dy > 0;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // Move modal with finger
-        if (gestureState.dy > 0) {
-          modalTranslateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // If swiped down more than 100px or with velocity, close modal
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          handleClose();
-        } else {
-          // Snap back to top
-          Animated.timing(modalTranslateY, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
-  // Create pan responder for mini charts area
-  const chartsPanResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only respond to downward swipes
-        return gestureState.dy > 0;
-      },
-      onPanResponderMove: (_, gestureState) => {
-        // Move modal with finger
-        if (gestureState.dy > 0) {
-          modalTranslateY.setValue(gestureState.dy);
-        }
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        // If swiped down more than 100px or with velocity, close modal
-        if (gestureState.dy > 100 || gestureState.vy > 0.5) {
-          handleClose();
-        } else {
-          // Snap back to top
-          Animated.timing(modalTranslateY, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
+  const handleClose = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.back();
+  };
 
   // Chart dimensions state
   const [emotionsChartDimensions] = useState({ width: 110, height: 110 });
@@ -114,45 +66,32 @@ export function ConversationHistoryModal({
   const [detectedPartsData] = useState<PartBubbleData[]>(generateTestPartsData(3));
   const [detectedNeedsData] = useState<NeedBubbleData[]>(generateTestNeedsData(3));
 
-  // Modal animation
-  useEffect(() => {
-    if (visible) {
-      modalTranslateY.setValue(Dimensions.get('window').height);
-      Animated.timing(modalTranslateY, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [visible, conversationData]);
-
-  const handleClose = () => {
-    Animated.timing(modalTranslateY, {
-      toValue: Dimensions.get('window').height,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      onClose();
-    });
-  };
-
-  if (!conversationData) return null;
+  if (!conversationData) {
+    return (
+      <GradientBackground>
+        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+          <BlurView
+            intensity={80}
+            tint={isDark ? 'dark' : 'light'}
+            style={styles.blurContainer}
+          >
+            <View style={styles.errorContainer}>
+              <Text style={[styles.errorText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                Error loading conversation data
+              </Text>
+              <Pressable onPress={handleClose} style={styles.errorButton}>
+                <Text style={styles.errorButtonText}>Go Back</Text>
+              </Pressable>
+            </View>
+          </BlurView>
+        </SafeAreaView>
+      </GradientBackground>
+    );
+  }
 
   return (
-    <Modal
-      visible={visible}
-      transparent={true}
-      animationType="none"
-      onRequestClose={handleClose}
-    >
-      <Animated.View
-        style={[
-          styles.modalContainer,
-          {
-            transform: [{ translateY: modalTranslateY }],
-          }
-        ]}
-      >
+    <GradientBackground>
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <BlurView
           intensity={80}
           tint={isDark ? 'dark' : 'light'}
@@ -163,11 +102,16 @@ export function ConversationHistoryModal({
             style={{ flex: 1 }}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 110 : 0}
           >
-            {/* Fixed Header - draggable */}
-            <View
-              style={styles.modalHeader}
-              {...headerPanResponder.panHandlers}
-            >
+            {/* Handle Bar */}
+            <View style={styles.handleBarContainer}>
+              <View style={[
+                styles.handleBar,
+                { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)' }
+              ]} />
+            </View>
+
+            {/* Fixed Header */}
+            <View style={styles.modalHeader}>
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -184,10 +128,8 @@ export function ConversationHistoryModal({
             </View>
 
             {/* Square Cards Section */}
-              <View
-                style={styles.collapsibleSection}
-                {...chartsPanResponder.panHandlers}
-              >
+            {!isConversationMaximized && (
+              <View style={styles.collapsibleSection}>
                 <View style={styles.squareCardsContainer}>
                   <View style={styles.squareCardsInner}>
                     {/* Emotions Card */}
@@ -333,27 +275,50 @@ export function ConversationHistoryModal({
                   </View>
                 </View>
               </View>
+            )}
 
             {/* Conversation Summary */}
-            <View
-              style={styles.summaryContainer}
-              {...chartsPanResponder.panHandlers}
-            >
-              <Text style={[
-                styles.summaryText,
-                { color: isDark ? '#DDDDDD' : '#444444' }
-              ]}>
-                {conversationData.description}
-              </Text>
-            </View>
+            {!isConversationMaximized && (
+              <View style={styles.summaryContainer}>
+                <Text style={[
+                  styles.summaryText,
+                  { color: isDark ? '#DDDDDD' : '#444444' }
+                ]}>
+                  {conversationData.description}
+                </Text>
+              </View>
+            )}
 
             {/* Content Container */}
             <View style={styles.modalScrollView}>
               {/* Active Conversation Container */}
               <View style={[
                 styles.activeConversationContainer,
-                { borderColor: isDark ? '#555555' : '#C7C7CC' }
+                { borderColor: isDark ? '#555555' : '#C7C7CC' },
+                isConversationMaximized && styles.maximizedContainer
               ]}>
+                {/* Floating Maximize Button */}
+                <Pressable
+                  onPress={() => setIsConversationMaximized(!isConversationMaximized)}
+                  style={[
+                    styles.floatingMaximizeButton,
+                    {
+                      backgroundColor: isDark
+                        ? 'rgba(255, 255, 255, 0.1)'
+                        : 'rgba(0, 0, 0, 0.05)',
+                      borderColor: isDark
+                        ? 'rgba(255, 255, 255, 0.2)'
+                        : 'rgba(0, 0, 0, 0.1)',
+                    }
+                  ]}
+                >
+                  <IconSymbol
+                    name={isConversationMaximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"}
+                    size={18}
+                    color={isDark ? '#AAAAAA' : '#666666'}
+                  />
+                </Pressable>
+
                 {/* Conversation */}
                 <ScrollView
                   ref={scrollViewRef}
@@ -388,31 +353,36 @@ export function ConversationHistoryModal({
             </View>
           </KeyboardAvoidingView>
         </BlurView>
-      </Animated.View>
-    </Modal>
+      </SafeAreaView>
+    </GradientBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  modalContainer: {
+  safeArea: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    paddingTop: 50,
-    zIndex: 99999,
   },
   blurContainer: {
     flex: 1,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
+  },
+  handleBarContainer: {
+    alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  handleBar: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 20,
-    marginBottom: 10,
+    paddingBottom: 15,
+    marginBottom: 5,
   },
   modalTitle: {
     fontSize: 35,
@@ -420,32 +390,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
     fontFamily: 'Georgia',
-  },
-  headerControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  closeButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#FF5722',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: 'bold',
-    fontFamily: 'Georgia',
-  },
-  minimizeButton: {
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  collapsibleArrow: {
-    fontSize: 12,
-    fontWeight: 'bold',
   },
   collapsibleSection: {
     paddingHorizontal: 20,
@@ -517,6 +461,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
+  maximizedContainer: {
+    position: 'absolute',
+    top: 0, // No gap above expanded container
+    left: 0,
+    right: 0,
+    bottom: 0,
+    margin: 0,
+    marginHorizontal: 20,
+    zIndex: 1000,
+  },
+  floatingMaximizeButton: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1001,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
   conversationContainer: {
     flex: 1,
     paddingHorizontal: 20,
@@ -536,6 +510,29 @@ const styles = StyleSheet.create({
     fontSize: 19,
     lineHeight: 24,
     fontWeight: '400',
+    fontFamily: 'Georgia',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 18,
+    marginBottom: 20,
+    fontFamily: 'Georgia',
+  },
+  errorButton: {
+    backgroundColor: '#007AFF',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  errorButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
     fontFamily: 'Georgia',
   },
 });

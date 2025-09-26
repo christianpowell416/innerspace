@@ -1,6 +1,6 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { StyleSheet, View, Pressable, ScrollView, Dimensions } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
 import { ThemedText } from '@/components/ThemedText';
@@ -16,6 +16,7 @@ const LearningCarousel = React.lazy(() => import('@/components/LearningCarousel'
 export default function HomeScreen() {
   const { user, profile } = useAuth();
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
 
   // Progressive loading states
   const [shouldLoadCarousel, setShouldLoadCarousel] = useState(false);
@@ -71,29 +72,31 @@ export default function HomeScreen() {
 
   return (
     <GradientBackground style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ScrollView 
-          style={styles.mainScrollView}
-          showsVerticalScrollIndicator={false}
-        >
-          <ThemedView style={styles.welcomeContainer} transparent>
-            <Pressable 
-              style={styles.profileButton}
-              onPress={() => router.push('/profile')}
-            >
-              <IconSymbol size={36} name="person.circle" color={colorScheme === 'dark' ? '#fff' : '#000'} />
-            </Pressable>
+      <View style={[styles.safeArea, { paddingTop: insets.top }]}>
+        {/* Header */}
+        <View style={styles.headerContainer}>
           <ThemedText style={styles.dateText}>
-            {new Date().toLocaleDateString('en-US', { 
-              year: 'numeric', 
-              month: 'long', 
-              day: 'numeric' 
+            {new Date().toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric'
             })}
           </ThemedText>
           <ThemedText type="title" style={styles.welcomeText}>
             Welcome,{'\n'}{profile?.first_name || user?.email?.split('@')[0] || 'Guest'}
           </ThemedText>
-        </ThemedView>
+          <Pressable
+            style={styles.profileButton}
+            onPress={() => router.push('/profile')}
+          >
+            <IconSymbol size={36} name="person.circle" color={colorScheme === 'dark' ? '#fff' : '#000'} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          style={styles.mainScrollView}
+          showsVerticalScrollIndicator={false}
+        >
         
         <ThemedText style={styles.inflectionTitle}>
           Inflection of the day:
@@ -140,9 +143,9 @@ export default function HomeScreen() {
           ) : (
             null
           )}
-          
+
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </GradientBackground>
   );
 }
@@ -150,7 +153,6 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    paddingTop: 0, // Let SafeAreaView handle the status bar spacing
   },
   container: {
     flex: 1,
@@ -161,7 +163,7 @@ const styles = StyleSheet.create({
   profileButton: {
     position: 'absolute',
     top: 15,
-    right: 0,
+    right: 20,
     padding: 8,
     borderRadius: 8,
     width: 60,
@@ -169,9 +171,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  welcomeContainer: {
+  headerContainer: {
     alignItems: 'flex-start',
-    paddingTop: -5, // Moved up 25px from original 20px
+    paddingTop: -5,
+    paddingHorizontal: 20,
+    paddingBottom: 15,
+    zIndex: 100,
+    position: 'relative',
+    backgroundColor: 'rgba(0,0,0,0.01)',
   },
   welcomeText: {
     fontSize: 42,
@@ -179,7 +186,6 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     fontFamily: 'Georgia',
     lineHeight: 50,
-    paddingHorizontal: 20,
   },
   dateText: {
     fontSize: 24,
@@ -187,7 +193,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Georgia',
     marginTop: 8,
     marginBottom: 6,
-    paddingHorizontal: 20,
   },
   inflectionTitle: {
     fontSize: 24,

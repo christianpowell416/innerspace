@@ -257,7 +257,93 @@ export const createVoiceSession = (
   let continuousRecordingInterval: NodeJS.Timeout | null = null;
   let isJsonResponse = false;
   let hasStartedPlayingResponse = false;
+
+  // Word-by-word streaming variables
+  let wordBuffer: string[] = [];
+  let currentWordIndex = 0;
+  let wordStreamingTimer: NodeJS.Timeout | null = null;
+  let streamingResponseId: string | null = null;
+  let displayedText = '';
   let isUserStoppingRecording = false; // Flag to prevent monitoring from interfering with user stops
+
+  // Helper function to clear word streaming
+  const clearWordStreaming = () => {
+    if (wordStreamingTimer) {
+      clearTimeout(wordStreamingTimer);
+      wordStreamingTimer = null;
+    }
+    wordBuffer = [];
+    currentWordIndex = 0;
+    displayedText = '';
+    streamingResponseId = null;
+  };
+
+  // Helper function to add text to word buffer and start streaming
+  const addToWordBuffer = (text: string, responseId: string) => {
+    console.log('💬 [WORD BUFFER] Adding text:', text);
+
+    // Check if this looks like JSON response format and skip JSON structure
+    if (text.includes('"role":') || text.includes('"content":') || text.includes('"assistant"') ||
+        text.includes('"response":') || text === '{"' || text === '"' || text === ':' ||
+        text === ':"' || text === '",' || text === '}' || text.match(/^[{"}:,\s]*$/)) {
+      console.log('💬 [WORD BUFFER] Detected JSON structure, skipping...');
+      // Don't add JSON structure words to buffer - wait for content extraction
+      return;
+    }
+
+    // Split text into words, preserving spaces and punctuation
+    const words = text.split(/(\s+)/).filter(word => word.length > 0);
+
+    // Add new words to buffer
+    wordBuffer.push(...words);
+
+    // Set or update the streaming response ID
+    streamingResponseId = responseId;
+
+    console.log('💬 [WORD BUFFER] Total words in buffer:', wordBuffer.length);
+
+    // Start word streaming if not already running
+    if (!wordStreamingTimer) {
+      streamNextWord();
+    }
+  };
+
+  // Helper function to stream next word from buffer
+  const streamNextWord = () => {
+    if (currentWordIndex < wordBuffer.length && streamingResponseId && currentResponseId) {
+      const word = wordBuffer[currentWordIndex];
+      displayedText += word;
+      currentWordIndex++;
+
+      console.log('💬 [WORD STREAM] Word:', word, 'Progress:', currentWordIndex, '/', wordBuffer.length);
+
+      // Send updated text to UI - only if we have a valid response ID
+      if (currentResponseId) {
+        callbacks.onResponseStreaming?.(displayedText, false);
+      }
+
+      // Schedule next word (adjust delay for desired speed)
+      const delay = word.trim().length > 0 ? 80 : 20; // Longer delay for words, shorter for spaces
+      wordStreamingTimer = setTimeout(streamNextWord, delay);
+    } else {
+      // Streaming complete or interrupted
+      if (currentWordIndex >= wordBuffer.length) {
+        console.log('💬 [WORD STREAM] Complete - all words streamed');
+      } else {
+        console.warn('💬 [WORD STREAM] Interrupted - streamingResponseId:', streamingResponseId, 'currentResponseId:', currentResponseId, 'progress:', currentWordIndex, '/', wordBuffer.length);
+      }
+      console.log('💬 [WORD STREAM] Complete. Final text:', displayedText);
+      wordStreamingTimer = null;
+
+      if (streamingResponseId && currentResponseId) {
+        callbacks.onResponseStreaming?.(displayedText, true);
+
+        // Now that word streaming is complete, call onResponseComplete
+        console.log('💬 [WORD STREAM] Calling onResponseComplete after streaming finished');
+        callbacks.onResponseComplete?.();
+      }
+    }
+  };
   let currentTranscript = ''; // Track transcript as it builds
   let sentenceChunkBoundaries: number[] = []; // Track which chunks end sentences
   let audioStreamingInterval: NodeJS.Timeout | null = null; // For streaming audio chunks
@@ -389,6 +475,9 @@ export const createVoiceSession = (
       }
 
       // No intervals to stop in event-driven approach
+
+      // Clear word streaming
+      clearWordStreaming();
 
       isConnected = false;
       isListening = false;
@@ -1206,11 +1295,14 @@ export const createVoiceSession = (
           
         case 'response.created':
           // Reset for new response
+          clearWordStreaming(); // Clear any previous word streaming
           currentTranscript = '';
           sentenceChunkBoundaries = [];
           streamingAudioBuffer = []; // Reset audio buffer for new response
           currentResponseId = message.response?.id || Date.now().toString();
           lastProcessedResponse = null;
+
+          console.log('💬 [RESPONSE CREATED] ResponseID:', currentResponseId, 'LastInputWasText:', lastInputWasText);
 
           // Notify UI of new response start
           callbacks.onResponseStart?.(currentResponseId);
@@ -1228,20 +1320,63 @@ export const createVoiceSession = (
           break;
           
         case 'response.text.delta':
+          console.log('💬 [TEXT DELTA] Received:', message.delta, 'Length:', message.delta?.length, 'ResponseID:', currentResponseId);
           if (lastInputWasText && message.delta && currentResponseId) {
             currentTranscript += message.delta;
-            // Skip streaming callback - only show final response
+            console.log('💬 [TEXT DELTA] Accumulated length:', currentTranscript.length, 'Content preview:', currentTranscript.substring(0, 50) + '...');
+            // Use word-by-word streaming instead of direct callback
+            addToWordBuffer(message.delta, currentResponseId);
           }
           break;
 
         case 'response.text.done':
           if (lastInputWasText && message.text) {
             console.log(`💬 [TEXT] AI Response: "${message.text.substring(0, 60)}..."`);
-            currentTranscript = message.text;
+
+            // Parse the JSON response to extract content
+            let finalText = message.text;
+            try {
+              const parsed = JSON.parse(message.text);
+              // Try both "content" and "response" fields for different API formats
+              if (parsed.role === 'assistant' && parsed.content) {
+                finalText = parsed.content;
+                console.log('💬 [TEXT DONE] Extracted content field:', finalText);
+              } else if (parsed.response) {
+                finalText = parsed.response;
+                console.log('💬 [TEXT DONE] Extracted response field:', finalText);
+              }
+
+              if (finalText !== message.text) {
+                // Clear existing word buffer but preserve streamingResponseId
+                if (wordStreamingTimer) {
+                  clearTimeout(wordStreamingTimer);
+                  wordStreamingTimer = null;
+                }
+                currentTranscript = finalText;
+
+                // Add the clean content to word buffer for streaming
+                const words = finalText.split(/(\s+)/).filter(word => word.length > 0);
+                wordBuffer = words;
+                currentWordIndex = 0;
+                displayedText = '';
+                streamingResponseId = currentResponseId;
+
+                console.log('💬 [TEXT DONE] Starting word streaming with', words.length, 'words');
+
+                // Start streaming the clean content
+                if (!wordStreamingTimer && currentResponseId) {
+                  streamNextWord();
+                }
+              }
+            } catch (e) {
+              // Not JSON, use as is
+              console.log('💬 [TEXT DONE] Not JSON format, using raw text');
+              finalText = message.text;
+            }
 
             // Only call onResponse if this text hasn't been processed yet
             if (currentTranscript !== lastProcessedResponse) {
-              callbacks.onResponse?.(currentTranscript);
+              // Don't call onResponse here as we're handling streaming above
               lastProcessedResponse = currentTranscript;
             }
           }
@@ -1251,9 +1386,12 @@ export const createVoiceSession = (
           break;
           
         case 'response.audio_transcript.delta':
+          console.log('💬 [AUDIO DELTA] Received:', message.delta, 'Length:', message.delta?.length, 'ResponseID:', currentResponseId);
           if (message.delta && currentResponseId) {
             currentTranscript += message.delta;
-            // Skip streaming callback - only show final response
+            console.log('💬 [AUDIO DELTA] Accumulated length:', currentTranscript.length, 'Content preview:', currentTranscript.substring(0, 50) + '...');
+            // Use word-by-word streaming instead of direct callback
+            addToWordBuffer(message.delta, currentResponseId);
           }
           break;
 
@@ -1387,13 +1525,19 @@ export const createVoiceSession = (
         case 'response.done':
           // console.log('🔍 DEBUG: Response completed, ID:', message.response?.id);
           hasActiveResponse = false;
-          
-          // If no audio is playing or queued, call onResponseComplete immediately
-          if (!isPlaying && streamingAudioBuffer.length === 0) {
-            // console.log('✅ No audio to play - calling onResponseComplete immediately');
+
+          // Check if word streaming is active
+          const isWordStreamingActive = wordStreamingTimer !== null || (wordBuffer.length > 0 && currentWordIndex < wordBuffer.length);
+
+          // If no audio is playing AND no word streaming is active, call onResponseComplete immediately
+          if (!isPlaying && streamingAudioBuffer.length === 0 && !isWordStreamingActive) {
+            console.log('✅ No audio or word streaming - calling onResponseComplete immediately');
             callbacks.onResponseComplete?.();
+          } else if (isWordStreamingActive) {
+            console.log('💬 Word streaming is active - waiting for streaming to complete before onResponseComplete');
+            // Word streaming will call onResponseComplete when it finishes
           } else {
-            // console.log('🔊 Audio is playing or queued - waiting for audio completion');
+            console.log('🔊 Audio is playing or queued - waiting for audio completion');
             // Add a safety timeout to reset button state if audio callback fails
             setTimeout(() => {
               if (!isPlaying && streamingAudioBuffer.length === 0) {

@@ -15,15 +15,15 @@ import { useColorScheme } from '@/hooks/useColorScheme';
 function ChatTabButton(props: any) {
   const router = useRouter();
   const segments = useSegments();
-  const isOnChatTab = segments[1] === 'chat';
+  const isOnChatTab = segments[1] === 'complexes';
 
   const handlePress = () => {
     if (isOnChatTab) {
       // Already on chat tab, trigger a new chat
-      router.push('/(tabs)/chat?newChat=true');
+      router.push('/(tabs)/complexes?newChat=true');
     } else {
       // Navigate to chat tab normally
-      router.push('/(tabs)/chat');
+      router.push('/(tabs)/complexes');
     }
   };
 
@@ -108,7 +108,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="chat"
+        name="complexes"
         options={{
           title: 'Complexes',
           tabBarIcon: ({ color, focused }) => (

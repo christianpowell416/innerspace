@@ -54,6 +54,62 @@ export default function RootLayout() {
               <Stack.Screen name="auth/sign-in" options={{ headerShown: false }} />
               <Stack.Screen name="auth/sign-up" options={{ headerShown: false }} />
               <Stack.Screen name="settings" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="complex-detail"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom'
+                }}
+              />
+              <Stack.Screen
+                name="conversation"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom'
+                }}
+              />
+              <Stack.Screen
+                name="emotion-detail"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom'
+                }}
+              />
+              <Stack.Screen
+                name="parts-detail"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom'
+                }}
+              />
+              <Stack.Screen
+                name="needs-detail"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom'
+                }}
+              />
+              <Stack.Screen
+                name="conversation-history"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom'
+                }}
+              />
+              <Stack.Screen
+                name="voice-settings"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom'
+                }}
+              />
               <Stack.Screen name="+not-found" />
             </Stack>
           </AuthGuard>
