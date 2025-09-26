@@ -34,9 +34,10 @@ export default function ChatScreen() {
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [voiceModalOpenedFromDetail, setVoiceModalOpenedFromDetail] = useState(false);
-  const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
-  const searchBarOpacity = useRef(new Animated.Value(0)).current;
-  const scrollViewPaddingTop = useRef(new Animated.Value(10)).current;
+  const [searchBarPullProgress, setSearchBarPullProgress] = useState(0);
+  const searchBarTranslateY = useRef(new Animated.Value(-60));
+  const searchBarOpacity = useRef(new Animated.Value(0));
+  const scrollViewPaddingTop = useRef(new Animated.Value(10));
   const scrollViewRef = useRef<any>(null);
   const lastScrollTime = useRef(Date.now());
   const velocityDecayTimer = useRef<number | null>(null);
@@ -212,73 +213,63 @@ export default function ChatScreen() {
 
     setScrollY(currentScrollY);
 
+    // Check if we're in a bounce state (scrolled beyond content bounds)
+    const maxScrollY = Math.max(0, contentHeight - scrollViewHeight);
+    const inBounceState = currentScrollY < 0 || currentScrollY > maxScrollY;
+
+    // Only calculate velocity when not in bounce state
+    if (!inBounceState && timeDelta > 0 && timeDelta < 100) { // Ignore large time gaps
+      const scrollDelta = Math.abs(currentScrollY - lastScrollY);
+      const instantVelocity = scrollDelta / timeDelta;
+      const scaledVelocity = Math.min(instantVelocity * 50, 3); // Scale and cap velocity
+
+      // Smooth velocity with momentum - blend current with previous
+      setScrollVelocity(prevVelocity => {
+        const smoothedVelocity = prevVelocity * 0.8 + scaledVelocity * 0.2; // More smoothing
+        return smoothedVelocity;
+      });
+
+      // Clear any existing decay timer and start a new one
+      if (velocityDecayTimer.current) {
+        clearInterval(velocityDecayTimer.current);
+      }
+
+      // Start decay timer to gradually reduce velocity when scrolling stops
+      velocityDecayTimer.current = setInterval(() => {
+        setScrollVelocity(prevVelocity => {
+          const decayedVelocity = prevVelocity * 0.92; // Slower, smoother decay
+          if (decayedVelocity < 0.02) { // Lower threshold for smoother finish
+            clearInterval(velocityDecayTimer.current!);
+            velocityDecayTimer.current = null;
+            return 0;
+          }
+          return decayedVelocity;
+        });
+      }, 33) as any; // 30fps for smooth animation
+    }
+
     // Pull-to-reveal search bar with sticky behavior
     if (currentScrollY < 0 && !isSearchBarRevealed) {
       // User is pulling down from the top - reveal search bar proportionally
       const pullDistance = Math.abs(currentScrollY);
-      const revealAmount = Math.min(pullDistance, 60);
-      const translateY = -60 + revealAmount;
-      // Only start fading in when very close to the end (after 35px of 40px pull)
-      const opacity = pullDistance > 35 ? Math.min((pullDistance - 35) / 5, 1) : 0;
-
-      searchBarTranslateY.setValue(translateY);
-      searchBarOpacity.setValue(opacity);
+      setSearchBarPullProgress(Math.min(pullDistance / 40, 1));
 
       // If pulled down far enough, mark as revealed
-      if (pullDistance >= 40) {
+      if (pullDistance >= 40 && !isSearchBarRevealed) {
         setIsSearchBarRevealed(true);
+        setSearchBarPullProgress(1);
         // Double haptic feedback when search bar is revealed
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setTimeout(() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         }, 100);
-        Animated.parallel([
-          Animated.timing(searchBarTranslateY, {
-            toValue: -5,
-            duration: 200,
-            useNativeDriver: true,
-          }),
-          Animated.timing(searchBarOpacity, {
-            toValue: 1,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-          Animated.timing(scrollViewPaddingTop, {
-            toValue: 50,
-            duration: 200,
-            useNativeDriver: false, // Can't use native driver for non-transform properties
-          })
-        ]).start();
       }
     } else if (currentScrollY > 20 && isSearchBarRevealed) {
       // User has scrolled down from top while search bar is revealed - hide it
       setIsSearchBarRevealed(false);
+      setSearchBarPullProgress(0);
       // Single haptic feedback when search bar is hidden
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      // Ensure we start from the revealed position
-      searchBarTranslateY.setValue(-5);
-      searchBarOpacity.setValue(1);
-      scrollViewPaddingTop.setValue(50);
-
-      // All animations start together
-      // Fade completes quickly (200ms) while slide continues (400ms)
-      Animated.parallel([
-        Animated.timing(searchBarTranslateY, {
-          toValue: -60,
-          duration: 400, // Slide takes 400ms
-          useNativeDriver: true,
-        }),
-        Animated.timing(searchBarOpacity, {
-          toValue: 0,
-          duration: 200, // Fade completes in 200ms
-          useNativeDriver: true,
-        }),
-        Animated.timing(scrollViewPaddingTop, {
-          toValue: 10,
-          duration: 400, // Match slide duration
-          useNativeDriver: false,
-        })
-      ]).start();
     }
 
     setLastScrollY(currentScrollY);
@@ -310,11 +301,19 @@ export default function ChatScreen() {
           )}
         </View>
         
-        <Animated.View style={[
+        <View style={[
           styles.searchContainerFixed,
           {
-            transform: [{ translateY: searchBarTranslateY }],
-            opacity: searchBarOpacity,
+            transform: [{
+              translateY: isSearchBarRevealed
+                ? -5
+                : -60 + (searchBarPullProgress * 60)
+            }],
+            opacity: isSearchBarRevealed
+              ? 1
+              : searchBarPullProgress > 0.875
+                ? (searchBarPullProgress - 0.875) * 8
+                : 0,
           }
         ]}>
           <View style={styles.searchBarWrapper}>
@@ -347,19 +346,20 @@ export default function ChatScreen() {
               />
             </Pressable>
           </View>
-        </Animated.View>
+        </View>
 
-        <Animated.ScrollView 
+        <ScrollView
           ref={scrollViewRef}
           style={[styles.cardsContainer, { marginBottom: -155 }]}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingTop: scrollViewPaddingTop }
+            { paddingTop: isSearchBarRevealed ? 50 : 10 }
           ]}
           onScroll={handleScroll}
           scrollEventThrottle={16}
           bounces={true}
+          alwaysBounceVertical={true}
           onContentSizeChange={(width, height) => setContentHeight(height)}
           onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
         >
@@ -465,7 +465,7 @@ export default function ChatScreen() {
               </View>
             );
           })}
-        </Animated.ScrollView>
+        </ScrollView>
       </View>
 
 
@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   scrollContent: {
-    paddingTop: 20,
+    paddingTop: 0,
     paddingBottom: 20,
   },
   cardShadowContainer: {
