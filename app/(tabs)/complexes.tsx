@@ -121,6 +121,7 @@ export default function ChatScreen() {
 
 
   const handleConversationHistoryPress = (conversationId: string) => {
+    console.log('🔍 Conversation history pressed in complexes:', conversationId);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
       pathname: '/conversation-history',

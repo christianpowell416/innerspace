@@ -5,7 +5,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 
-import { GradientBackground } from '@/components/ui/GradientBackground';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
@@ -106,6 +105,9 @@ export default function ComplexDetailModal() {
   };
 
   const expandCard = (cardType: string) => {
+    // Add haptic feedback when expanding mini chart
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     setExpandedSquareCard(cardType);
 
     // Load the expanded chart component for this card type
@@ -162,6 +164,9 @@ export default function ComplexDetailModal() {
 
   const collapseCard = () => {
     if (!expandedSquareCard) return;
+
+    // Add haptic feedback when collapsing chart
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const cardType = expandedSquareCard;
 
@@ -261,14 +266,12 @@ export default function ComplexDetailModal() {
 
   // Handler for conversation history card presses
   const handleConversationHistoryPress = (conversationId: number) => {
-    const conversationWithMessages = getConversationById(conversationId, conversationData);
-    if (conversationWithMessages) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      router.push({
-        pathname: '/conversation-history',
-        params: { data: JSON.stringify(conversationWithMessages) }
-      });
-    }
+    console.log('🔍 Conversation history pressed:', conversationId);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push({
+      pathname: '/conversation-history',
+      params: { conversationId: conversationId.toString() }
+    });
   };
 
   // Full conversation data (same as in complexes.tsx)
@@ -320,8 +323,7 @@ export default function ComplexDetailModal() {
   }, []);
 
   return (
-    <GradientBackground>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: 'transparent' }]} edges={['top', 'left', 'right']}>
           <BlurView
             intensity={80}
             tint={isDark ? 'dark' : 'light'}
@@ -751,6 +753,7 @@ export default function ComplexDetailModal() {
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     console.log('Add new conversation pressed');
+                    router.push('/conversation?topic=general');
                   }}
                   style={[
                     styles.minimizeButton,
@@ -852,9 +855,7 @@ export default function ComplexDetailModal() {
             </ScrollView>
             </View>
           </BlurView>
-        </SafeAreaView>
-
-    </GradientBackground>
+    </SafeAreaView>
   );
 }
 
@@ -880,7 +881,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 8,
     paddingBottom: 15,
     marginBottom: 5,
   },
