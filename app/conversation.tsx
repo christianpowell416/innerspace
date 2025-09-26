@@ -52,6 +52,12 @@ import {
   resetDetectionTracking,
   setDetectionConversationId
 } from '@/lib/utils/detectionDataTransform';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  createRealtimeConversationSync,
+  RealtimeSync,
+  SessionState
+} from '@/lib/services/realtimeConversationSync';
 import * as DocumentPicker from 'expo-document-picker';
 
 import { PartsHoneycombMiniBubbleChart } from '@/components/PartsHoneycombMiniBubbleChart';
@@ -64,8 +70,8 @@ export default function ConversationScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
 
-  console.log('🚀 ConversationScreen: Component mounted with topic:', selectedTopic);
 
   // Core state variables
   const [isConnected, setIsConnected] = useState(false);
@@ -132,9 +138,53 @@ export default function ConversationScreen() {
   const currentUserInputSessionRef = useRef<string | null>(null);
   const userMessageAddedForSessionRef = useRef<string | null>(null);
 
+  // Real-time sync state
+  const [realtimeSync, setRealtimeSync] = useState<RealtimeSync | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const realtimeSyncRef = useRef<RealtimeSync | null>(null);
+
   // Helper functions for logging
   const setIsListeningWithLogging = (listening: boolean) => {
     setIsListening(listening);
+  };
+
+  // Helper function to sync conversation with real-time service
+  const syncConversationToRealtimeService = async (conversationMessages: typeof conversation) => {
+    if (!realtimeSyncRef.current || !user) return;
+
+    try {
+      // Filter and transform messages to ConversationMessage format
+      const validMessages = conversationMessages
+        .filter(msg => msg.text && msg.text.trim().length > 0 && !msg.isRecording && !msg.isProcessing)
+        .map(msg => ({
+          id: msg.id,
+          type: msg.type,
+          text: msg.text,
+          timestamp: msg.timestamp,
+          sessionId: msg.sessionId || null,
+        }));
+
+      await realtimeSyncRef.current.updateMessages(validMessages);
+      setLastSyncTime(new Date());
+    } catch (error) {
+      console.error('❌ Failed to sync conversation:', error);
+    }
+  };
+
+  // Helper function to sync detected data with real-time service
+  const syncDetectedDataToRealtimeService = async () => {
+    if (!realtimeSyncRef.current || !user) return;
+
+    try {
+      await realtimeSyncRef.current.updateDetectedData({
+        emotions: detectedItems.emotions,
+        parts: detectedItems.parts,
+        needs: detectedItems.needs,
+      });
+    } catch (error) {
+      console.error('❌ Failed to sync detected data:', error);
+    }
   };
 
   // Robust check for when AI responses should display immediately
@@ -231,15 +281,12 @@ export default function ConversationScreen() {
 
   // Load voice settings and initialize
   const loadVoiceSettingAndInitialize = async () => {
-    console.log('🔧 ConversationScreen: Loading voice settings and initializing...');
     try {
       const voice = await getSelectedVoice();
       setSelectedVoiceState(voice);
-      console.log('🔧 ConversationScreen: Voice setting loaded:', voice);
 
       // Add small delay to ensure any previous session cleanup is complete
       setTimeout(() => {
-        console.log('🔧 ConversationScreen: Initializing session...');
         initializeSession();
       }, 500);
     } catch (error) {
@@ -259,15 +306,11 @@ export default function ConversationScreen() {
 
   // Initialize voice session
   const initializeSession = async () => {
-    console.log('⚡ ConversationScreen: Starting session initialization...');
     try {
       setIsLoading(true);
-      console.log('⚡ ConversationScreen: Set loading to true');
 
       // Generate instructions from the centralized prompt file with null template
-      console.log('⚡ ConversationScreen: Generating voice instructions...');
       const sessionInstructions = await generateVoiceInstructions(null);
-      console.log('⚡ ConversationScreen: Voice instructions generated');
 
       const session = createVoiceSession(
         {
@@ -278,7 +321,6 @@ export default function ConversationScreen() {
         },
         {
           onConnected: () => {
-            console.log('✅ ConversationScreen: Session connected successfully!');
             setIsConnected(true);
             setIsLoading(false);
 
@@ -388,7 +430,7 @@ export default function ConversationScreen() {
           },
           onTranscript: (transcriptText, isFinal) => {
             if (isFinal) {
-              console.log('👤 USER:', transcriptText);
+              console.log('👤 User:', transcriptText);
 
               // Check if the transcript is empty or just whitespace
               if (!transcriptText || transcriptText.trim().length === 0) {
@@ -434,6 +476,17 @@ export default function ConversationScreen() {
               // Analyze user voice message for emotions, parts, and needs
               emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
                 setDetectedItems(detectedLists);
+
+                // Sync detected data to real-time service
+                setTimeout(() => {
+                  if (realtimeSyncRef.current && user) {
+                    realtimeSyncRef.current.updateDetectedData({
+                      emotions: detectedLists.emotions,
+                      parts: detectedLists.parts,
+                      needs: detectedLists.needs,
+                    }).catch(error => console.error('❌ Failed to sync detected data:', error));
+                  }
+                }, 100);
 
                 // Transform detected items to bubble chart data
                 const conversationId = Date.now().toString() || undefined;
@@ -503,18 +556,26 @@ export default function ConversationScreen() {
                     useNativeDriver: true,
                   }).start();
 
+                  // Sync conversation after state update
+                  setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
+
                   return updatedConversation;
                 } else {
                   // Fallback: add as new message if recording indicator not found
                   console.warn('📝 [TRANSCRIPT] Recording indicator not found, adding as new message');
                   const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-                  return [...prev, {
+                  const updatedConversation = [...prev, {
                     type: 'user',
                     text: transcriptText,
                     id: messageId,
                     sessionId: currentSession || currentUserInputSessionRef.current,
                     timestamp: Date.now()
                   }];
+
+                  // Sync conversation after state update
+                  setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
+
+                  return updatedConversation;
                 }
               });
 
@@ -541,10 +602,28 @@ export default function ConversationScreen() {
             isStreamingRef.current = true;
             currentResponseIdRef.current = responseId;
 
-            // Create AI thinking indicator immediately
+            // Create AI thinking indicator immediately or update existing placeholder
             const currentSession = currentUserInputSessionRef.current;
             if (currentSession) {
               setConversation(prev => {
+                // Check if there's already a thinking placeholder from text input
+                const thinkingPlaceholderIndex = prev.findIndex(msg =>
+                  msg.type === 'assistant' &&
+                  msg.isThinking &&
+                  msg.sessionId === currentSession &&
+                  msg.text === ''
+                );
+
+                if (thinkingPlaceholderIndex >= 0) {
+                  // Update existing placeholder with the actual response ID
+                  const updatedConversation = [...prev];
+                  updatedConversation[thinkingPlaceholderIndex] = {
+                    ...updatedConversation[thinkingPlaceholderIndex],
+                    id: responseId // Update with actual response ID from voice service
+                  };
+                  return updatedConversation;
+                }
+
                 // Check if message already exists (avoid duplicates)
                 const existingIndex = prev.findIndex(msg => msg.id === responseId);
                 if (existingIndex >= 0) {
@@ -571,7 +650,6 @@ export default function ConversationScreen() {
             const responseId = currentResponseIdRef.current;
 
             if (!responseId || !currentSession) {
-              console.warn('💬 [STREAMING] Missing responseId or session:', { responseId, currentSession });
               return;
             }
 
@@ -587,10 +665,15 @@ export default function ConversationScreen() {
                   text: response,
                   isThinking: false // Remove thinking state once streaming starts
                 };
+
+                // Sync conversation if response is complete
+                if (isComplete) {
+                  setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
+                }
+
                 return updatedConversation;
               } else {
                 // This should not happen if thinking indicator was created in onResponseStart
-                console.warn('💬 [STREAMING] AI thinking indicator not found for responseId:', responseId);
                 return prev;
               }
             });
@@ -601,11 +684,12 @@ export default function ConversationScreen() {
               return;
             }
 
+            console.log('🤖 AI:', response);
+
             const currentSession = currentUserInputSessionRef.current;
             const responseId = currentResponseIdRef.current;
 
             if (!responseId || !currentSession) {
-              console.warn('💬 [AI] Missing responseId or session for final response:', { responseId, currentSession });
               return;
             }
 
@@ -634,7 +718,6 @@ export default function ConversationScreen() {
                   return updatedConversation;
                 }
               } else {
-                console.warn('💬 [AI] Placeholder message not found for final response:', responseId);
                 return prev;
               }
             });
@@ -665,21 +748,39 @@ export default function ConversationScreen() {
         }
       );
 
-      console.log('⚡ ConversationScreen: Created voice session, attempting to connect...');
       sessionRef.current = session;
+
+      // Initialize real-time sync service
+      if (user) {
+        try {
+          const syncService = createRealtimeConversationSync({
+            userId: user.id,
+            topic: selectedTopic,
+            complexId: undefined, // Will be set when user saves conversation
+            autoSaveInterval: 15000, // Auto-save every 15 seconds
+            enableSessionRecovery: true,
+          });
+
+          setRealtimeSync(syncService);
+          realtimeSyncRef.current = syncService;
+
+          // Start the real-time session
+          await syncService.startSession();
+          console.log('🔄 Real-time sync service initialized');
+        } catch (error) {
+          console.error('❌ Failed to initialize real-time sync:', error);
+        }
+      }
 
       // Add a timeout to detect hanging connections
       const connectionTimeout = setTimeout(() => {
-        console.warn('⚠️ ConversationScreen: Connection timeout after 10 seconds');
         if (!isConnected) {
-          console.error('❌ ConversationScreen: Connection failed - timeout reached');
           setIsLoading(false);
         }
       }, 10000);
 
       await session.connect();
       clearTimeout(connectionTimeout);
-      console.log('⚡ ConversationScreen: Session connect call completed');
 
     } catch (error) {
       console.error('❌ ConversationScreen: Session initialization failed:', error);
@@ -703,6 +804,19 @@ export default function ConversationScreen() {
       }
       sessionRef.current = null;
     }
+
+    // Cleanup real-time sync service
+    if (realtimeSyncRef.current) {
+      try {
+        realtimeSyncRef.current.endSession();
+        console.log('🔄 Real-time sync service ended');
+      } catch (error) {
+        console.warn('⚠️ Error during real-time sync cleanup:', error);
+      }
+      realtimeSyncRef.current = null;
+      setRealtimeSync(null);
+    }
+
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
       recordingTimerRef.current = null;
@@ -760,12 +874,6 @@ export default function ConversationScreen() {
   };
 
   const handleTapToTalk = () => {
-    console.log('🎤 ConversationScreen: Tap to talk pressed!');
-    console.log('🎤 ConversationScreen: sessionRef.current:', !!sessionRef.current);
-    console.log('🎤 ConversationScreen: isConnected:', isConnected);
-    console.log('🎤 ConversationScreen: isListening:', isListening);
-    console.log('🎤 ConversationScreen: isAIResponding:', isAIResponding);
-
     // IMMEDIATE haptic feedback for tactile response
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
@@ -773,7 +881,6 @@ export default function ConversationScreen() {
     setShowWelcomeTooltip(false);
 
     if (!sessionRef.current || !isConnected) {
-      console.log('🎤 ConversationScreen: Session not ready - sessionRef:', !!sessionRef.current, 'isConnected:', isConnected);
       return;
     }
 
@@ -855,6 +962,17 @@ export default function ConversationScreen() {
       emotionPartsDetector.addMessage(messageText).then(detectedLists => {
         setDetectedItems(detectedLists);
 
+        // Sync detected data to real-time service
+        setTimeout(() => {
+          if (realtimeSyncRef.current && user) {
+            realtimeSyncRef.current.updateDetectedData({
+              emotions: detectedLists.emotions,
+              parts: detectedLists.parts,
+              needs: detectedLists.needs,
+            }).catch(error => console.error('❌ Failed to sync detected data:', error));
+          }
+        }, 100);
+
         // Transform detected items to bubble chart data
         const conversationId = Date.now().toString() || undefined;
         setDetectedEmotionsData(transformDetectedEmotions(detectedLists.emotions, conversationId));
@@ -881,20 +999,8 @@ export default function ConversationScreen() {
       // Add user message to conversation with fade-in animation (using corrected text)
       addUserMessageWithAnimation(messageText);
 
-      // Check if this is a data structure request and modify the message to be more explicit
-      const dataStructureTriggers = [
-        'output the data structure', 'provide the json format', 'show me the data',
-        'format this as json', 'structure this data', 'convert to data format',
-        'create a flowchart', 'make a copy', 'generate a flowchart' // backup phrases
-      ];
-
-      let finalMessage = messageText;
-      if (dataStructureTriggers.some(trigger => messageText.toLowerCase().includes(trigger.toLowerCase()))) {
-        finalMessage = `I need this therapeutic information formatted as a JSON data structure. ${messageText}. Please output the data structure in JSON format.`;
-      }
-
       // Send to OpenAI
-      sessionRef.current.sendMessage(finalMessage);
+      sessionRef.current.sendMessage(messageText);
 
       // Clear input but keep text input visible and focused
       setTextInput('');
@@ -906,15 +1012,62 @@ export default function ConversationScreen() {
     }
   };
 
+  // Simple text input handler
   const handleSendText = () => {
-    if (sessionRef.current && isConnected && textInput.trim()) {
-      // Process the message directly without blurring
-      processSendText(textInput);
+    // Basic validation
+    if (!sessionRef.current || !isConnected || !textInput?.trim()) {
+      return;
     }
+
+    const messageText = textInput.trim();
+    console.log('👤 User:', messageText);
+
+    // Create session context for text input (same as voice input)
+    const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    setCurrentUserInputSession(sessionId);
+    currentUserInputSessionRef.current = sessionId;
+
+    // Add user message to conversation
+    const userMessage = {
+      type: 'user' as const,
+      text: messageText,
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      sessionId: sessionId,
+    };
+
+    // Add AI response placeholder - will be updated with real ID from onResponseStart
+    const temporaryId = `temp-response-${Date.now()}`;
+    const aiPlaceholder = {
+      type: 'assistant' as const,
+      text: '',
+      id: temporaryId,
+      timestamp: Date.now(),
+      sessionId: sessionId,
+      isThinking: true,
+    };
+
+    setConversation(prev => [...prev, userMessage, aiPlaceholder]);
+
+    // Set AI responding state - response ID will be set by onResponseStart
+    setIsAIResponding(true);
+    isAIRespondingRef.current = true;
+
+    // Send to session
+    try {
+      sessionRef.current.sendMessage(messageText);
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      // Reset AI state on error
+      setIsAIResponding(false);
+      isAIRespondingRef.current = false;
+    }
+
+    // Clear input
+    setTextInput('');
   };
 
   const handleTextEndEditing = () => {
-    // Handle text input end editing
   };
 
   // Helper function to get node colors
@@ -943,9 +1096,7 @@ export default function ConversationScreen() {
 
   // Initialize session when component mounts
   useEffect(() => {
-    console.log('🔄 ConversationScreen: useEffect triggered - isConnected:', isConnected, 'isLoading:', isLoading);
     if (!isConnected && !isLoading) {
-      console.log('🔄 ConversationScreen: Initializing session...');
       // Always start with voice mode (big green button)
       setShowTextInput(false);
 
@@ -1457,81 +1608,84 @@ export default function ConversationScreen() {
               </ScrollView>
             </View>
 
-            {/* Text Input - positioned above controls */}
+            {/* Text Input */}
             {showTextInput && (
-              <Animated.View style={[
-                styles.textInputContainer,
-                {
-                  paddingHorizontal: 20,
-                  paddingVertical: 15,
-                  minHeight: 60,
-                  marginBottom: textInputMarginBottom,
-                  backgroundColor: 'transparent',
-                }
-              ]}>
+              <View style={[styles.textInputContainer, { paddingHorizontal: 20, paddingVertical: 15, paddingTop: 10 }]}>
+                {/* Voice Mode Button */}
                 <Pressable
-                  style={[
-                    styles.textInputVoiceButton,
-                    { backgroundColor: '#2E7D32' }
-                  ]}
+                  style={[styles.textInputVoiceButton, { backgroundColor: '#2E7D32' }]}
                   onPress={() => {
-                    // Blur text input first to hide keyboard
                     textInputRef.current?.blur();
                     setTextInput('');
-
-                    // Wait for keyboard to hide before switching to voice mode
-                    setTimeout(() => {
-                      setShowTextInput(false);
-                    }, 300);
+                    setShowTextInput(false);
                   }}
                 >
                   <Image
                     source={require('@/assets/images/Logo.png')}
-                    style={[
-                      styles.textInputVoiceButtonLogo,
-                      { tintColor: '#FFF' }
-                    ]}
+                    style={[styles.textInputVoiceButtonLogo, { tintColor: '#FFF' }]}
                     resizeMode="contain"
                   />
                 </Pressable>
-                <View style={styles.textInputWithButton}>
+
+                {/* Text Input with Send Button */}
+                <View style={[
+                  styles.textInputWithButton,
+                  {
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+                    borderRadius: 20,
+                    borderWidth: 1,
+                    borderColor: isDark ? '#555555' : '#C7C7CC',
+                    paddingHorizontal: 12,
+                    minHeight: 44,
+                  }
+                ]}>
                   <TextInput
                     ref={textInputRef}
                     style={[
                       styles.textInput,
                       {
-                        backgroundColor: 'transparent',
                         color: isDark ? '#FFFFFF' : '#000000',
-                        borderColor: isDark ? '#555555' : '#C7C7CC',
-                        borderWidth: 1
+                        backgroundColor: 'transparent',
+                        paddingHorizontal: 0,
+                        borderRadius: 0,
+                        minHeight: 'auto',
+                        maxHeight: 'auto',
                       }
                     ]}
-                    placeholder=""
+                    placeholder="Type a message..."
                     placeholderTextColor={isDark ? '#888888' : '#666666'}
                     value={textInput}
                     onChangeText={setTextInput}
-                    onEndEditing={handleTextEndEditing}
-                    multiline
+                    multiline={false}
                     editable={isConnected}
                     autoFocus={true}
                     blurOnSubmit={false}
+                    returnKeyType="send"
+                    onSubmitEditing={handleSendText}
                   />
+
+                  {/* Send Button */}
                   <Pressable
                     style={[
                       styles.sendButton,
-                      { opacity: (isConnected && textInput.trim()) ? 1 : 0.5 }
+                      {
+                        backgroundColor: isConnected && textInput?.trim() ? '#007AFF' : '#CCCCCC',
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                      }
                     ]}
                     onPress={handleSendText}
-                    disabled={!isConnected || !textInput.trim()}
+                    disabled={!isConnected || !textInput?.trim()}
                   >
                     <IconSymbol
-                      size={18}
+                      size={16}
                       name="arrow.up"
                       color="#FFFFFF"
                     />
                   </Pressable>
                 </View>
-              </Animated.View>
+              </View>
             )}
 
             {/* Controls Container */}
@@ -1549,16 +1703,20 @@ export default function ConversationScreen() {
                 <View style={styles.leftControls}>
                   {!showTextInput && (
                     <Pressable
-                      style={[
-                        styles.textToggleButton,
-                        { backgroundColor: isDark ? '#333333' : '#E0E0E0' }
-                      ]}
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        backgroundColor: isDark ? '#333333' : '#E0E0E0',
+                        justifyContent: 'center',
+                        alignItems: 'center',
+                      }}
                       onPress={() => {
                         setShowTextInput(true);
                         setShowWelcomeTooltip(false);
                         setTimeout(() => {
                           textInputRef.current?.focus();
-                        }, 100);
+                        }, 150);
                       }}
                     >
                       <IconSymbol
