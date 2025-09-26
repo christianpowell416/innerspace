@@ -17,8 +17,18 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Alert } from 'react-native';
 
 import { getConversationById, ConversationData } from '@/lib/services/conversationService';
+import { loadComplexes, ComplexData } from '@/lib/services/complexManagementService';
 
 const CARD_BORDER_RADIUS = 24;
+
+// Local interface for component display data
+interface ComplexCardData {
+  id: number;
+  title: string;
+  date: string;
+  description: string;
+  color?: string;
+}
 
 export default function ChatScreen() {
   const colorScheme = useColorScheme();
@@ -34,6 +44,8 @@ export default function ChatScreen() {
   const [contentHeight, setContentHeight] = useState(0);
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [voiceModalOpenedFromDetail, setVoiceModalOpenedFromDetail] = useState(false);
+  const [complexes, setComplexes] = useState<ComplexCardData[]>([]);
+  const [isLoadingComplexes, setIsLoadingComplexes] = useState(true);
   const searchBarTranslateY = useRef(new Animated.Value(-60)).current;
   const searchBarOpacity = useRef(new Animated.Value(0)).current;
   const scrollViewPaddingTop = useRef(new Animated.Value(10)).current;
@@ -61,6 +73,44 @@ export default function ChatScreen() {
     };
   }, []);
 
+  // Load complexes from Supabase when component mounts or user changes
+  useEffect(() => {
+    async function fetchComplexes() {
+      if (!user?.id) {
+        setIsLoadingComplexes(false);
+        return;
+      }
+
+      try {
+        setIsLoadingComplexes(true);
+        const complexesData = await loadComplexes(user.id);
+
+        // Transform database data to match component expectations
+        const transformedData = complexesData.map((complex, index) => ({
+          id: index + 1, // Sequential ID for component compatibility
+          title: complex.name,
+          date: new Date(complex.created_at || '').toLocaleDateString('en-US', {
+            month: '2-digit',
+            day: '2-digit',
+            year: '2-digit'
+          }),
+          description: complex.description || '',
+          color: complex.color || '#4ECDC4'
+        }));
+
+        setComplexes(transformedData);
+      } catch (error) {
+        console.error('Error loading complexes:', error);
+        // Fall back to empty array on error
+        setComplexes([]);
+      } finally {
+        setIsLoadingComplexes(false);
+      }
+    }
+
+    fetchComplexes();
+  }, [user?.id]);
+
   // Note: Data is now preloaded in handleCardPress when chat card opens
 
   const handleButtonPress = (type: string) => {
@@ -70,15 +120,12 @@ export default function ChatScreen() {
   };
 
 
-  const handleConversationHistoryPress = (conversationId: number) => {
-    const conversationWithMessages = getConversationById(conversationId, conversationData);
-    if (conversationWithMessages) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      router.push({
-        pathname: '/conversation-history',
-        params: { data: JSON.stringify(conversationWithMessages) }
-      });
-    }
+  const handleConversationHistoryPress = (conversationId: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.push({
+      pathname: '/conversation-history',
+      params: { conversationId: conversationId }
+    });
   };
 
   const handleFlowchartCreated = async (flowchart: FlowchartStructure) => {
@@ -122,70 +169,12 @@ export default function ChatScreen() {
   };
 
 
-  const conversationData = [
-    {
-      id: 1,
-      title: 'Work Stress Discussion',
-      date: '12/8/24',
-      description: 'Explored feelings of overwhelm at work and discussed comprehensive coping strategies for managing deadlines and expectations. We worked on time management techniques, boundary setting with colleagues, and developing a healthier perspective on workplace pressures that have been affecting sleep and personal relationships. During our session, we delved deep into the root causes of workplace anxiety, examining how perfectionist tendencies and imposter syndrome contribute to chronic stress. We practiced several breathing techniques including box breathing and progressive muscle relaxation to help manage acute stress responses during high-pressure meetings. We also explored cognitive reframing exercises to challenge catastrophic thinking patterns that often emerge when facing tight deadlines. The conversation included practical strategies for communicating boundaries with supervisors and colleagues, including script development for saying no to additional responsibilities when already overloaded. We discussed the importance of creating physical and mental separation between work and personal life, establishing rituals to transition between work and home modes. Time blocking techniques were introduced to help prioritize important tasks while avoiding the trap of busywork that can create false urgency. We also addressed the impact of workplace stress on relationships, exploring how bringing work anxiety home affects family dynamics and romantic partnerships. Strategies for compartmentalization were practiced, along with methods for sharing work challenges with loved ones without overwhelming them. The session concluded with the development of a personalized stress management toolkit including daily check-ins, weekly reflection practices, and emergency protocols for particularly overwhelming days.'
-    },
-    {
-      id: 2,
-      title: 'Relationship Boundaries',
-      date: '12/5/24',
-      description: 'Talked about setting healthy boundaries with family members and learning to say no without guilt. We practiced assertive communication techniques, explored childhood patterns that make boundary-setting difficult, and created specific scripts for challenging conversations with parents and siblings during the holiday season. Our exploration began with identifying the deep-rooted family dynamics that have made boundary-setting feel impossible or selfish. We traced these patterns back to childhood experiences where expressing needs or saying no was met with guilt, punishment, or emotional manipulation. Through role-playing exercises, we practiced different approaches to boundary-setting conversations, starting with low-stakes situations and gradually building confidence for more challenging interactions. We developed a framework for distinguishing between healthy compromise and unhealthy people-pleasing, examining how cultural and family expectations around loyalty and obligation can sometimes conflict with personal well-being. The session included extensive work on managing guilt responses that typically arise when setting boundaries, using cognitive behavioral techniques to challenge thoughts like "I\'m being selfish" or "I\'m disappointing everyone." We created detailed scripts for common boundary-setting scenarios including declining holiday invitations, limiting phone calls or visits, refusing to engage in family drama, and protecting personal time and space. Particular attention was paid to dealing with pushback and manipulation tactics that family members might use when boundaries are first introduced. We discussed the importance of consistency in maintaining boundaries and developed strategies for staying firm even when faced with tears, anger, or silent treatment. The conversation also covered how to communicate boundaries with compassion while still being clear and firm about expectations.'
-    },
-    {
-      id: 3,
-      title: 'Self-Confidence Building',
-      date: '12/1/24',
-      description: 'Worked on identifying negative self-talk patterns and developing positive affirmations for daily practice. We traced these patterns back to early experiences, created personalized confidence-building exercises, and established a morning routine that includes self-compassion practices and achievement recognition to boost overall self-worth.'
-    },
-    {
-      id: 4,
-      title: 'Anxiety Management',
-      date: '11/28/24',
-      description: 'Discussed breathing techniques and mindfulness exercises to help manage anxiety during social situations. We explored the root causes of social anxiety, practiced grounding techniques using the 5-4-3-2-1 method, and developed a toolkit of discrete calming strategies that can be used in public without drawing attention to yourself.'
-    },
-    {
-      id: 5,
-      title: 'Career Transition',
-      date: '11/25/24',
-      description: 'Explored fears around changing careers and identified steps to move toward a more fulfilling professional path. We addressed imposter syndrome, financial concerns about leaving stability, and created a detailed action plan with timelines for networking, skill development, and gradual transition strategies to minimize risk while pursuing meaningful work.'
-    },
-    {
-      id: 6,
-      title: 'Sleep and Rest Issues',
-      date: '11/22/24',
-      description: 'Discussed chronic sleep difficulties and their impact on daily functioning and emotional regulation. We examined lifestyle factors contributing to insomnia, developed a comprehensive sleep hygiene routine, and explored the connection between racing thoughts at bedtime and unresolved daily stressors that need processing and release.'
-    },
-    {
-      id: 7,
-      title: 'Grief Processing',
-      date: '11/18/24',
-      description: 'Worked through complicated grief following the recent loss of a close family member. We explored the non-linear nature of grief, discussed healthy ways to honor memories while moving forward, and addressed guilt about experiencing moments of joy during the mourning process and how to navigate family dynamics during this difficult time.'
-    },
-    {
-      id: 8,
-      title: 'Financial Stress',
-      date: '11/15/24',
-      description: 'Addressed anxiety and shame around money management and financial security concerns. We unpacked family patterns around money, developed practical budgeting strategies that feel sustainable, and worked on separating self-worth from net worth while creating realistic financial goals that align with personal values rather than societal expectations.'
-    },
-    {
-      id: 9,
-      title: 'Perfectionism Patterns',
-      date: '11/12/24',
-      description: 'Examined perfectionist tendencies and their impact on productivity and mental health. We identified triggers that activate all-or-nothing thinking, practiced embracing "good enough" in low-stakes situations, and developed strategies for breaking large tasks into manageable pieces while celebrating progress rather than only focusing on perfect outcomes.'
-    },
-    {
-      id: 10,
-      title: 'Social Connection',
-      date: '11/8/24',
-      description: 'Explored feelings of loneliness and difficulty maintaining meaningful friendships as an adult. We discussed the challenges of making connections outside of work environments, identified personal barriers to vulnerability in relationships, and created actionable steps for nurturing existing friendships while remaining open to new social opportunities and community involvement.'
-    }
-  ];
+  // Data is now loaded from Supabase in useEffect above
 
   const handleCardPress = (card: any) => {
+    // Add haptic feedback when opening complex detail
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     // Navigate to complex detail page with modal presentation
     router.push({
       pathname: '/complex-detail',
@@ -297,7 +286,7 @@ export default function ChatScreen() {
             fontFamily: 'Georgia',
             lineHeight: 50
           }}>Complexes</Text>
-          
+
           {/* Gradient blur at bottom of header - hidden when search bar is active */}
           {!isSearchBarRevealed && (
             <LinearGradient
@@ -363,7 +352,41 @@ export default function ChatScreen() {
           onContentSizeChange={(width, height) => setContentHeight(height)}
           onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
         >
-          {conversationData.map((conversation, index) => {
+          {isLoadingComplexes ? (
+            // Loading state
+            <View style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingTop: 100
+            }}>
+              <Text style={{
+                fontSize: 16,
+                color: colorScheme === 'dark' ? '#AAAAAA' : '#666666',
+                fontFamily: 'Georgia'
+              }}>
+                Loading complexes...
+              </Text>
+            </View>
+          ) : complexes.length === 0 ? (
+            // Empty state
+            <View style={{
+              flex: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingTop: 100
+            }}>
+              <Text style={{
+                fontSize: 16,
+                color: colorScheme === 'dark' ? '#AAAAAA' : '#666666',
+                fontFamily: 'Georgia',
+                textAlign: 'center',
+                paddingHorizontal: 20
+              }}>
+                No complexes found.{'\n'}Start a conversation to create your first complex!
+              </Text>
+            </View>
+          ) : complexes.map((conversation, index) => {
             // Calculate card's position on screen
             // Each card is 350px tall with dynamic margin based on velocity
             const cardTop = index * 140; // Position of card relative to scroll content
@@ -618,7 +641,7 @@ const styles = StyleSheet.create({
     paddingTop: 20,
   },
   scrollContent: {
-    paddingTop: 20,
+    paddingTop: 0,
     paddingBottom: 20,
   },
   cardShadowContainer: {

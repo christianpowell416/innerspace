@@ -18,6 +18,7 @@ import {
   getPartCategory,
   getNeedCategory
 } from '../types/partsNeedsChart';
+import { DetectedItem } from '../database.types';
 
 /**
  * Tracks frequency and metadata for detected items across a conversation session
@@ -112,14 +113,15 @@ const calculateIntensity = (frequency: number): number => {
  * Transform detected emotions array to EmotionBubbleData array
  */
 export const transformDetectedEmotions = (
-  emotions: string[],
+  emotions: DetectedItem[],
   conversationId?: string
 ): EmotionBubbleData[] => {
   if (conversationId) {
     sessionTracker.setConversationId(conversationId);
   }
 
-  return emotions.map((emotion, index) => {
+  return emotions.map((emotionItem, index) => {
+    const emotion = emotionItem.name;
     const tracker = sessionTracker.trackEmotion(emotion);
     const intensity = calculateIntensity(tracker.count);
     const radius = calculateRadius(tracker.count, intensity);
@@ -142,14 +144,15 @@ export const transformDetectedEmotions = (
  * Transform detected parts array to PartBubbleData array
  */
 export const transformDetectedParts = (
-  parts: string[],
+  parts: DetectedItem[],
   conversationId?: string
 ): PartBubbleData[] => {
   if (conversationId) {
     sessionTracker.setConversationId(conversationId);
   }
 
-  return parts.map((part, index) => {
+  return parts.map((partItem, index) => {
+    const part = partItem.name;
     const tracker = sessionTracker.trackPart(part);
     const intensity = calculateIntensity(tracker.count);
     const radius = calculateRadius(tracker.count, intensity);
@@ -172,14 +175,15 @@ export const transformDetectedParts = (
  * Transform detected needs array to NeedBubbleData array
  */
 export const transformDetectedNeeds = (
-  needs: string[],
+  needs: DetectedItem[],
   conversationId?: string
 ): NeedBubbleData[] => {
   if (conversationId) {
     sessionTracker.setConversationId(conversationId);
   }
 
-  return needs.map((need, index) => {
+  return needs.map((needItem, index) => {
+    const need = needItem.name;
     const tracker = sessionTracker.trackNeed(need);
     const intensity = calculateIntensity(tracker.count);
     const radius = calculateRadius(tracker.count, intensity);

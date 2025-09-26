@@ -59,7 +59,8 @@ export default function RootLayout() {
                 options={{
                   headerShown: false,
                   presentation: 'modal',
-                  animation: 'slide_from_bottom'
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
                 }}
               />
               <Stack.Screen
@@ -67,7 +68,17 @@ export default function RootLayout() {
                 options={{
                   headerShown: false,
                   presentation: 'modal',
-                  animation: 'slide_from_bottom'
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
+                }}
+              />
+              <Stack.Screen
+                name="save-conversation"
+                options={{
+                  headerShown: false,
+                  presentation: 'modal',
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
                 }}
               />
               <Stack.Screen
@@ -75,7 +86,8 @@ export default function RootLayout() {
                 options={{
                   headerShown: false,
                   presentation: 'modal',
-                  animation: 'slide_from_bottom'
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
                 }}
               />
               <Stack.Screen
@@ -83,7 +95,8 @@ export default function RootLayout() {
                 options={{
                   headerShown: false,
                   presentation: 'modal',
-                  animation: 'slide_from_bottom'
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
                 }}
               />
               <Stack.Screen
@@ -91,7 +104,8 @@ export default function RootLayout() {
                 options={{
                   headerShown: false,
                   presentation: 'modal',
-                  animation: 'slide_from_bottom'
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
                 }}
               />
               <Stack.Screen
@@ -99,7 +113,8 @@ export default function RootLayout() {
                 options={{
                   headerShown: false,
                   presentation: 'modal',
-                  animation: 'slide_from_bottom'
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
                 }}
               />
               <Stack.Screen
@@ -107,7 +122,8 @@ export default function RootLayout() {
                 options={{
                   headerShown: false,
                   presentation: 'modal',
-                  animation: 'slide_from_bottom'
+                  animation: 'slide_from_bottom',
+                  contentStyle: { backgroundColor: 'transparent' }
                 }}
               />
               <Stack.Screen name="+not-found" />

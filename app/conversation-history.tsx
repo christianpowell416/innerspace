@@ -10,19 +10,30 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  Alert,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { router, useLocalSearchParams } from 'expo-router';
-import { GradientBackground } from '@/components/ui/GradientBackground';
-import { ConversationData } from '@/lib/services/conversationService';
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { generateTestEmotionData } from '@/lib/utils/testData';
-import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  loadConversation,
+  ConversationData as DatabaseConversationData
+} from '@/lib/services/conversationPersistence';
+import {
+  loadAllDetectedData
+} from '@/lib/services/detectedDataService';
+import {
+  transformDetectedEmotions,
+  transformDetectedParts,
+  transformDetectedNeeds
+} from '@/lib/utils/detectionDataTransform';
+import { ConversationMessage } from '@/lib/database.types';
 
 // Lazy load bubble chart components
 const PartsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/PartsHoneycombMiniBubbleChart'));
@@ -32,66 +43,124 @@ const EmotionsHoneycombMiniBubbleChart = React.lazy(() => import('@/components/E
 export default function ConversationHistoryScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { data } = useLocalSearchParams();
+  const { conversationId } = useLocalSearchParams();
+  const { user } = useAuth();
 
-  // Parse conversation data from URL parameter
-  const conversationData: ConversationData | null = React.useMemo(() => {
-    if (typeof data === 'string') {
-      try {
-        return JSON.parse(data);
-      } catch (error) {
-        console.error('Error parsing conversation data:', error);
-        return null;
-      }
-    }
-    return null;
-  }, [data]);
-
+  // State management
+  const [conversationData, setConversationData] = useState<DatabaseConversationData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showSquareCards, setShowSquareCards] = useState(true);
   const [isConversationMaximized, setIsConversationMaximized] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const handleClose = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    router.back();
-  };
+  // Chart data state
+  const [detectedEmotionsData, setDetectedEmotionsData] = useState<EmotionBubbleData[]>([]);
+  const [detectedPartsData, setDetectedPartsData] = useState<PartBubbleData[]>([]);
+  const [detectedNeedsData, setDetectedNeedsData] = useState<NeedBubbleData[]>([]);
 
   // Chart dimensions state
   const [emotionsChartDimensions] = useState({ width: 110, height: 110 });
   const [partsChartDimensions] = useState({ width: 110, height: 110 });
   const [needsChartDimensions] = useState({ width: 110, height: 110 });
 
-  // Generate sample chart data (in a real app, this would come from the conversation)
-  const [detectedEmotionsData] = useState<EmotionBubbleData[]>(generateTestEmotionData(4));
-  const [detectedPartsData] = useState<PartBubbleData[]>(generateTestPartsData(3));
-  const [detectedNeedsData] = useState<NeedBubbleData[]>(generateTestNeedsData(3));
+  // Load conversation and detected data
+  useEffect(() => {
+    if (!user || !conversationId || typeof conversationId !== 'string') {
+      setError('Missing conversation ID or user not authenticated');
+      setLoading(false);
+      return;
+    }
 
-  if (!conversationData) {
+    loadConversationData();
+  }, [user, conversationId]);
+
+  const loadConversationData = async () => {
+    if (!user || !conversationId || typeof conversationId !== 'string') return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Load conversation data
+      const conversation = await loadConversation(conversationId, user.id);
+      if (!conversation) {
+        setError('Conversation not found');
+        return;
+      }
+
+      setConversationData(conversation);
+
+      // Load detected data for this conversation
+      const detectedData = await loadAllDetectedData(conversationId, user.id);
+
+      // Transform detected data to bubble chart format
+      if (detectedData.emotions.length > 0) {
+        setDetectedEmotionsData(transformDetectedEmotions(detectedData.emotions, conversationId));
+      }
+      if (detectedData.parts.length > 0) {
+        setDetectedPartsData(transformDetectedParts(detectedData.parts, conversationId));
+      }
+      if (detectedData.needs.length > 0) {
+        setDetectedNeedsData(transformDetectedNeeds(detectedData.needs, conversationId));
+      }
+
+    } catch (err) {
+      console.error('Error loading conversation data:', err);
+      setError('Failed to load conversation data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClose = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    router.back();
+  };
+
+  // Handle loading, error, and missing data states
+  if (loading || error || !conversationData) {
     return (
-      <GradientBackground>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-          <BlurView
-            intensity={80}
-            tint={isDark ? 'dark' : 'light'}
-            style={styles.blurContainer}
-          >
-            <View style={styles.errorContainer}>
-              <Text style={[styles.errorText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                Error loading conversation data
-              </Text>
-              <Pressable onPress={handleClose} style={styles.errorButton}>
-                <Text style={styles.errorButtonText}>Go Back</Text>
-              </Pressable>
-            </View>
-          </BlurView>
-        </SafeAreaView>
-      </GradientBackground>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: 'transparent' }]} edges={['top', 'left', 'right']}>
+        <BlurView
+          intensity={80}
+          tint={isDark ? 'dark' : 'light'}
+          style={styles.blurContainer}
+        >
+          <View style={styles.errorContainer}>
+            {loading ? (
+              <>
+                <Text style={[styles.errorText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                  Loading conversation...
+                </Text>
+              </>
+            ) : error ? (
+              <>
+                <Text style={[styles.errorText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                  {error}
+                </Text>
+                <Pressable onPress={handleClose} style={styles.errorButton}>
+                  <Text style={styles.errorButtonText}>Go Back</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.errorText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
+                  Conversation not found
+                </Text>
+                <Pressable onPress={handleClose} style={styles.errorButton}>
+                  <Text style={styles.errorButtonText}>Go Back</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        </BlurView>
+      </SafeAreaView>
     );
   }
 
   return (
-    <GradientBackground>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: 'transparent' }]} edges={['top', 'left', 'right']}>
         <BlurView
           intensity={80}
           tint={isDark ? 'dark' : 'light'}
@@ -122,7 +191,7 @@ export default function ConversationHistoryScreen() {
                   styles.modalTitle,
                   { color: isDark ? '#FFFFFF' : '#000000' }
                 ]}>
-                  {conversationData.title}
+                  {conversationData.title || 'Conversation'}
                 </Text>
               </View>
             </View>
@@ -284,7 +353,7 @@ export default function ConversationHistoryScreen() {
                   styles.summaryText,
                   { color: isDark ? '#DDDDDD' : '#444444' }
                 ]}>
-                  {conversationData.description}
+                  {conversationData.summary || 'No summary available'}
                 </Text>
               </View>
             )}
@@ -343,7 +412,7 @@ export default function ConversationHistoryScreen() {
                             textAlign: message.type === 'user' ? 'right' : 'left'
                           }
                         ]}>
-                          {message.content}
+                          {message.text}
                         </Text>
                       </View>
                     </View>
@@ -354,7 +423,6 @@ export default function ConversationHistoryScreen() {
           </KeyboardAvoidingView>
         </BlurView>
       </SafeAreaView>
-    </GradientBackground>
   );
 }
 
