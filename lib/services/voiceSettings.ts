@@ -36,3 +36,8 @@ export const getAllVoices = (): VoiceType[] => {
   // console.log('🎵 getAllVoices called, returning:', voices);
   return voices;
 };
+
+// Check if a voice requires the Realtime API
+export const isRealtimeOnlyVoice = (voice: VoiceType): boolean => {
+  return voice === 'marin' || voice === 'cedar';
+};
