@@ -265,12 +265,12 @@ export default function ComplexDetailModal() {
   };
 
   // Handler for conversation history card presses
-  const handleConversationHistoryPress = (conversationId: number) => {
+  const handleConversationHistoryPress = (conversationId: string) => {
     console.log('🔍 Conversation history pressed:', conversationId);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
       pathname: '/conversation-history',
-      params: { conversationId: conversationId.toString() }
+      params: { conversationId: conversationId }
     });
   };
 
@@ -786,11 +786,11 @@ export default function ComplexDetailModal() {
               }}>
                 <View style={styles.conversationList}>
                   {[
-                    { id: 4, excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
-                    { id: 5, excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
-                    { id: 2, excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
-                    { id: 9, excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
-                    { id: 7, excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
+                    { id: "550e8400-e29b-41d4-a716-446655440001", excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
+                    { id: "550e8400-e29b-41d4-a716-446655440002", excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
+                    { id: "550e8400-e29b-41d4-a716-446655440003", excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
+                    { id: "550e8400-e29b-41d4-a716-446655440004", excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
+                    { id: "550e8400-e29b-41d4-a716-446655440005", excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
                   ].map((item, index) => {
                     return (
                       <View
