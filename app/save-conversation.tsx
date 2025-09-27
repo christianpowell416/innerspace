@@ -140,14 +140,19 @@ export default function SaveConversationScreen() {
   }, [sessionId, directData]);
 
   // Load complexes on mount (use preloaded if available)
+  const complexesLoadedRef = useRef(false);
   useEffect(() => {
+    if (complexesLoadedRef.current) return; // Skip if already loaded
+
     if (preloadedComplexes && preloadedComplexes.length > 0) {
       setComplexes(preloadedComplexes);
       setLoading(false);
+      complexesLoadedRef.current = true;
     } else if (user && !preloadedComplexes) {
       loadUserComplexes();
+      complexesLoadedRef.current = true;
     }
-  }, [user]); // Remove preloadedComplexes from dependencies to prevent re-runs
+  }, [user, preloadedComplexes]);
 
   const loadUserComplexes = async () => {
     try {
