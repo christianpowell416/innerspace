@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { StyleSheet, TextInput, Alert, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -19,6 +20,8 @@ export default function SignUpScreen() {
   const colorScheme = useColorScheme();
 
   const handleSignUp = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     if (!email || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
@@ -50,6 +53,7 @@ export default function SignUpScreen() {
   };
 
   const handleSignIn = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.back();
   };
 

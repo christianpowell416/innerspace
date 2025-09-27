@@ -3,14 +3,14 @@
  * Handles auto-save, live syncing, and session state persistence during active conversations
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { ConversationMessage, DetectedItem } from '@/lib/database.types';
-// TEMPORARILY DISABLED - Save conversation functionality
-// import {
-//   saveConversation,
-//   updateConversation,
-//   ConversationData
-// } from './conversationPersistence';
+import {
+  saveConversation,
+  updateConversation,
+  ConversationData
+} from './conversationPersistence';
 import {
   saveAllDetectedData,
   updateDetectedData
@@ -20,7 +20,6 @@ export interface RealtimeSyncConfig {
   userId: string;
   complexId?: string;
   topic: string;
-  autoSaveInterval?: number; // milliseconds, default 10000 (10 seconds)
   enableSessionRecovery?: boolean;
 }
 
@@ -36,8 +35,22 @@ export interface SessionState {
   isActive: boolean;
 }
 
+export interface DraftConversationData {
+  sessionId: string;
+  topic: string;
+  complexId?: string;
+  messages: ConversationMessage[];
+  detectedData: {
+    emotions?: DetectedItem[];
+    parts?: DetectedItem[];
+    needs?: DetectedItem[];
+  };
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface RealtimeSync {
-  startSession: () => Promise<string>; // Returns conversationId
+  startSession: () => Promise<string>; // Returns sessionId (not conversationId anymore)
   updateMessages: (messages: ConversationMessage[]) => Promise<void>;
   updateDetectedData: (data: {
     emotions?: DetectedItem[];
@@ -48,6 +61,8 @@ export interface RealtimeSync {
   endSession: () => Promise<void>;
   recoverSession: (sessionId: string) => Promise<SessionState | null>;
   forceSync: () => Promise<void>;
+  getDraftData: () => Promise<DraftConversationData | null>;
+  clearDraftData: () => Promise<void>;
   isActive: boolean;
   conversationId: string | null;
   sessionId: string;
@@ -62,7 +77,7 @@ export function createRealtimeConversationSync(
   let conversationId: string | null = null;
   let sessionId: string = generateSessionId();
   let isActive = false;
-  let autoSaveTimer: NodeJS.Timeout | null = null;
+  // Auto-save timer removed - syncing only on updates
   let currentMessages: ConversationMessage[] = [];
   let currentDetectedData: {
     emotions?: DetectedItem[];
@@ -70,8 +85,6 @@ export function createRealtimeConversationSync(
     needs?: DetectedItem[];
   } = {};
   let sessionState: SessionState | null = null;
-
-  const autoSaveInterval = config.autoSaveInterval || 10000; // 10 seconds default
 
   const sync: RealtimeSync = {
     startSession: async (): Promise<string> => {
@@ -99,24 +112,20 @@ export function createRealtimeConversationSync(
           await saveSessionState(sessionState);
         }
 
-        // Start auto-save timer
-        if (autoSaveTimer) {
-          clearInterval(autoSaveTimer);
-        }
-
-        autoSaveTimer = setInterval(async () => {
-          if (isActive && currentMessages.length > 0) {
-            try {
-              await sync.forceSync();
-              console.log('🔄 Auto-save completed');
-            } catch (error) {
-              console.error('❌ Auto-save failed:', error);
-            }
-          }
-        }, autoSaveInterval);
+        // Initialize draft data in AsyncStorage
+        const draftData: DraftConversationData = {
+          sessionId,
+          topic: config.topic,
+          complexId: config.complexId,
+          messages: [],
+          detectedData: {},
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        await saveDraftData(draftData);
 
         console.log('✅ Real-time session started:', sessionId);
-        return conversationId || 'pending';
+        return sessionId; // Return sessionId instead of conversationId
       } catch (error) {
         console.error('❌ Failed to start real-time session:', error);
         throw error;
@@ -141,7 +150,13 @@ export function createRealtimeConversationSync(
           sessionState.lastSaveTime = Date.now();
         }
 
-        console.log(`📝 Updated messages: ${validMessages.length} total`);
+        // Save to draft storage
+        await updateDraftData(sessionId, {
+          messages: validMessages,
+          updatedAt: Date.now(),
+        });
+
+        console.log(`📝 Updated messages: ${validMessages.length} total (saved to draft)`);
       } catch (error) {
         console.error('❌ Failed to update messages:', error);
       }
@@ -171,8 +186,14 @@ export function createRealtimeConversationSync(
           sessionState.lastSaveTime = Date.now();
         }
 
+        // Save to draft storage
+        await updateDraftData(sessionId, {
+          detectedData: currentDetectedData,
+          updatedAt: Date.now(),
+        });
+
         const totalDetected = sessionState?.detectedDataCount || 0;
-        console.log(`🧠 Updated detected data: ${totalDetected} total items`);
+        console.log(`🧠 Updated detected data: ${totalDetected} total items (saved to draft)`);
       } catch (error) {
         console.error('❌ Failed to update detected data:', error);
       }
@@ -185,14 +206,12 @@ export function createRealtimeConversationSync(
         // Merge with current state
         sessionState = { ...sessionState, ...state };
 
-        // Save to localStorage/AsyncStorage for session recovery
+        // Save to AsyncStorage for session recovery
         const stateKey = `session_state_${sessionId}`;
         const stateData = JSON.stringify(sessionState);
 
-        // Use a simple storage method that works across platforms
-        if (typeof window !== 'undefined') {
-          localStorage.setItem(stateKey, stateData);
-        }
+        // Use AsyncStorage for React Native
+        await AsyncStorage.setItem(stateKey, stateData);
 
         console.log('💾 Session state saved for recovery');
       } catch (error) {
@@ -209,11 +228,7 @@ export function createRealtimeConversationSync(
           await sync.forceSync();
         }
 
-        // Clear auto-save timer
-        if (autoSaveTimer) {
-          clearInterval(autoSaveTimer);
-          autoSaveTimer = null;
-        }
+        // Auto-save timer removed
 
         // Mark session as inactive
         isActive = false;
@@ -226,9 +241,7 @@ export function createRealtimeConversationSync(
         if (config.enableSessionRecovery) {
           try {
             const stateKey = `session_state_${sessionId}`;
-            if (typeof window !== 'undefined') {
-              localStorage.removeItem(stateKey);
-            }
+            await AsyncStorage.removeItem(stateKey);
           } catch (e) {
             // Ignore cleanup errors
           }
@@ -247,11 +260,7 @@ export function createRealtimeConversationSync(
         console.log('🔄 Attempting session recovery:', recoverySessionId);
 
         const stateKey = `session_state_${recoverySessionId}`;
-        let stateData: string | null = null;
-
-        if (typeof window !== 'undefined') {
-          stateData = localStorage.getItem(stateKey);
-        }
+        const stateData = await AsyncStorage.getItem(stateKey);
 
         if (stateData) {
           const recoveredState = JSON.parse(stateData) as SessionState;
@@ -271,64 +280,49 @@ export function createRealtimeConversationSync(
       if (!isActive || currentMessages.length === 0) return;
 
       try {
-        console.log('⚡ Force syncing conversation data...');
+        console.log('⚡ Syncing draft data to storage...');
 
-        // Generate conversation title from messages
-        const title = generateConversationTitle(currentMessages);
-
-        // TEMPORARILY DISABLED - Save conversation functionality
-        // if (!conversationId) {
-        //   // Create new conversation
-        //   const conversationData = await saveConversation(
-        //     config.userId,
-        //     config.topic,
-        //     currentMessages,
-        //     {
-        //       complexId: config.complexId,
-        //       title,
-        //       summary: null, // Will be generated later
-        //     }
-        //   );
-
-        //   conversationId = conversationData.id;
-        //   console.log('💾 New conversation created:', conversationId);
-        // } else {
-        //   // Update existing conversation
-        //   await updateConversation(conversationId, config.userId, {
-        //     messages: currentMessages,
-        //     title,
-        //     updated_at: new Date().toISOString(),
-        //   });
-        //   console.log('💾 Conversation updated:', conversationId);
-        // }
-        console.log('💾 Conversation persistence temporarily disabled');
-
-        // TEMPORARILY DISABLED - Save detected data functionality (depends on conversationId)
-        // if (conversationId && Object.keys(currentDetectedData).length > 0) {
-        //   const hasData = (
-        //     (currentDetectedData.emotions && currentDetectedData.emotions.length > 0) ||
-        //     (currentDetectedData.parts && currentDetectedData.parts.length > 0) ||
-        //     (currentDetectedData.needs && currentDetectedData.needs.length > 0)
-        //   );
-
-        //   if (hasData) {
-        //     await saveAllDetectedData(conversationId, config.userId, currentDetectedData);
-        //     console.log('🧠 Detected data synced');
-        //   }
-        // }
-        console.log('🧠 Detected data persistence temporarily disabled');
+        // Update draft with latest data
+        await updateDraftData(sessionId, {
+          messages: currentMessages,
+          detectedData: currentDetectedData,
+          updatedAt: Date.now(),
+        });
 
         // Update session state
         if (sessionState) {
-          // sessionState.conversationId = conversationId;
           sessionState.lastSaveTime = Date.now();
           await sync.saveSessionState(sessionState);
         }
 
-        console.log('✅ Force sync completed');
+        console.log('✅ Draft data synced to AsyncStorage');
       } catch (error) {
-        console.error('❌ Force sync failed:', error);
+        console.error('❌ Draft sync failed:', error);
         throw error;
+      }
+    },
+
+    getDraftData: async (): Promise<DraftConversationData | null> => {
+      try {
+        const draftKey = `draft_conversation_${sessionId}`;
+        const draftData = await AsyncStorage.getItem(draftKey);
+        if (draftData) {
+          return JSON.parse(draftData) as DraftConversationData;
+        }
+        return null;
+      } catch (error) {
+        console.error('❌ Failed to get draft data:', error);
+        return null;
+      }
+    },
+
+    clearDraftData: async (): Promise<void> => {
+      try {
+        const draftKey = `draft_conversation_${sessionId}`;
+        await AsyncStorage.removeItem(draftKey);
+        console.log('🧹 Draft data cleared');
+      } catch (error) {
+        console.error('❌ Failed to clear draft data:', error);
       }
     },
 
@@ -374,30 +368,83 @@ async function saveSessionState(state: SessionState): Promise<void> {
 }
 
 /**
+ * Save draft conversation data to AsyncStorage
+ */
+async function saveDraftData(data: DraftConversationData): Promise<void> {
+  try {
+    const draftKey = `draft_conversation_${data.sessionId}`;
+    await AsyncStorage.setItem(draftKey, JSON.stringify(data));
+    console.log('💾 Draft data saved');
+  } catch (error) {
+    console.error('❌ Failed to save draft data:', error);
+  }
+}
+
+/**
+ * Update existing draft data in AsyncStorage
+ */
+async function updateDraftData(sessionId: string, updates: Partial<DraftConversationData>): Promise<void> {
+  try {
+    const draftKey = `draft_conversation_${sessionId}`;
+    const existingData = await AsyncStorage.getItem(draftKey);
+
+    if (existingData) {
+      const currentDraft = JSON.parse(existingData) as DraftConversationData;
+      const updatedDraft = {
+        ...currentDraft,
+        ...updates,
+        updatedAt: updates.updatedAt || Date.now(),
+      };
+      await AsyncStorage.setItem(draftKey, JSON.stringify(updatedDraft));
+      console.log('💾 Draft data updated');
+    }
+  } catch (error) {
+    console.error('❌ Failed to update draft data:', error);
+  }
+}
+
+/**
  * Cleanup orphaned session states (utility function)
  */
 export async function cleanupOrphanedSessions(): Promise<void> {
   try {
-    if (typeof window === 'undefined') return;
-
-    const keys = Object.keys(localStorage);
+    const keys = await AsyncStorage.getAllKeys();
     const sessionKeys = keys.filter(key => key.startsWith('session_state_'));
+    const draftKeys = keys.filter(key => key.startsWith('draft_conversation_'));
     const now = Date.now();
     const maxAge = 24 * 60 * 60 * 1000; // 24 hours
 
+    // Clean up session states
     for (const key of sessionKeys) {
       try {
-        const stateData = localStorage.getItem(key);
+        const stateData = await AsyncStorage.getItem(key);
         if (stateData) {
           const state = JSON.parse(stateData) as SessionState;
           if (!state.isActive && (now - state.lastSaveTime > maxAge)) {
-            localStorage.removeItem(key);
+            await AsyncStorage.removeItem(key);
             console.log('🧹 Cleaned up orphaned session:', key);
           }
         }
       } catch (e) {
         // Remove corrupted session data
-        localStorage.removeItem(key);
+        await AsyncStorage.removeItem(key);
+      }
+    }
+
+    // Clean up draft conversations
+    for (const key of draftKeys) {
+      try {
+        const draftData = await AsyncStorage.getItem(key);
+        if (draftData) {
+          const draft = JSON.parse(draftData) as DraftConversationData;
+          if (now - draft.updatedAt > maxAge) {
+            await AsyncStorage.removeItem(key);
+            console.log('🧹 Cleaned up orphaned draft:', key);
+          }
+        }
+      } catch (e) {
+        // Remove corrupted draft data
+        await AsyncStorage.removeItem(key);
       }
     }
   } catch (error) {

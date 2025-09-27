@@ -15,21 +15,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { router, useLocalSearchParams } from 'expo-router';
-import { GradientBackground } from '@/components/ui/GradientBackground';
 import { NeedBubbleData } from '@/lib/types/partsNeedsChart';
 import { generateTestEmotionData } from '@/lib/utils/testData';
 import { generateTestPartsData } from '@/lib/utils/partsNeedsTestData';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
 import { PartBubbleData } from '@/lib/types/partsNeedsChart';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  loadUserEmotions,
+  loadUserParts,
+  UserEmotion,
+  UserPart
+} from '@/lib/services/emotionsPartsNeedsService';
+import { getEmotionColor, getPartColor } from '@/lib/utils/dataColors';
 
 // Lazy load detail chart components
 const EmotionsDetailBubbleChart = React.lazy(() => import('@/components/EmotionsDetailBubbleChart').then(module => ({ default: module.EmotionsDetailBubbleChart })));
 const PartsDetailBubbleChart = React.lazy(() => import('@/components/PartsDetailBubbleChart').then(module => ({ default: module.PartsDetailBubbleChart })));
 
+// Configuration
+const USE_TEST_DATA = false;
+
 export default function NeedsDetailScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { data } = useLocalSearchParams();
+  const { user } = useAuth();
 
   // Parse need data from URL parameter
   const need: NeedBubbleData | null = React.useMemo(() => {
@@ -52,23 +63,92 @@ export default function NeedsDetailScreen() {
   const [shouldLoadDetailCharts, setShouldLoadDetailCharts] = React.useState(false);
   const [shouldRenderCharts, setShouldRenderCharts] = React.useState(false);
 
+  // Data transformation functions
+  const transformEmotionToChartData = React.useCallback((emotion: UserEmotion): EmotionBubbleData => {
+    return {
+      id: emotion.id || `emotion-${Date.now()}-${Math.random()}`,
+      emotion: emotion.emotion_name,
+      frequency: emotion.frequency || 1,
+      intensity: emotion.intensity,
+      color: emotion.color || getEmotionColor(emotion.emotion_name),
+      radius: Math.max(18, Math.min(45, (emotion.frequency || 1) * 3 + emotion.intensity * 2)),
+      category: emotion.category || 'general',
+      lastSeen: new Date(emotion.last_experienced || Date.now()),
+      conversationIds: [`user-${user?.id}`],
+    };
+  }, [user?.id]);
+
+  const transformPartToChartData = React.useCallback((part: UserPart): PartBubbleData => {
+    return {
+      id: part.id || `part-${Date.now()}-${Math.random()}`,
+      name: part.part_name,
+      type: part.part_type,
+      frequency: part.frequency || 1,
+      intensity: part.intensity,
+      color: part.color || getPartColor(part.part_name),
+      radius: Math.max(18, Math.min(45, (part.frequency || 1) * 3 + part.intensity * 2)),
+      lastActive: new Date(part.last_active || Date.now()),
+      conversationIds: [`user-${user?.id}`],
+      description: part.description,
+      role: part.role,
+      triggers: part.triggers || [],
+    };
+  }, [user?.id]);
+
   const handleClose = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.back();
   };
 
+  // Load data from Supabase or test data
+  const loadEmotionsData = React.useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      if (USE_TEST_DATA) {
+        setEmotionsData(generateTestEmotionData(5));
+      } else {
+        const emotions = await loadUserEmotions(user.id, 8);
+        const bubbles = emotions.map(transformEmotionToChartData);
+        setEmotionsData(bubbles);
+      }
+    } catch (error) {
+      console.error('Error loading emotions data:', error);
+      // Fallback to test data
+      setEmotionsData(generateTestEmotionData(5));
+    }
+  }, [user?.id, transformEmotionToChartData]);
+
+  const loadPartsData = React.useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      if (USE_TEST_DATA) {
+        setPartsData(generateTestPartsData(5));
+      } else {
+        const parts = await loadUserParts(user.id, 8);
+        const bubbles = parts.map(transformPartToChartData);
+        setPartsData(bubbles);
+      }
+    } catch (error) {
+      console.error('Error loading parts data:', error);
+      // Fallback to test data
+      setPartsData(generateTestPartsData(5));
+    }
+  }, [user?.id, transformPartToChartData]);
+
   // Initialize chart loading on component mount
   React.useEffect(() => {
-    if (need) {
+    if (need && user?.id) {
       // Start loading charts after a brief delay
       setTimeout(() => {
         setShouldLoadDetailCharts(true);
         setShouldRenderCharts(true);
-        setEmotionsData(generateTestEmotionData(5));
-        setPartsData(generateTestPartsData(5));
+        loadEmotionsData();
+        loadPartsData();
       }, 100);
     }
-  }, [need]);
+  }, [need, user?.id, loadEmotionsData, loadPartsData]);
 
   // Handle bubble press events
   const handleEmotionPress = (emotion: EmotionBubbleData) => {
@@ -89,8 +169,7 @@ export default function NeedsDetailScreen() {
 
   if (!need) {
     return (
-      <GradientBackground>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: 'transparent' }]} edges={['top', 'left', 'right']}>
           <BlurView
             intensity={80}
             tint={isDark ? 'dark' : 'light'}
@@ -106,13 +185,11 @@ export default function NeedsDetailScreen() {
             </View>
           </BlurView>
         </SafeAreaView>
-      </GradientBackground>
     );
   }
 
   return (
-    <GradientBackground>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: 'transparent' }]} edges={['top', 'left', 'right']}>
         <BlurView
           intensity={80}
           tint={colorScheme === 'dark' ? 'dark' : 'light'}
@@ -492,7 +569,6 @@ export default function NeedsDetailScreen() {
           </ScrollView>
         </BlurView>
       </SafeAreaView>
-    </GradientBackground>
   );
 }
 

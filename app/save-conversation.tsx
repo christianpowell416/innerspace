@@ -1,39 +1,51 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  Pressable,
-  ScrollView,
-  Alert,
-  TextInput,
-  Modal,
-} from 'react-native';
-import { BlurView } from 'expo-blur';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Haptics from 'expo-haptics';
-import { router, useLocalSearchParams } from 'expo-router';
-import { useColorScheme } from '@/hooks/useColorScheme';
 import { GradientBackground } from '@/components/ui/GradientBackground';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
+import { useColorScheme } from '@/hooks/useColorScheme';
+import { DetectedItem } from '@/lib/database.types';
 import {
-  loadComplexes,
+  ComplexData,
   createComplex,
-  validateComplexName,
   getRandomComplexColor,
-  ComplexData
+  loadComplexes,
+  validateComplexName
 } from '@/lib/services/complexManagementService';
 import {
-  saveConversation,
-  ConversationMessage
+  ConversationMessage,
+  saveConversation
 } from '@/lib/services/conversationPersistence';
 import {
   saveAllDetectedData
 } from '@/lib/services/detectedDataService';
-import { DetectedItem } from '@/lib/database.types';
+import { DraftConversationData } from '@/lib/services/realtimeConversationSync';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import { router, useLocalSearchParams } from 'expo-router';
+import React, { useEffect, useState, useRef } from 'react';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const CARD_BORDER_RADIUS = 24;
+
+type NewComplexCard = {
+  id: 'new-complex';
+  name: 'New Complex';
+  isNewComplex: true;
+};
+
+type ComplexOrNew =
+  | (ComplexData & { isNewComplex?: false })
+  | NewComplexCard;
 
 export default function SaveConversationScreen() {
   const colorScheme = useColorScheme();
@@ -52,13 +64,57 @@ export default function SaveConversationScreen() {
   const [newComplexName, setNewComplexName] = useState('');
   const [newComplexDescription, setNewComplexDescription] = useState('');
 
-  // Extract conversation data from params
-  const conversationData = params.conversationData ?
+  // Scroll velocity tracking for dynamic spacing
+  const [scrollY, setScrollY] = useState(0);
+  const [lastScrollY, setLastScrollY] = useState(0);
+  const [scrollVelocity, setScrollVelocity] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const [scrollViewHeight, setScrollViewHeight] = useState(0);
+  const scrollViewRef = useRef<any>(null);
+  const lastScrollTime = useRef(Date.now());
+  const velocityDecayTimer = useRef<number | null>(null);
+
+  // Extract session ID or direct conversation data from params
+  const sessionId = params.sessionId as string | undefined;
+  const directData = params.conversationData ?
     (typeof params.conversationData === 'string' ?
       JSON.parse(params.conversationData) :
       params.conversationData) :
     null;
 
+  const [conversationData, setConversationData] = useState<DraftConversationData | null>(directData);
+
+  // Load draft data from AsyncStorage only if not provided directly
+  useEffect(() => {
+    const loadDraftData = async () => {
+      // If we already have direct data, use that
+      if (directData) {
+        console.log('📝 Using direct conversation data');
+        return;
+      }
+
+      if (!sessionId) {
+        console.warn('No sessionId or direct data provided to save-conversation');
+        return;
+      }
+
+      try {
+        const draftKey = `draft_conversation_${sessionId}`;
+        const draftData = await AsyncStorage.getItem(draftKey);
+        if (draftData) {
+          const parsed = JSON.parse(draftData) as DraftConversationData;
+          setConversationData(parsed);
+          console.log('📝 Loaded draft data for session:', sessionId);
+        } else {
+          console.warn('No draft data found for session:', sessionId);
+        }
+      } catch (error) {
+        console.error('Failed to load draft data:', error);
+      }
+    };
+
+    loadDraftData();
+  }, [sessionId, directData]);
 
   // Load complexes on mount
   useEffect(() => {
@@ -91,7 +147,7 @@ export default function SaveConversationScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       console.log(`Saving conversation to complex: ${complexName} (${complexId})`);
 
-      // Save conversation to database
+      // Save conversation to database from draft
       const savedConversation = await saveConversation(
         user.id,
         conversationData.topic,
@@ -104,8 +160,8 @@ export default function SaveConversationScreen() {
       );
 
       // Save detected data if available
-      if (conversationData.detectedItems) {
-        const { emotions, parts, needs } = conversationData.detectedItems;
+      if (conversationData.detectedData) {
+        const { emotions, parts, needs } = conversationData.detectedData;
         if ((emotions && emotions.length > 0) ||
             (parts && parts.length > 0) ||
             (needs && needs.length > 0)) {
@@ -118,8 +174,15 @@ export default function SaveConversationScreen() {
               needs: needs || [],
             }
           );
-          console.log('✅ Detected data saved successfully');
+          console.log('✅ Detected data saved to Supabase');
         }
+      }
+
+      // Clear the draft data after successful save
+      if (sessionId) {
+        const draftKey = `draft_conversation_${sessionId}`;
+        await AsyncStorage.removeItem(draftKey);
+        console.log('🧹 Draft data cleared after successful save');
       }
 
       console.log('✅ Conversation saved successfully');
@@ -162,9 +225,20 @@ export default function SaveConversationScreen() {
     }
   };
 
-  const handleDontSave = () => {
+  const handleDontSave = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     console.log('🔄 [DEBUG] handleDontSave called - User chose not to save conversation');
+
+    // Clear the draft data when user chooses not to save
+    if (sessionId) {
+      try {
+        const draftKey = `draft_conversation_${sessionId}`;
+        await AsyncStorage.removeItem(draftKey);
+        console.log('🧹 Draft data cleared - user chose not to save');
+      } catch (error) {
+        console.error('Failed to clear draft data:', error);
+      }
+    }
 
     // Use the same Alert pattern as successful save to ensure proper navigation
     Alert.alert(
@@ -266,6 +340,52 @@ export default function SaveConversationScreen() {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  const handleScroll = (event: any) => {
+    const currentScrollY = event.nativeEvent.contentOffset.y;
+    const currentTime = Date.now();
+    const timeDelta = currentTime - lastScrollTime.current;
+
+    setScrollY(currentScrollY);
+
+    // Check if we're in a bounce state (scrolled beyond content bounds)
+    const maxScrollY = Math.max(0, contentHeight - scrollViewHeight);
+    const inBounceState = currentScrollY < 0 || currentScrollY > maxScrollY;
+
+    // Only calculate velocity when not in bounce state
+    if (!inBounceState && timeDelta > 0 && timeDelta < 100) { // Ignore large time gaps
+      const scrollDelta = Math.abs(currentScrollY - lastScrollY);
+      const instantVelocity = scrollDelta / timeDelta;
+      const scaledVelocity = Math.min(instantVelocity * 50, 3); // Scale and cap velocity
+
+      // Smooth velocity with momentum - blend current with previous
+      setScrollVelocity(prevVelocity => {
+        const smoothedVelocity = prevVelocity * 0.8 + scaledVelocity * 0.2; // More smoothing
+        return smoothedVelocity;
+      });
+
+      // Clear any existing decay timer and start a new one
+      if (velocityDecayTimer.current) {
+        clearInterval(velocityDecayTimer.current);
+      }
+
+      // Start decay timer to gradually reduce velocity when scrolling stops
+      velocityDecayTimer.current = setInterval(() => {
+        setScrollVelocity(prevVelocity => {
+          const decayedVelocity = prevVelocity * 0.92; // Slower, smoother decay
+          if (decayedVelocity < 0.02) { // Lower threshold for smoother finish
+            clearInterval(velocityDecayTimer.current!);
+            velocityDecayTimer.current = null;
+            return 0;
+          }
+          return decayedVelocity;
+        });
+      }, 33) as any; // 30fps for smooth animation
+    }
+
+    setLastScrollY(currentScrollY);
+    lastScrollTime.current = currentTime;
+  };
+
   if (!user) {
     return (
       <GradientBackground>
@@ -279,6 +399,8 @@ export default function SaveConversationScreen() {
       </GradientBackground>
     );
   }
+
+  const items: ComplexOrNew[] = [{ id: 'new-complex', name: 'New Complex', isNewComplex: true }, ...complexes];
 
   return (
     <GradientBackground>
@@ -298,23 +420,42 @@ export default function SaveConversationScreen() {
 
           {/* Header */}
           <View style={styles.header}>
-            <Text style={{
-              fontSize: 35,
-              fontWeight: 'bold',
-              color: isDark ? '#FFFFFF' : '#000000',
-              textAlign: 'left',
-              fontFamily: 'Georgia',
-            }}>Save Conversation</Text>
+            <View style={styles.headerContent}>
+              <Text style={{
+                fontSize: 35,
+                fontWeight: 'bold',
+                color: isDark ? '#FFFFFF' : '#000000',
+                textAlign: 'left',
+                fontFamily: 'Georgia',
+                flex: 1,
+              }}>Save Conversation</Text>
+              <Pressable
+                onPress={handleDontSave}
+                style={[styles.closeButton, { opacity: saving ? 0.5 : 1 }]}
+                disabled={saving}
+              >
+                <IconSymbol
+                  name="xmark.circle.fill"
+                  size={32}
+                  color="#FF453A"
+                />
+              </Pressable>
+            </View>
           </View>
 
           {/* Complex Cards List */}
           <ScrollView
-            style={styles.scrollView}
+            ref={scrollViewRef}
+            style={[styles.scrollView, { marginBottom: -155 }]}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
             bounces={true}
             alwaysBounceVertical={true}
             bouncesZoom={true}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            onContentSizeChange={(width, height) => setContentHeight(height)}
+            onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
           >
             {loading ? (
               <View style={styles.loadingContainer}>
@@ -329,20 +470,45 @@ export default function SaveConversationScreen() {
                 </Text>
               </View>
             ) : (
-              // Create array with "New Complex" card first, then existing complexes
-              [{ id: 'new-complex', name: 'New Complex', isNewComplex: true }, ...complexes].map((complex, index) => {
-                // Handle "New Complex" card
-                if (complex.isNewComplex) {
+              items.map((complex, index) => {
+                // Calculate card position for gradient
+                const cardTop = index * 140; // Position of card relative to scroll content
+                const cardCenter = cardTop + 175; // Center of the card (350/2 = 175)
+
+                // Calculate card's position relative to viewport
+                const viewportHeight = 800; // Approximate viewport height
+                const cardPositionInViewport = cardCenter - scrollY;
+
+                // Normalize position (0 = top of viewport, 1 = bottom of viewport)
+                const normalizedPosition = Math.max(0, Math.min(1, cardPositionInViewport / viewportHeight));
+
+                // Skip gradient calculations for New Complex card
+                let backgroundColor = '';
+
+                // Cards spread farther apart when scrolling fast (subtle bounce)
+                const baseMargin = -210;
+
+                // Check if we're near scroll bounds to prevent stuttering
+                const maxScrollY = Math.max(0, contentHeight - scrollViewHeight);
+                const nearTop = scrollY < 50;
+                const nearBottom = scrollY > maxScrollY - 50;
+                const atBounds = nearTop || nearBottom;
+
+                // Only apply bounce effect when not at scroll bounds
+                const velocitySpread = atBounds ? 0 : Math.min(scrollVelocity * 3, 10);
+                const dynamicMargin = baseMargin + velocitySpread; // Less negative = more space
+
+                if ('isNewComplex' in complex && complex.isNewComplex) {
                   return (
                     <View
                       key="new-complex"
                       style={[
-                        styles.cardShadowContainer,
                         styles.addNewCardContainer,
                         {
-                          marginTop: index === 0 ? 0 : -210,
+                          marginTop: index === 0 ? 0 : dynamicMargin,
                           zIndex: index + 1,
                           height: 350,
+                          borderRadius: CARD_BORDER_RADIUS,
                         }
                       ]}
                     >
@@ -353,28 +519,28 @@ export default function SaveConversationScreen() {
                           styles.card,
                           styles.addNewCard,
                           {
-                            height: 340,
+                            height: 350,
                             overflow: 'hidden',
                           }
                         ]}
                       >
                         <View style={{ flex: 1 }}>
                           <Pressable
-                          style={[styles.addNewCardPressable, { marginTop: -150 }]}
-                          onPress={() => setShowCreateModal(true)}
-                          disabled={saving}
-                        >
-                          <IconSymbol
-                            name="plus.circle.fill"
-                            size={48}
-                            color={saving ? '#999999' : (isDark ? '#4CAF50' : '#2E7D32')}
-                          />
-                          <Text style={[
-                            styles.addNewText,
-                            { color: saving ? '#999999' : (isDark ? '#4CAF50' : '#2E7D32') }
-                          ]}>
-                            New Complex
-                          </Text>
+                            style={[styles.addNewCardPressable, { marginTop: -150 }]}
+                            onPress={handleCreateNewComplex}
+                            disabled={saving}
+                          >
+                            <IconSymbol
+                              name="plus.circle.fill"
+                              size={48}
+                              color={saving ? '#999999' : (isDark ? '#4CAF50' : '#2E7D32')}
+                            />
+                            <Text style={[
+                              styles.addNewText,
+                              { color: saving ? '#999999' : (isDark ? '#4CAF50' : '#2E7D32') }
+                            ]}>
+                              New Complex
+                            </Text>
                           </Pressable>
                         </View>
                       </BlurView>
@@ -399,12 +565,11 @@ export default function SaveConversationScreen() {
                   );
                 }
 
-                // Handle regular complex cards
-                // Calculate gradient for each card with complex color
+                // Get color for this complex
                 const complexColor = complex.color || '#888888';
-                const backgroundColor = isDark
-                  ? `${complexColor}30`
-                  : `${complexColor}20`;
+                backgroundColor = isDark
+                  ? `${complexColor}23` // 23% opacity for dark mode (25% less intense)
+                  : `${complexColor}15`; // 15% opacity for light mode (25% less intense)
 
                 return (
                   <View
@@ -412,7 +577,7 @@ export default function SaveConversationScreen() {
                     style={[
                       styles.cardShadowContainer,
                       {
-                        marginTop: index === 0 ? 0 : -210,
+                        marginTop: index === 0 ? 0 : dynamicMargin,
                         zIndex: index + 1,
                         height: 350,
                       }
@@ -424,44 +589,45 @@ export default function SaveConversationScreen() {
                       style={[
                         styles.card,
                         {
-                          height: 340,
+                          backgroundColor,
+                          height: 350,
                           overflow: 'hidden',
                         }
                       ]}
                     >
                       <View style={{ flex: 1 }}>
                         <Pressable
-                        onPress={() => handleComplexSelect(complex.id, complex.name)}
-                        style={styles.cardPressable}
-                        disabled={saving}
-                      >
-                        <View style={styles.cardHeader}>
-                          <Text style={[
-                            styles.cardTitle,
-                            { color: isDark ? '#FFFFFF' : '#000000' }
-                          ]}>
-                            {complex.name}
-                          </Text>
-                          <Text style={[
-                            styles.cardDate,
-                            { color: isDark ? '#CCCCCC' : '#666666' }
-                          ]}>
-                            {formatDate(complex.created_at || new Date().toISOString())}
-                          </Text>
-                        </View>
-                        {complex.description && (
-                          <Text style={[
-                            styles.cardDescription,
-                            { color: isDark ? '#DDDDDD' : '#444444' }
-                          ]}>
-                            {complex.description}
-                          </Text>
-                        )}
-                        {saving && (
-                          <Text style={[styles.savingText, { color: complexColor }]}>
-                            Saving...
-                          </Text>
-                        )}
+                          onPress={() => handleComplexSelect(String(complex.id), complex.name)}
+                          style={styles.cardPressable}
+                          disabled={saving}
+                        >
+                          <View style={styles.cardHeader}>
+                            <Text style={[
+                              styles.cardTitle,
+                              { color: isDark ? '#FFFFFF' : '#000000' }
+                            ]}>
+                              {complex.name}
+                            </Text>
+                            <Text style={[
+                              styles.cardDate,
+                              { color: isDark ? '#CCCCCC' : '#666666' }
+                            ]}>
+                              {formatDate(complex.created_at || new Date().toISOString())}
+                            </Text>
+                          </View>
+                          {complex.description && (
+                            <Text style={[
+                              styles.cardDescription,
+                              { color: isDark ? '#DDDDDD' : '#444444' }
+                            ]}>
+                              {complex.description}
+                            </Text>
+                          )}
+                          {saving && (
+                            <Text style={[styles.savingText, { color: isDark ? '#4CAF50' : '#2E7D32' }]}>
+                              Saving...
+                            </Text>
+                          )}
                         </Pressable>
                       </View>
                     </BlurView>
@@ -485,32 +651,7 @@ export default function SaveConversationScreen() {
                 );
               })
             )}
-
           </ScrollView>
-
-          {/* Footer Actions */}
-          <View style={styles.footer}>
-            <Pressable
-              onPress={handleDontSave}
-              style={[
-                styles.dontSaveButton,
-                {
-                  backgroundColor: isDark
-                    ? 'rgba(255, 59, 48, 0.2)'
-                    : 'rgba(255, 59, 48, 0.1)',
-                  opacity: saving ? 0.5 : 1,
-                }
-              ]}
-              disabled={saving}
-            >
-              <Text style={[
-                styles.dontSaveButtonText,
-                { color: isDark ? '#FF453A' : '#FF3B30' }
-              ]}>
-                Don't Save
-              </Text>
-            </Pressable>
-          </View>
         </BlurView>
 
         {/* Create New Complex Modal */}
@@ -634,6 +775,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  closeButton: {
+    padding: 4,
+    marginLeft: 10,
   },
   scrollView: {
     flex: 1,

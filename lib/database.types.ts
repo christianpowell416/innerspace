@@ -1,5 +1,19 @@
 import { FlowchartRow, FlowchartInsert, FlowchartUpdate } from './types/flowchart';
 
+export interface ConversationMessage {
+  id: string;
+  type: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
+  sessionId?: string;
+}
+
+export interface DetectedItem {
+  name: string;
+  confidence: number;
+  context?: string;
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -80,6 +94,139 @@ export interface Database {
         Row: FlowchartRow;
         Insert: FlowchartInsert;
         Update: FlowchartUpdate;
+      };
+      complexes: {
+        Row: {
+          id: string;
+          user_id: string;
+          name: string;
+          description: string | null;
+          color: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          name: string;
+          description?: string | null;
+          color?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          name?: string;
+          description?: string | null;
+          color?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      conversations: {
+        Row: {
+          id: string;
+          user_id: string;
+          complex_id: string | null;
+          topic: string;
+          title: string | null;
+          messages: ConversationMessage[];
+          summary: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          complex_id?: string | null;
+          topic: string;
+          title?: string | null;
+          messages: ConversationMessage[];
+          summary?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          complex_id?: string | null;
+          topic?: string;
+          title?: string | null;
+          messages?: ConversationMessage[];
+          summary?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      detected_emotions: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          user_id: string;
+          emotions: DetectedItem[];
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          user_id: string;
+          emotions: DetectedItem[];
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          conversation_id?: string;
+          user_id?: string;
+          emotions?: DetectedItem[];
+          created_at?: string;
+        };
+      };
+      detected_parts: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          user_id: string;
+          parts: DetectedItem[];
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          user_id: string;
+          parts: DetectedItem[];
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          conversation_id?: string;
+          user_id?: string;
+          parts?: DetectedItem[];
+          created_at?: string;
+        };
+      };
+      detected_needs: {
+        Row: {
+          id: string;
+          conversation_id: string;
+          user_id: string;
+          needs: DetectedItem[];
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          conversation_id: string;
+          user_id: string;
+          needs: DetectedItem[];
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          conversation_id?: string;
+          user_id?: string;
+          needs?: DetectedItem[];
+          created_at?: string;
+        };
       };
     };
   };

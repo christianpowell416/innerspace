@@ -55,6 +55,11 @@ class DetectionSessionTracker {
     map: Map<string, DetectionTracker>,
     item: string
   ): DetectionTracker {
+    // Handle undefined or null items
+    if (!item) {
+      console.warn('DetectionSessionTracker: Received undefined or null item');
+      item = 'unknown';
+    }
     const normalizedItem = item.toLowerCase().trim();
     const existing = map.get(normalizedItem);
     const now = new Date();
@@ -120,7 +125,10 @@ export const transformDetectedEmotions = (
     sessionTracker.setConversationId(conversationId);
   }
 
-  return emotions.map((emotionItem, index) => {
+  // Filter out invalid items and map valid ones
+  return emotions
+    .filter(emotionItem => emotionItem && emotionItem.name)
+    .map((emotionItem, index) => {
     const emotion = emotionItem.name;
     const tracker = sessionTracker.trackEmotion(emotion);
     const intensity = calculateIntensity(tracker.count);
@@ -151,7 +159,10 @@ export const transformDetectedParts = (
     sessionTracker.setConversationId(conversationId);
   }
 
-  return parts.map((partItem, index) => {
+  // Filter out invalid items and map valid ones
+  return parts
+    .filter(partItem => partItem && partItem.name)
+    .map((partItem, index) => {
     const part = partItem.name;
     const tracker = sessionTracker.trackPart(part);
     const intensity = calculateIntensity(tracker.count);
@@ -182,7 +193,10 @@ export const transformDetectedNeeds = (
     sessionTracker.setConversationId(conversationId);
   }
 
-  return needs.map((needItem, index) => {
+  // Filter out invalid items and map valid ones
+  return needs
+    .filter(needItem => needItem && needItem.name)
+    .map((needItem, index) => {
     const need = needItem.name;
     const tracker = sessionTracker.trackNeed(need);
     const intensity = calculateIntensity(tracker.count);

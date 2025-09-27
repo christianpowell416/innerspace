@@ -280,13 +280,11 @@ export const createVoiceSession = (
 
   // Helper function to add text to word buffer and start streaming
   const addToWordBuffer = (text: string, responseId: string) => {
-    console.log('💬 [WORD BUFFER] Adding text:', text);
 
     // Check if this looks like JSON response format and skip JSON structure
     if (text.includes('"role":') || text.includes('"content":') || text.includes('"assistant"') ||
         text.includes('"response":') || text === '{"' || text === '"' || text === ':' ||
         text === ':"' || text === '",' || text === '}' || text.match(/^[{"}:,\s]*$/)) {
-      console.log('💬 [WORD BUFFER] Detected JSON structure, skipping...');
       // Don't add JSON structure words to buffer - wait for content extraction
       return;
     }
@@ -300,7 +298,6 @@ export const createVoiceSession = (
     // Set or update the streaming response ID
     streamingResponseId = responseId;
 
-    console.log('💬 [WORD BUFFER] Total words in buffer:', wordBuffer.length);
 
     // Start word streaming if not already running
     if (!wordStreamingTimer) {
@@ -315,7 +312,6 @@ export const createVoiceSession = (
       displayedText += word;
       currentWordIndex++;
 
-      console.log('💬 [WORD STREAM] Word:', word, 'Progress:', currentWordIndex, '/', wordBuffer.length);
 
       // Send updated text to UI - only if we have a valid response ID
       if (currentResponseId) {
@@ -328,18 +324,14 @@ export const createVoiceSession = (
     } else {
       // Streaming complete or interrupted
       if (currentWordIndex >= wordBuffer.length) {
-        console.log('💬 [WORD STREAM] Complete - all words streamed');
       } else {
-        console.warn('💬 [WORD STREAM] Interrupted - streamingResponseId:', streamingResponseId, 'currentResponseId:', currentResponseId, 'progress:', currentWordIndex, '/', wordBuffer.length);
       }
-      console.log('💬 [WORD STREAM] Complete. Final text:', displayedText);
       wordStreamingTimer = null;
 
       if (streamingResponseId && currentResponseId) {
         callbacks.onResponseStreaming?.(displayedText, true);
 
         // Now that word streaming is complete, call onResponseComplete
-        console.log('💬 [WORD STREAM] Calling onResponseComplete after streaming finished');
         callbacks.onResponseComplete?.();
       }
     }
@@ -1302,7 +1294,6 @@ export const createVoiceSession = (
           currentResponseId = message.response?.id || Date.now().toString();
           lastProcessedResponse = null;
 
-          console.log('💬 [RESPONSE CREATED] ResponseID:', currentResponseId, 'LastInputWasText:', lastInputWasText);
 
           // Notify UI of new response start
           callbacks.onResponseStart?.(currentResponseId);
@@ -1320,10 +1311,8 @@ export const createVoiceSession = (
           break;
           
         case 'response.text.delta':
-          console.log('💬 [TEXT DELTA] Received:', message.delta, 'Length:', message.delta?.length, 'ResponseID:', currentResponseId);
           if (lastInputWasText && message.delta && currentResponseId) {
             currentTranscript += message.delta;
-            console.log('💬 [TEXT DELTA] Accumulated length:', currentTranscript.length, 'Content preview:', currentTranscript.substring(0, 50) + '...');
             // Use word-by-word streaming instead of direct callback
             addToWordBuffer(message.delta, currentResponseId);
           }
@@ -1331,7 +1320,6 @@ export const createVoiceSession = (
 
         case 'response.text.done':
           if (lastInputWasText && message.text) {
-            console.log(`💬 [TEXT] AI Response: "${message.text.substring(0, 60)}..."`);
 
             // Parse the JSON response to extract content
             let finalText = message.text;
@@ -1340,10 +1328,8 @@ export const createVoiceSession = (
               // Try both "content" and "response" fields for different API formats
               if (parsed.role === 'assistant' && parsed.content) {
                 finalText = parsed.content;
-                console.log('💬 [TEXT DONE] Extracted content field:', finalText);
               } else if (parsed.response) {
                 finalText = parsed.response;
-                console.log('💬 [TEXT DONE] Extracted response field:', finalText);
               }
 
               if (finalText !== message.text) {
@@ -1361,7 +1347,6 @@ export const createVoiceSession = (
                 displayedText = '';
                 streamingResponseId = currentResponseId;
 
-                console.log('💬 [TEXT DONE] Starting word streaming with', words.length, 'words');
 
                 // Start streaming the clean content
                 if (!wordStreamingTimer && currentResponseId) {
@@ -1370,7 +1355,6 @@ export const createVoiceSession = (
               }
             } catch (e) {
               // Not JSON, use as is
-              console.log('💬 [TEXT DONE] Not JSON format, using raw text');
               finalText = message.text;
             }
 
@@ -1386,10 +1370,8 @@ export const createVoiceSession = (
           break;
           
         case 'response.audio_transcript.delta':
-          console.log('💬 [AUDIO DELTA] Received:', message.delta, 'Length:', message.delta?.length, 'ResponseID:', currentResponseId);
           if (message.delta && currentResponseId) {
             currentTranscript += message.delta;
-            console.log('💬 [AUDIO DELTA] Accumulated length:', currentTranscript.length, 'Content preview:', currentTranscript.substring(0, 50) + '...');
             // Use word-by-word streaming instead of direct callback
             addToWordBuffer(message.delta, currentResponseId);
           }
@@ -1397,19 +1379,13 @@ export const createVoiceSession = (
 
         case 'response.audio_transcript.done':
           if (!currentResponseId) {
-            console.warn(`💬 [AUDIO DONE] Skipped - no currentResponseId set`);
             break;
           }
 
           const finalTranscript = message.transcript || currentTranscript;
-          console.log(`💬 [AUDIO] Final vs Current: final="${finalTranscript}" | current="${currentTranscript}"`);
-          console.log(`💬 [AUDIO] Final Length: ${finalTranscript.length} | Current Length: ${currentTranscript.length}`);
 
           // Always use the official transcript from the done event, even if it seems the same
           // This ensures we get the complete text including final punctuation
-          console.log(`💬 [AUDIO] AI Response Full: "${finalTranscript}"`);
-          console.log(`💬 [AUDIO] Response Length: ${finalTranscript.length}`);
-          console.log(`💬 [AUDIO] Last Character: "${finalTranscript.slice(-1)}" (code: ${finalTranscript.charCodeAt(finalTranscript.length - 1)})`);
 
           // Call streaming callback with final complete response
           callbacks.onResponseStreaming?.(finalTranscript, true);
@@ -1534,7 +1510,6 @@ export const createVoiceSession = (
             console.log('✅ No audio or word streaming - calling onResponseComplete immediately');
             callbacks.onResponseComplete?.();
           } else if (isWordStreamingActive) {
-            console.log('💬 Word streaming is active - waiting for streaming to complete before onResponseComplete');
             // Word streaming will call onResponseComplete when it finishes
           } else {
             console.log('🔊 Audio is playing or queued - waiting for audio completion');

@@ -101,7 +101,16 @@ export default function ConversationScreen() {
   const [showSquareCards, setShowSquareCards] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [currentUserInputSession, setCurrentUserInputSession] = useState<string | null>(null);
+  // Single session for entire conversation
+  const conversationSessionId = useRef<string>(Date.now().toString() + Math.random().toString(36).substr(2, 9));
+  const messageCounter = useRef<number>(0);
+
+  // Helper to generate sequential message IDs
+  const generateMessageId = () => {
+    messageCounter.current += 1;
+    return `msg-${conversationSessionId.current}-${messageCounter.current}`;
+  };
+
   const [allowAIDisplay, setAllowAIDisplay] = useState(false);
   const [detectedItems, setDetectedItems] = useState<DetectedLists>({
     emotions: [],
@@ -129,7 +138,6 @@ export default function ConversationScreen() {
   const isAIRespondingRef = useRef(false);
   const isStreamingRef = useRef(false);
   const currentResponseIdRef = useRef<string | null>(null);
-  const currentUserInputSessionRef = useRef<string | null>(null);
   const userMessageAddedForSessionRef = useRef<string | null>(null);
 
   // Real-time sync state
@@ -143,26 +151,40 @@ export default function ConversationScreen() {
     setIsListening(listening);
   };
 
-  // Helper function to sync conversation with real-time service
-  const syncConversationToRealtimeService = async (conversationMessages: typeof conversation) => {
+  // Debounced sync to prevent race conditions
+  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Helper function to sync conversation with real-time service (debounced)
+  const syncConversationToRealtimeService = (conversationMessages: typeof conversation) => {
     if (!realtimeSyncRef.current || !user) return;
 
-    try {
-      const validMessages = conversationMessages
-        .filter(msg => msg.text && msg.text.trim().length > 0 && !msg.isRecording && !msg.isProcessing)
-        .map(msg => ({
-          id: msg.id,
-          type: msg.type,
-          text: msg.text,
-          timestamp: msg.timestamp,
-          sessionId: msg.sessionId || null,
-        }));
-
-      await realtimeSyncRef.current.updateMessages(validMessages);
-      setLastSyncTime(new Date());
-    } catch (error) {
-      console.error('❌ Failed to sync conversation:', error);
+    // Clear any pending sync
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
     }
+
+    // Debounce sync by 1000ms to prevent overlapping operations
+    syncTimerRef.current = setTimeout(async () => {
+      try {
+        const validMessages = conversationMessages
+          .filter(msg => msg.text && msg.text.trim().length > 0 && !msg.isRecording && !msg.isProcessing)
+          .map(msg => ({
+            id: msg.id,
+            type: msg.type,
+            text: msg.text,
+            timestamp: msg.timestamp,
+            sessionId: msg.sessionId || null,
+          }));
+
+        // Non-blocking sync - don't await
+        realtimeSyncRef.current.updateMessages(validMessages).catch(error =>
+          console.error('❌ Background sync failed:', error)
+        );
+        setLastSyncTime(new Date());
+      } catch (error) {
+        console.error('❌ Failed to sync conversation:', error);
+      }
+    }, 500);
   };
 
   // Helper function to sync detected data with real-time service
@@ -250,15 +272,11 @@ export default function ConversationScreen() {
       // Set flag to prevent usePreventRemove from triggering again
       setHasNavigatedToSave(true);
 
-      // Navigate to save screen, which will handle going back after save
+      // Navigate to save screen with session ID
       router.replace({
         pathname: '/save-conversation',
         params: {
-          conversationData: JSON.stringify({
-            topic: selectedTopic,
-            messages: conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing),
-            detectedItems: detectedItems
-          })
+          sessionId: realtimeSync?.sessionId
         }
       });
 
@@ -336,39 +354,28 @@ export default function ConversationScreen() {
             isAIRespondingRef.current = false;
             setHasUserInteracted(true);
 
-            const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-            setCurrentUserInputSession(sessionId);
-            currentUserInputSessionRef.current = sessionId;
+            // Create a new recording indicator message
+            const messageId = generateMessageId();
+            userMessageAddedForSessionRef.current = messageId; // Store for transcript update
 
-            const recordingMessageId = 'recording-' + sessionId;
-
-            setConversation(prev => {
-              const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
-              if (existingIndex >= 0) {
-                return prev;
-              }
-
-              return [...prev, {
-                type: 'user',
-                text: '',
-                id: recordingMessageId,
-                sessionId: sessionId,
-                timestamp: Date.now(),
-                isRecording: true
-              }];
-            });
+            setConversation(prev => [...prev, {
+              type: 'user' as const,
+              text: '',
+              id: messageId,
+              sessionId: conversationSessionId.current,
+              timestamp: Date.now(),
+              isRecording: true
+            }]);
           },
           onListeningStop: () => {
             setIsListeningWithLogging(false);
             setIsAIResponding(true);
             isAIRespondingRef.current = true;
+            setTranscript('');
 
-            setTimeout(() => setTranscript(''), 500);
-
-            const currentSession = currentUserInputSessionRef.current;
-            if (currentSession) {
-              const recordingMessageId = 'recording-' + currentSession;
-
+            // Update the recording message to processing state
+            const recordingMessageId = userMessageAddedForSessionRef.current;
+            if (recordingMessageId) {
               setConversation(prev => {
                 const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
                 if (existingIndex >= 0) {
@@ -379,38 +386,9 @@ export default function ConversationScreen() {
                     isProcessing: true
                   };
                   return updatedConversation;
-                } else {
-                  return prev;
                 }
+                return prev;
               });
-
-              setTimeout(() => {
-                setConversation(currentConversation => {
-                  const processingMessage = currentConversation.find(msg => msg.id === recordingMessageId && msg.isProcessing);
-
-                  if (processingMessage) {
-                    const filtered = currentConversation.filter(msg => msg.id !== recordingMessageId);
-
-                    setIsListeningWithLogging(false);
-                    setIsProcessingUserInput(false);
-                    setIsAIResponding(false);
-                    setCurrentResponseId(null);
-                    setIsStreaming(false);
-
-                    isAIRespondingRef.current = false;
-                    isStreamingRef.current = false;
-                    currentResponseIdRef.current = null;
-
-                    // Only show tooltip if user attempted recording but no message detected
-                    setShowWelcomeTooltip(true);
-                    setTimeout(() => setShowWelcomeTooltip(false), 3000);
-
-                    return filtered;
-                  } else {
-                    return currentConversation;
-                  }
-                });
-              }, 3000);
             }
           },
           onTranscript: (transcriptText, isFinal) => {
@@ -418,17 +396,11 @@ export default function ConversationScreen() {
               console.log('👤 User:', transcriptText);
 
               if (!transcriptText || transcriptText.trim().length === 0) {
-                const userInputSession = currentUserInputSessionRef.current;
-                if (!userInputSession) {
-                  return;
+                // Remove the recording/processing indicator if no text was spoken
+                const recordingMessageId = userMessageAddedForSessionRef.current;
+                if (recordingMessageId) {
+                  setConversation(prev => prev.filter(msg => msg.id !== recordingMessageId));
                 }
-
-                const recordingMessageId = 'recording-' + userInputSession;
-
-                setConversation(prev => {
-                  const filtered = prev.filter(msg => msg.id !== recordingMessageId);
-                  return filtered;
-                });
 
                 setIsListeningWithLogging(false);
                 setIsProcessingUserInput(false);
@@ -439,8 +411,9 @@ export default function ConversationScreen() {
                 isAIRespondingRef.current = false;
                 isStreamingRef.current = false;
                 currentResponseIdRef.current = null;
+                userMessageAddedForSessionRef.current = null;
 
-                // Only show tooltip if user attempted recording but no message detected
+                // Show tooltip briefly
                 setShowWelcomeTooltip(true);
                 setTimeout(() => setShowWelcomeTooltip(false), 3000);
                 return;
@@ -494,74 +467,44 @@ export default function ConversationScreen() {
               });
 
               setIsProcessingUserInput(true);
-
-              const currentSession = currentUserInputSessionRef.current;
-
-              if (!currentSession) {
-                const fallbackSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-                setCurrentUserInputSession(fallbackSessionId);
-                currentUserInputSessionRef.current = fallbackSessionId;
-              }
-
-              setAllowAIDisplay(false);
-
               setTranscript('');
-
               setPendingUserMessage(transcriptText);
 
-              if (currentSession) {
-                userMessageAddedForSessionRef.current = currentSession;
-              }
-
-              const recordingMessageId = 'recording-' + (currentSession || currentUserInputSessionRef.current);
+              // Find and update the recording message in place
+              const recordingMessageId = userMessageAddedForSessionRef.current;
 
               setConversation(prev => {
-                const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
+                const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId && msg.isRecording);
                 if (existingIndex >= 0) {
-                  const fadeAnim = new Animated.Value(0);
+                  // Update existing recording message
                   const updatedConversation = [...prev];
                   updatedConversation[existingIndex] = {
-                    type: 'user',
+                    ...updatedConversation[existingIndex],
                     text: transcriptText,
-                    id: recordingMessageId,
-                    sessionId: currentSession || currentUserInputSessionRef.current,
-                    timestamp: Date.now(),
                     isRecording: false,
                     isProcessing: false,
-                    fadeAnim
                   };
-
-                  Animated.timing(fadeAnim, {
-                    toValue: 1,
-                    duration: 300,
-                    useNativeDriver: true,
-                  }).start();
-
-                  setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
-
+                  syncConversationToRealtimeService(updatedConversation);
                   return updatedConversation;
                 } else {
-                  console.warn('📝 [TRANSCRIPT] Recording indicator not found, adding as new message');
-                  const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-                  const updatedConversation = [...prev, {
-                    type: 'user',
+                  // Add new user message if no recording indicator found
+                  const messageId = generateMessageId();
+                  const newMessage = {
+                    type: 'user' as const,
                     text: transcriptText,
                     id: messageId,
-                    sessionId: currentSession || currentUserInputSessionRef.current,
+                    sessionId: conversationSessionId.current,
                     timestamp: Date.now()
-                  }];
-
-                  setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
-
+                  };
+                  const updatedConversation = [...prev, newMessage];
+                  syncConversationToRealtimeService(updatedConversation);
                   return updatedConversation;
                 }
               });
 
-              setTimeout(() => {
-                setAllowAIDisplay(true);
-              }, 50);
-
-              setTimeout(() => setPendingUserMessage(null), 1000);
+              // Clear pending state
+              setPendingUserMessage(null);
+              setAllowAIDisplay(true);
             } else {
               setTranscript(transcriptText);
             }
@@ -576,51 +519,28 @@ export default function ConversationScreen() {
             isStreamingRef.current = true;
             currentResponseIdRef.current = responseId;
 
-            const currentSession = currentUserInputSessionRef.current;
-            if (currentSession) {
-              setConversation(prev => {
-                const thinkingPlaceholderIndex = prev.findIndex(msg =>
-                  msg.type === 'assistant' &&
-                  msg.isThinking &&
-                  msg.sessionId === currentSession &&
-                  msg.text === ''
-                );
+            // Add AI message with the response ID
+            setConversation(prev => {
+              // Check if this response already exists (shouldn't happen but safety check)
+              if (prev.some(msg => msg.id === responseId)) {
+                return prev;
+              }
 
-                if (thinkingPlaceholderIndex >= 0) {
-                  const updatedConversation = [...prev];
-                  updatedConversation[thinkingPlaceholderIndex] = {
-                    ...updatedConversation[thinkingPlaceholderIndex],
-                    id: responseId
-                  };
-                  return updatedConversation;
-                }
-
-                const existingIndex = prev.findIndex(msg => msg.id === responseId);
-                if (existingIndex >= 0) {
-                  return prev;
-                }
-
-                const newConversation = [...prev, {
-                  type: 'assistant',
-                  text: '',
-                  id: responseId,
-                  sessionId: currentSession,
-                  timestamp: Date.now(),
-                  isThinking: true
-                }];
-                return newConversation;
-              });
-            }
+              return [...prev, {
+                type: 'assistant' as const,
+                text: '',
+                id: responseId,
+                sessionId: conversationSessionId.current,
+                timestamp: Date.now(),
+                isThinking: true
+              }];
+            });
           },
           onResponseStreaming: (response, isComplete) => {
             if (!response) return;
 
-            const currentSession = currentUserInputSessionRef.current;
             const responseId = currentResponseIdRef.current;
-
-            if (!responseId || !currentSession) {
-              return;
-            }
+            if (!responseId) return;
 
             setConversation(prev => {
               const existingMessageIndex = prev.findIndex(msg => msg.id === responseId);
@@ -634,81 +554,39 @@ export default function ConversationScreen() {
                 };
 
                 if (isComplete) {
-                  setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
+                  syncConversationToRealtimeService(updatedConversation);
                 }
 
                 return updatedConversation;
-              } else {
-                return prev;
               }
+              return prev;
             });
           },
           onResponse: (response) => {
-            if (!response) {
-              return;
-            }
+            if (!response) return;
 
             console.log('🤖 AI:', response);
 
-            // Store the IDs immediately to avoid race conditions with onResponseComplete
-            const currentSession = currentUserInputSessionRef.current;
             const responseId = currentResponseIdRef.current;
-
-            // If we don't have IDs from refs, try to find the last AI message that's thinking or incomplete
-            if (!responseId || !currentSession) {
-
-              setConversation(prev => {
-                // Find the last AI message that might need updating
-                let lastAIMessageIndex = -1;
-                for (let i = prev.length - 1; i >= 0; i--) {
-                  if (prev[i].type === 'assistant') {
-                    lastAIMessageIndex = i;
-                    break;
-                  }
-                }
-
-                if (lastAIMessageIndex >= 0) {
-                  const updatedConversation = [...prev];
-                  updatedConversation[lastAIMessageIndex] = {
-                    ...updatedConversation[lastAIMessageIndex],
-                    text: response,
-                    isThinking: false
-                  };
-
-                  // Sync the complete conversation after final response
-                  setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
-
-                  return updatedConversation;
-                }
-
-                return prev;
-              });
-
-              return;
-            }
+            if (!responseId) return;
 
             setConversation(prev => {
               const existingMessageIndex = prev.findIndex(msg => msg.id === responseId);
 
               if (existingMessageIndex >= 0) {
-                const existingMessage = prev[existingMessageIndex];
-
-                // Always update with the full response text, regardless of thinking state
                 const updatedConversation = [...prev];
                 updatedConversation[existingMessageIndex] = {
                   ...updatedConversation[existingMessageIndex],
-                  text: response,  // Always update the text with the full response
+                  text: response,
                   isThinking: false
                 };
 
-
                 // Sync the complete conversation after final response
-                setTimeout(() => syncConversationToRealtimeService(updatedConversation), 100);
+                syncConversationToRealtimeService(updatedConversation);
 
                 return updatedConversation;
-              } else {
-                return prev;
               }
+              return prev;
             });
           },
           onResponseComplete: () => {
@@ -719,10 +597,7 @@ export default function ConversationScreen() {
             isAIRespondingRef.current = false;
             isStreamingRef.current = false;
             currentResponseIdRef.current = null;
-
-            setTimeout(() => {
-              userMessageAddedForSessionRef.current = null;
-            }, 100);
+            userMessageAddedForSessionRef.current = null;
           },
           onFlowchartGenerated: (flowchart) => {
             // Flowchart generation temporarily disabled
@@ -737,33 +612,49 @@ export default function ConversationScreen() {
 
       sessionRef.current = session;
 
+      // Initialize both services in parallel for faster startup
+      const initPromises = [];
+
+      // 1. Connect voice session
+      const connectionPromise = session.connect();
+      initPromises.push(connectionPromise);
+
+      // 2. Initialize realtime sync (if user is logged in)
       if (user) {
-        try {
-          const syncService = createRealtimeConversationSync({
-            userId: user.id,
-            topic: selectedTopic,
-            complexId: undefined,
-            enableSessionRecovery: true,
-          });
+        const syncPromise = (async () => {
+          try {
+            const syncService = createRealtimeConversationSync({
+              userId: user.id,
+              topic: selectedTopic,
+              complexId: undefined,
+              enableSessionRecovery: true,
+            });
 
-          setRealtimeSync(syncService);
-          realtimeSyncRef.current = syncService;
+            setRealtimeSync(syncService);
+            realtimeSyncRef.current = syncService;
 
-          await syncService.startSession();
-          console.log('🔄 Real-time sync service initialized');
-        } catch (error) {
-          console.error('❌ Failed to initialize real-time sync:', error);
-        }
+            await syncService.startSession();
+            console.log('🔄 Real-time sync service initialized');
+          } catch (error) {
+            console.error('❌ Failed to initialize real-time sync:', error);
+            // Don't throw - sync failure shouldn't prevent voice conversation
+          }
+        })();
+        initPromises.push(syncPromise);
       }
 
+      // Wait for all initializations with timeout
       const connectionTimeout = setTimeout(() => {
         if (!isConnected) {
           setIsLoading(false);
         }
       }, 10000);
 
-      await session.connect();
-      clearTimeout(connectionTimeout);
+      try {
+        await Promise.all(initPromises);
+      } finally {
+        clearTimeout(connectionTimeout);
+      }
 
     } catch (error) {
       console.error('❌ ConversationScreen: Session initialization failed:', error);
@@ -772,10 +663,16 @@ export default function ConversationScreen() {
     }
   };
 
-  const cleanupSession = () => {
+  const cleanupSession = async () => {
     if (isCleaningUp) return;
 
     setIsCleaningUp(true);
+
+    // Cancel any pending sync operations
+    if (syncTimerRef.current) {
+      clearTimeout(syncTimerRef.current);
+      syncTimerRef.current = null;
+    }
 
     if (sessionRef.current) {
       try {
@@ -788,7 +685,7 @@ export default function ConversationScreen() {
 
     if (realtimeSyncRef.current) {
       try {
-        realtimeSyncRef.current.endSession();
+        await realtimeSyncRef.current.endSession();
         console.log('🔄 Real-time sync service ended');
       } catch (error) {
         console.warn('⚠️ Error during real-time sync cleanup:', error);
@@ -978,33 +875,19 @@ export default function ConversationScreen() {
     const messageText = textInput.trim();
     console.log('👤 User:', messageText);
 
-    const sessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-    setCurrentUserInputSession(sessionId);
-    currentUserInputSessionRef.current = sessionId;
-
+    // Create user message with sequential ID
     const userMessage = {
       type: 'user' as const,
       text: messageText,
-      id: Date.now().toString(),
+      id: generateMessageId(),
       timestamp: Date.now(),
-      sessionId: sessionId,
+      sessionId: conversationSessionId.current,
     };
 
-    const temporaryId = `temp-response-${Date.now()}`;
-    const aiPlaceholder = {
-      type: 'assistant' as const,
-      text: '',
-      id: temporaryId,
-      timestamp: Date.now(),
-      sessionId: sessionId,
-      isThinking: true,
-    };
+    // Add user message immediately
+    setConversation(prev => [...prev, userMessage]);
 
-
-    setConversation(prev => {
-      return [...prev, userMessage, aiPlaceholder];
-    });
-
+    // Send to AI
     setIsAIResponding(true);
     isAIRespondingRef.current = true;
 
@@ -1016,14 +899,9 @@ export default function ConversationScreen() {
       isAIRespondingRef.current = false;
     }
 
+    // Clear input
     setTextInput('');
     textInputRef.current?.setNativeProps({ text: '' });
-
-    // Clear again after a short delay to handle iOS autocorrect timing
-    setTimeout(() => {
-      setTextInput('');
-      textInputRef.current?.setNativeProps({ text: '' });
-    }, 100);
   };
 
   // Only show tooltip when connected and idle if this is first open or user had recording issues
@@ -1102,15 +980,11 @@ export default function ConversationScreen() {
     console.log('🔄 [DEBUG] Setting hasNavigatedToSave = true in usePreventRemove');
     setHasNavigatedToSave(true);
 
-    // Navigate to save conversation screen when prevention occurs
+    // Navigate to save conversation screen with session ID
     router.push({
       pathname: '/save-conversation',
       params: {
-        conversationData: JSON.stringify({
-          topic: selectedTopic,
-          messages: conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing),
-          detectedItems: detectedItems
-        })
+        sessionId: realtimeSync?.sessionId
       }
     });
 

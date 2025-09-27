@@ -2,6 +2,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { StyleSheet, View, Pressable, ScrollView, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
@@ -87,7 +88,10 @@ export default function HomeScreen() {
           </ThemedText>
           <Pressable
             style={styles.profileButton}
-            onPress={() => router.push('/profile')}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push('/profile');
+            }}
           >
             <IconSymbol size={36} name="person.circle" color={colorScheme === 'dark' ? '#fff' : '#000'} />
           </Pressable>

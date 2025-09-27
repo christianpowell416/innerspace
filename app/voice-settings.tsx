@@ -15,7 +15,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { router, useLocalSearchParams } from 'expo-router';
-import { GradientBackground } from '@/components/ui/GradientBackground';
 import { getSelectedVoice, setSelectedVoice, getAllVoices, VoiceType } from '@/lib/services/voiceSettings';
 import { getUserProfile } from '@/lib/services/auth';
 import { generateRealtimeVoiceSample } from '@/lib/services/realtimeVoiceSample';
@@ -118,8 +117,7 @@ export default function VoiceSettingsScreen() {
   };
 
   return (
-    <GradientBackground>
-      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: 'transparent' }]} edges={['top', 'left', 'right']}>
         <BlurView
           intensity={80}
           tint={isDark ? 'dark' : 'light'}
@@ -411,7 +409,6 @@ export default function VoiceSettingsScreen() {
           </KeyboardAvoidingView>
         </BlurView>
       </SafeAreaView>
-    </GradientBackground>
   );
 }
 

@@ -61,7 +61,22 @@
       "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\PartsDetailModal.tsx\")",
       "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\NeedsDetailModal.tsx\")",
       "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\VoiceConversationModal.tsx\")",
-      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\ConversationHistoryModal.tsx\")"
+      "Bash(del \"C:\\Users\\chris\\Documents\\innerspace_local\\components\\ConversationHistoryModal.tsx\")",
+      "Bash(while read file)",
+      "Bash(do sed -i \"s/intensity={40}/intensity={80}/g\" \"$file\")",
+      "Bash(done)",
+      "Bash(move \"C:\\Users\\chris\\Documents\\innerspace_local\\app\\conversation-history.tsx\" \"C:\\Users\\chris\\Documents\\innerspace_local\\app\\conversation-history.tsx.disabled\")",
+      "Bash(move \"C:\\Users\\chris\\Documents\\innerspace_local\\app\\save-conversation.tsx.disabled\" \"C:\\Users\\chris\\Documents\\innerspace_local\\app\\save-conversation.tsx\")",
+      "WebFetch(domain:reactnavigation.org)",
+      "Bash(set:*)",
+      "Bash(set EXPO_PUBLIC_SUPABASE_URL=https://fppphepgzcxiiobezfow.supabase.co)",
+      "Bash(copy:*)",
+      "Bash(del run-migration.js)",
+      "Bash(move:*)",
+      "Bash(git log:*)",
+      "Bash(git checkout:*)",
+      "Bash(sed:*)",
+      "Bash(del nul)"
     ],
     "deny": []
   }

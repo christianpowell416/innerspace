@@ -391,8 +391,8 @@ export default function ChatScreen() {
             const complexColor = conversation.color || '#888888';
             const isDark = colorScheme === 'dark';
             const backgroundColor = isDark
-              ? `${complexColor}30` // 30% opacity for dark mode
-              : `${complexColor}20`; // 20% opacity for light mode
+              ? `${complexColor}23` // 23% opacity for dark mode (25% less intense)
+              : `${complexColor}15`; // 15% opacity for light mode (25% less intense)
             
             // Cards spread farther apart when scrolling fast (subtle bounce)
             const baseMargin = -210;

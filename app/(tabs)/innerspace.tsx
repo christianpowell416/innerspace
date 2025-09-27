@@ -22,36 +22,49 @@ const PartsFullBubbleChart = React.lazy(() => import('@/components/PartsFullBubb
 const NeedsFullBubbleChart = React.lazy(() => import('@/components/NeedsFullBubbleChart').then(module => ({ default: module.NeedsFullBubbleChart })));
 import {
   createBubbleChartData,
-  getDefaultBubbleConfig,
-  getEmotionStatistics
+  getDefaultBubbleConfig
 } from '@/lib/services/emotions';
 import {
   EmotionBubbleData,
   BubbleChartConfig,
-  BubbleChartCallbacks
+  BubbleChartCallbacks,
+  getEmotionColor
 } from '@/lib/types/bubbleChart';
 import {
   PartBubbleData,
   NeedBubbleData,
   PartsBubbleChartCallbacks,
-  NeedsBubbleChartCallbacks
+  NeedsBubbleChartCallbacks,
+  getPartColor,
+  getNeedColor
 } from '@/lib/types/partsNeedsChart';
 import { generateTestEmotionData, createTestEmotionStats } from '@/lib/utils/testData';
 import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
 import { router } from 'expo-router';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  loadUserEmotions,
+  loadUserParts,
+  loadUserNeeds,
+  getEmotionStatistics,
+  UserEmotion,
+  UserPart,
+  UserNeed
+} from '@/lib/services/emotionsPartsNeedsService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 type TabType = 'emotions' | 'parts' | 'needs';
 type SortType = 'frequency' | 'intensity' | 'recency';
 
-// Development mode - set to true to use test data
-const USE_TEST_DATA = __DEV__ && true; // Set to true for testing
+// Development mode - set to false to use real Supabase data
+const USE_TEST_DATA = false; // Set to true for testing
 
 export default function InnerspaceScreen() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
+  const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<TabType>('emotions');
   const [sortBy, setSortBy] = useState<SortType>('frequency');
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -76,6 +89,50 @@ export default function InnerspaceScreen() {
   // Progressive loading states
   const [loadedChartComponents, setLoadedChartComponents] = useState<Set<TabType>>(new Set());
   const [shouldRenderCharts, setShouldRenderCharts] = useState(false);
+
+  // Data transformation functions
+  const transformEmotionToChartData = useCallback((emotion: UserEmotion): EmotionBubbleData => {
+    return {
+      id: emotion.id || `emotion-${Date.now()}-${Math.random()}`,
+      emotion: emotion.emotion_name,
+      frequency: emotion.frequency || 1,
+      intensity: emotion.intensity,
+      color: emotion.color || getEmotionColor(emotion.emotion_name),
+      radius: Math.max(18, Math.min(45, (emotion.frequency || 1) * 3 + emotion.intensity * 2)),
+      category: emotion.category || 'general',
+      lastSeen: new Date(emotion.last_experienced || Date.now()),
+      conversationIds: [`user-${user?.id}`],
+    };
+  }, [user?.id]);
+
+  const transformPartToChartData = useCallback((part: UserPart): PartBubbleData => {
+    return {
+      id: part.id || `part-${Date.now()}-${Math.random()}`,
+      name: part.part_name,
+      frequency: part.frequency || 1,
+      intensity: part.intensity,
+      color: part.color || getPartColor(part.part_name),
+      radius: Math.max(18, Math.min(45, (part.frequency || 1) * 3 + part.intensity * 2)),
+      category: part.part_type,
+      lastSeen: new Date(part.last_active || Date.now()),
+      conversationIds: [`user-${user?.id}`],
+    };
+  }, [user?.id]);
+
+  const transformNeedToChartData = useCallback((need: UserNeed): NeedBubbleData => {
+    const gap = (need.desired_level || 8) - (need.current_level || 5);
+    return {
+      id: need.id || `need-${Date.now()}-${Math.random()}`,
+      name: need.need_name,
+      frequency: need.priority || 5,
+      intensity: gap > 0 ? gap * 2 : 1, // Higher gap = higher intensity
+      color: need.color || getNeedColor(need.need_name),
+      radius: Math.max(18, Math.min(45, (need.priority || 5) * 4 + gap * 3)),
+      category: need.category || 'general',
+      lastSeen: new Date(need.last_assessed || Date.now()),
+      conversationIds: [`user-${user?.id}`],
+    };
+  }, [user?.id]);
 
   // Function to recalculate bubble sizes based on sort type
   const recalculateBubbleSizes = useCallback((bubbles: EmotionBubbleData[], sortType: SortType, config: BubbleChartConfig) => {
@@ -166,12 +223,17 @@ export default function InnerspaceScreen() {
         setEmotionStats(testStats);
       } else {
         // Load real data from Supabase
-        const [bubbleData, stats] = await Promise.all([
-          createBubbleChartData(config, isDark),
-          getEmotionStatistics()
+        console.log('🌐 Loading real emotion data from Supabase');
+
+        const [emotions, stats] = await Promise.all([
+          loadUserEmotions(user.id),
+          getEmotionStatistics(user.id)
         ]);
 
-        const sortedBubbles = recalculateBubbleSizes(bubbleData, sortBy, config);
+        const bubbles = emotions.map(transformEmotionToChartData);
+        console.log('📊 Loaded emotions from database:', bubbles.length);
+
+        const sortedBubbles = recalculateBubbleSizes(bubbles, sortBy, config);
         setEmotionBubbles(sortedBubbles);
         setEmotionStats(stats);
       }
@@ -181,39 +243,61 @@ export default function InnerspaceScreen() {
     } finally {
       setEmotionsLoading(false);
     }
-  }, [isDark, sortBy, recalculateBubbleSizes]);
+  }, [user?.id, isDark, sortBy, recalculateBubbleSizes, transformEmotionToChartData]);
 
   // Load parts data
   const loadPartsData = useCallback(async () => {
+    if (!user?.id) return;
+
     try {
       setPartsLoading(true);
-      // Simulate loading delay
-      await new Promise(resolve => setTimeout(resolve, 300));
-      const testParts = generateTestPartsData(12);
-      setPartsBubbles(testParts);
+
+      if (USE_TEST_DATA) {
+        // Simulate loading delay
+        await new Promise(resolve => setTimeout(resolve, 300));
+        const testParts = generateTestPartsData(12);
+        setPartsBubbles(testParts);
+      } else {
+        // Load real data from Supabase
+        const parts = await loadUserParts(user.id);
+        const bubbles = parts.map(transformPartToChartData);
+        const sortedBubbles = recalculateBubbleSizes(bubbles, sortBy, bubbleConfig);
+        setPartsBubbles(sortedBubbles);
+      }
     } catch (error) {
       console.error('Error loading parts data:', error);
       Alert.alert('Error', 'Failed to load parts data');
     } finally {
       setPartsLoading(false);
     }
-  }, []);
+  }, [user?.id, sortBy, recalculateBubbleSizes, transformPartToChartData]);
 
   // Load needs data
   const loadNeedsData = useCallback(async () => {
+    if (!user?.id) return;
+
     try {
       setNeedsLoading(true);
-      // Simulate loading delay
-      await new Promise(resolve => setTimeout(resolve, 400));
-      const testNeeds = generateTestNeedsData(10);
-      setNeedsBubbles(testNeeds);
+
+      if (USE_TEST_DATA) {
+        // Simulate loading delay
+        await new Promise(resolve => setTimeout(resolve, 400));
+        const testNeeds = generateTestNeedsData(10);
+        setNeedsBubbles(testNeeds);
+      } else {
+        // Load real data from Supabase
+        const needs = await loadUserNeeds(user.id);
+        const bubbles = needs.map(transformNeedToChartData);
+        const sortedBubbles = recalculateBubbleSizes(bubbles, sortBy, bubbleConfig);
+        setNeedsBubbles(sortedBubbles);
+      }
     } catch (error) {
       console.error('Error loading needs data:', error);
       Alert.alert('Error', 'Failed to load needs data');
     } finally {
       setNeedsLoading(false);
     }
-  }, []);
+  }, [user?.id, sortBy, recalculateBubbleSizes, transformNeedToChartData]);
 
   // Progressive loading - start after component mounts
   useEffect(() => {
@@ -645,7 +729,7 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     marginTop: 20, // Space from statistics header
-    paddingBottom: 90, // Space for bottom tab bar
+    paddingBottom: 130, // Space for bottom tab bar + 40px margin
   },
   filterContainer: {
     position: 'absolute',
