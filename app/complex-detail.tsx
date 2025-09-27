@@ -328,7 +328,7 @@ export default function ComplexDetailModal() {
           <BlurView
             intensity={80}
             tint={isDark ? 'dark' : 'light'}
-            style={[styles.blurContainer, { backgroundColor: isDark ? `${complexData.color}08` : `${complexData.color}05` }]}
+            style={styles.blurContainer}
           >
             {/* Handle Bar */}
             <View style={styles.handleBarContainer}>
@@ -346,7 +346,7 @@ export default function ComplexDetailModal() {
             </View>
 
         {/* Scrollable Content */}
-        <View style={[styles.modalScrollView, { backgroundColor: isDark ? `${complexData.color}08` : `${complexData.color}05` }]}>
+        <View style={styles.modalScrollView}>
           <ScrollView
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.modalScrollContent}
