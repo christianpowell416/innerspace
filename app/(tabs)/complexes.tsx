@@ -128,60 +128,70 @@ export default function ChatScreen() {
       id: 1,
       title: 'Work Stress Discussion',
       date: '12/8/24',
+      color: '#FF6B6B', // Red for stress/anger
       description: 'Explored feelings of overwhelm at work and discussed comprehensive coping strategies for managing deadlines and expectations. We worked on time management techniques, boundary setting with colleagues, and developing a healthier perspective on workplace pressures that have been affecting sleep and personal relationships. During our session, we delved deep into the root causes of workplace anxiety, examining how perfectionist tendencies and imposter syndrome contribute to chronic stress. We practiced several breathing techniques including box breathing and progressive muscle relaxation to help manage acute stress responses during high-pressure meetings. We also explored cognitive reframing exercises to challenge catastrophic thinking patterns that often emerge when facing tight deadlines. The conversation included practical strategies for communicating boundaries with supervisors and colleagues, including script development for saying no to additional responsibilities when already overloaded. We discussed the importance of creating physical and mental separation between work and personal life, establishing rituals to transition between work and home modes. Time blocking techniques were introduced to help prioritize important tasks while avoiding the trap of busywork that can create false urgency. We also addressed the impact of workplace stress on relationships, exploring how bringing work anxiety home affects family dynamics and romantic partnerships. Strategies for compartmentalization were practiced, along with methods for sharing work challenges with loved ones without overwhelming them. The session concluded with the development of a personalized stress management toolkit including daily check-ins, weekly reflection practices, and emergency protocols for particularly overwhelming days.'
     },
     {
       id: 2,
       title: 'Relationship Boundaries',
       date: '12/5/24',
+      color: '#4ECDC4', // Teal for emotional/relational
       description: 'Talked about setting healthy boundaries with family members and learning to say no without guilt. We practiced assertive communication techniques, explored childhood patterns that make boundary-setting difficult, and created specific scripts for challenging conversations with parents and siblings during the holiday season. Our exploration began with identifying the deep-rooted family dynamics that have made boundary-setting feel impossible or selfish. We traced these patterns back to childhood experiences where expressing needs or saying no was met with guilt, punishment, or emotional manipulation. Through role-playing exercises, we practiced different approaches to boundary-setting conversations, starting with low-stakes situations and gradually building confidence for more challenging interactions. We developed a framework for distinguishing between healthy compromise and unhealthy people-pleasing, examining how cultural and family expectations around loyalty and obligation can sometimes conflict with personal well-being. The session included extensive work on managing guilt responses that typically arise when setting boundaries, using cognitive behavioral techniques to challenge thoughts like "I\'m being selfish" or "I\'m disappointing everyone." We created detailed scripts for common boundary-setting scenarios including declining holiday invitations, limiting phone calls or visits, refusing to engage in family drama, and protecting personal time and space. Particular attention was paid to dealing with pushback and manipulation tactics that family members might use when boundaries are first introduced. We discussed the importance of consistency in maintaining boundaries and developed strategies for staying firm even when faced with tears, anger, or silent treatment. The conversation also covered how to communicate boundaries with compassion while still being clear and firm about expectations.'
     },
     {
       id: 3,
       title: 'Self-Confidence Building',
       date: '12/1/24',
+      color: '#FFD700', // Gold for self/empowerment
       description: 'Worked on identifying negative self-talk patterns and developing positive affirmations for daily practice. We traced these patterns back to early experiences, created personalized confidence-building exercises, and established a morning routine that includes self-compassion practices and achievement recognition to boost overall self-worth.'
     },
     {
       id: 4,
       title: 'Anxiety Management',
       date: '11/28/24',
+      color: '#DDA0DD', // Plum for fear/anxiety
       description: 'Discussed breathing techniques and mindfulness exercises to help manage anxiety during social situations. We explored the root causes of social anxiety, practiced grounding techniques using the 5-4-3-2-1 method, and developed a toolkit of discrete calming strategies that can be used in public without drawing attention to yourself.'
     },
     {
       id: 5,
       title: 'Career Transition',
       date: '11/25/24',
+      color: '#87CEEB', // Sky blue for growth/change
       description: 'Explored fears around changing careers and identified steps to move toward a more fulfilling professional path. We addressed imposter syndrome, financial concerns about leaving stability, and created a detailed action plan with timelines for networking, skill development, and gradual transition strategies to minimize risk while pursuing meaningful work.'
     },
     {
       id: 6,
       title: 'Sleep and Rest Issues',
       date: '11/22/24',
+      color: '#98FB98', // Pale green for calm/rest
       description: 'Discussed chronic sleep difficulties and their impact on daily functioning and emotional regulation. We examined lifestyle factors contributing to insomnia, developed a comprehensive sleep hygiene routine, and explored the connection between racing thoughts at bedtime and unresolved daily stressors that need processing and release.'
     },
     {
       id: 7,
       title: 'Grief Processing',
       date: '11/18/24',
+      color: '#87CEEB', // Sky blue for sadness
       description: 'Worked through complicated grief following the recent loss of a close family member. We explored the non-linear nature of grief, discussed healthy ways to honor memories while moving forward, and addressed guilt about experiencing moments of joy during the mourning process and how to navigate family dynamics during this difficult time.'
     },
     {
       id: 8,
       title: 'Financial Stress',
       date: '11/15/24',
+      color: '#FFA07A', // Light salmon for worry
       description: 'Addressed anxiety and shame around money management and financial security concerns. We unpacked family patterns around money, developed practical budgeting strategies that feel sustainable, and worked on separating self-worth from net worth while creating realistic financial goals that align with personal values rather than societal expectations.'
     },
     {
       id: 9,
       title: 'Perfectionism Patterns',
       date: '11/12/24',
+      color: '#FF6B6B', // Red for critical/perfectionist
       description: 'Examined perfectionist tendencies and their impact on productivity and mental health. We identified triggers that activate all-or-nothing thinking, practiced embracing "good enough" in low-stakes situations, and developed strategies for breaking large tasks into manageable pieces while celebrating progress rather than only focusing on perfect outcomes.'
     },
     {
       id: 10,
       title: 'Social Connection',
       date: '11/8/24',
+      color: '#4ECDC4', // Teal for connection
       description: 'Explored feelings of loneliness and difficulty maintaining meaningful friendships as an adult. We discussed the challenges of making connections outside of work environments, identified personal barriers to vulnerability in relationships, and created actionable steps for nurturing existing friendships while remaining open to new social opportunities and community involvement.'
     }
   ];
@@ -194,7 +204,8 @@ export default function ChatScreen() {
         id: card.id.toString(),
         title: card.title,
         date: card.date,
-        description: card.description
+        description: card.description,
+        color: card.color || '#888888'
       }
     });
   };
@@ -376,12 +387,12 @@ export default function ChatScreen() {
             // Normalize position (0 = top of viewport, 1 = bottom of viewport)
             const normalizedPosition = Math.max(0, Math.min(1, cardPositionInViewport / viewportHeight));
             
-            // Create gradient effect based on screen position
-            // Cards at top of viewport are lighter, cards at bottom are darker
-            const lightness = 0.9 - (0.8 * normalizedPosition); // 0.9 at top to 0.1 at bottom
-            
-            const grayValue = Math.round(255 * lightness);
-            const backgroundColor = `rgba(${grayValue}, ${grayValue}, ${grayValue}, 0.25)`;
+            // Get color for this conversation/complex
+            const complexColor = conversation.color || '#888888';
+            const isDark = colorScheme === 'dark';
+            const backgroundColor = isDark
+              ? `${complexColor}30` // 30% opacity for dark mode
+              : `${complexColor}20`; // 20% opacity for light mode
             
             // Cards spread farther apart when scrolling fast (subtle bounce)
             const baseMargin = -210;

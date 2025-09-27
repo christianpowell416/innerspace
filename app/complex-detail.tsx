@@ -24,7 +24,7 @@ import EmotionsExpandedBubbleChart from '@/components/EmotionsExpandedBubbleChar
 export default function ComplexDetailModal() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { id, title, date, description } = useLocalSearchParams();
+  const { id, title, date, description, color } = useLocalSearchParams();
 
   const handleClose = () => {
     router.back();
@@ -35,7 +35,8 @@ export default function ComplexDetailModal() {
     id: typeof id === 'string' ? parseInt(id) : 0,
     title: typeof title === 'string' ? title : '',
     date: typeof date === 'string' ? date : '',
-    description: typeof description === 'string' ? description : ''
+    description: typeof description === 'string' ? description : '',
+    color: typeof color === 'string' ? color : '#888888'
   };
 
   // Chart state variables
@@ -386,8 +387,8 @@ export default function ComplexDetailModal() {
                         styles.squareCard,
                         {
                           backgroundColor: isDark
-                            ? 'rgba(255, 255, 255, 0.1)'
-                            : 'rgba(0, 0, 0, 0.05)',
+                            ? `${complexData.color}20`
+                            : `${complexData.color}15`,
                           borderColor: isDark
                             ? 'rgba(255, 255, 255, 0.2)'
                             : 'rgba(0, 0, 0, 0.1)',
@@ -443,8 +444,8 @@ export default function ComplexDetailModal() {
                         styles.squareCard,
                         {
                           backgroundColor: isDark
-                            ? 'rgba(255, 255, 255, 0.1)'
-                            : 'rgba(0, 0, 0, 0.05)',
+                            ? `${complexData.color}20`
+                            : `${complexData.color}15`,
                           borderColor: isDark
                             ? 'rgba(255, 255, 255, 0.2)'
                             : 'rgba(0, 0, 0, 0.1)',
@@ -500,8 +501,8 @@ export default function ComplexDetailModal() {
                         styles.squareCard,
                         {
                           backgroundColor: isDark
-                            ? 'rgba(255, 255, 255, 0.1)'
-                            : 'rgba(0, 0, 0, 0.05)',
+                            ? `${complexData.color}20`
+                            : `${complexData.color}15`,
                           borderColor: isDark
                             ? 'rgba(255, 255, 255, 0.2)'
                             : 'rgba(0, 0, 0, 0.1)',
@@ -542,8 +543,8 @@ export default function ComplexDetailModal() {
                     styles.expandedCard,
                     {
                       backgroundColor: isDark
-                        ? 'rgba(255, 255, 255, 0.1)'
-                        : 'rgba(0, 0, 0, 0.05)',
+                        ? `${complexData.color}20`
+                        : `${complexData.color}15`,
                       borderColor: isDark
                         ? 'rgba(255, 255, 255, 0.2)'
                         : 'rgba(0, 0, 0, 0.1)',
@@ -593,8 +594,8 @@ export default function ComplexDetailModal() {
                     styles.expandedCard,
                     {
                       backgroundColor: isDark
-                        ? 'rgba(255, 255, 255, 0.1)'
-                        : 'rgba(0, 0, 0, 0.05)',
+                        ? `${complexData.color}20`
+                        : `${complexData.color}15`,
                       borderColor: isDark
                         ? 'rgba(255, 255, 255, 0.2)'
                         : 'rgba(0, 0, 0, 0.1)',
@@ -644,8 +645,8 @@ export default function ComplexDetailModal() {
                     styles.expandedCard,
                     {
                       backgroundColor: isDark
-                        ? 'rgba(255, 255, 255, 0.1)'
-                        : 'rgba(0, 0, 0, 0.05)',
+                        ? `${complexData.color}20`
+                        : `${complexData.color}15`,
                       borderColor: isDark
                         ? 'rgba(255, 255, 255, 0.2)'
                         : 'rgba(0, 0, 0, 0.1)',
@@ -812,8 +813,8 @@ export default function ComplexDetailModal() {
                             styles.complexCardBlur,
                             {
                               backgroundColor: isDark
-                                ? 'rgba(255, 255, 255, 0.1)'
-                                : 'rgba(0, 0, 0, 0.05)',
+                                ? `${complexData.color}30`
+                                : `${complexData.color}20`,
                             }
                           ]}
                         >
