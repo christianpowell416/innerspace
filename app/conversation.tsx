@@ -11,10 +11,6 @@ import {
   emotionPartsDetector
 } from '@/lib/services/emotionPartsDetector';
 import {
-  createRealtimeConversationSync,
-  RealtimeSync
-} from '@/lib/services/realtimeConversationSync';
-import {
   createVoiceSession,
   generateVoiceInstructions,
   VoiceSession
@@ -36,6 +32,7 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
+import { unstable_batchedUpdates } from 'react-native';
 import {
   Alert,
   Animated,
@@ -140,67 +137,13 @@ export default function ConversationScreen() {
   const currentResponseIdRef = useRef<string | null>(null);
   const userMessageAddedForSessionRef = useRef<string | null>(null);
 
-  // Real-time sync state
-  const [realtimeSync, setRealtimeSync] = useState<RealtimeSync | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
-  const realtimeSyncRef = useRef<RealtimeSync | null>(null);
 
   // Helper functions for logging
   const setIsListeningWithLogging = (listening: boolean) => {
     setIsListening(listening);
   };
 
-  // Debounced sync to prevent race conditions
-  const syncTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Helper function to sync conversation with real-time service (debounced)
-  const syncConversationToRealtimeService = (conversationMessages: typeof conversation) => {
-    if (!realtimeSyncRef.current || !user) return;
-
-    // Clear any pending sync
-    if (syncTimerRef.current) {
-      clearTimeout(syncTimerRef.current);
-    }
-
-    // Debounce sync by 1000ms to prevent overlapping operations
-    syncTimerRef.current = setTimeout(async () => {
-      try {
-        const validMessages = conversationMessages
-          .filter(msg => msg.text && msg.text.trim().length > 0 && !msg.isRecording && !msg.isProcessing)
-          .map(msg => ({
-            id: msg.id,
-            type: msg.type,
-            text: msg.text,
-            timestamp: msg.timestamp,
-            sessionId: msg.sessionId || null,
-          }));
-
-        // Non-blocking sync - don't await
-        realtimeSyncRef.current.updateMessages(validMessages).catch(error =>
-          console.error('❌ Background sync failed:', error)
-        );
-        setLastSyncTime(new Date());
-      } catch (error) {
-        console.error('❌ Failed to sync conversation:', error);
-      }
-    }, 500);
-  };
-
-  // Helper function to sync detected data with real-time service
-  const syncDetectedDataToRealtimeService = async () => {
-    if (!realtimeSyncRef.current || !user) return;
-
-    try {
-      await realtimeSyncRef.current.updateDetectedData({
-        emotions: detectedItems.emotions,
-        parts: detectedItems.parts,
-        needs: detectedItems.needs,
-      });
-    } catch (error) {
-      console.error('❌ Failed to sync detected data:', error);
-    }
-  };
 
   const shouldDisplayAIImmediately = () => {
     const currentSession = currentUserInputSessionRef.current;
@@ -276,7 +219,9 @@ export default function ConversationScreen() {
       router.replace({
         pathname: '/save-conversation',
         params: {
-          sessionId: realtimeSync?.sessionId
+          sessionId: conversationSessionId.current,
+          topic: selectedTopic,
+          messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing))
         }
       });
 
@@ -419,49 +364,42 @@ export default function ConversationScreen() {
                 return;
               }
 
+              // Process detection in background without blocking UI
               emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
-                setDetectedItems(detectedLists);
+                // Batch all state updates together
+                unstable_batchedUpdates(() => {
+                  setDetectedItems(detectedLists);
 
-                setTimeout(() => {
-                  if (realtimeSyncRef.current && user) {
-                    realtimeSyncRef.current.updateDetectedData({
-                      emotions: detectedLists.emotions,
-                      parts: detectedLists.parts,
-                      needs: detectedLists.needs,
-                    }).catch(error => console.error('❌ Failed to sync detected data:', error));
+                  const conversationId = Date.now().toString() || undefined;
+
+                  // Convert string arrays to DetectedItem arrays with proper structure
+                  const emotionItems = detectedLists.emotions.map(emotion => ({
+                    name: emotion,
+                    confidence: 0.8
+                  }));
+                  const partItems = detectedLists.parts.map(part => ({
+                    name: part,
+                    confidence: 0.8
+                  }));
+                  const needItems = detectedLists.needs.map(need => ({
+                    name: need,
+                    confidence: 0.8
+                  }));
+
+                  const emotionsData = transformDetectedEmotions(emotionItems, conversationId);
+                  const partsData = transformDetectedParts(partItems, conversationId);
+                  const needsData = transformDetectedNeeds(needItems, conversationId);
+
+                  setDetectedEmotionsData(emotionsData);
+                  setDetectedPartsData(partsData);
+                  setDetectedNeedsData(needsData);
+
+                  if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+                    setShouldRenderBubbleCharts(true);
+                    setShowSquareCards(true);
                   }
-                }, 100);
+                });
 
-                const conversationId = Date.now().toString() || undefined;
-
-                // Convert string arrays to DetectedItem arrays with proper structure
-                const emotionItems = detectedLists.emotions.map(emotion => ({
-                  name: emotion,
-                  confidence: 0.8
-                }));
-                const partItems = detectedLists.parts.map(part => ({
-                  name: part,
-                  confidence: 0.8
-                }));
-                const needItems = detectedLists.needs.map(need => ({
-                  name: need,
-                  confidence: 0.8
-                }));
-
-
-                const emotionsData = transformDetectedEmotions(emotionItems, conversationId);
-                const partsData = transformDetectedParts(partItems, conversationId);
-                const needsData = transformDetectedNeeds(needItems, conversationId);
-
-
-                setDetectedEmotionsData(emotionsData);
-                setDetectedPartsData(partsData);
-                setDetectedNeedsData(needsData);
-
-                if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
-                  setShouldRenderBubbleCharts(true);
-                  setShowSquareCards(true);
-                }
               }).catch(error => {
                 console.error('Error analyzing message:', error);
               });
@@ -484,7 +422,6 @@ export default function ConversationScreen() {
                     isRecording: false,
                     isProcessing: false,
                   };
-                  syncConversationToRealtimeService(updatedConversation);
                   return updatedConversation;
                 } else {
                   // Add new user message if no recording indicator found
@@ -497,7 +434,6 @@ export default function ConversationScreen() {
                     timestamp: Date.now()
                   };
                   const updatedConversation = [...prev, newMessage];
-                  syncConversationToRealtimeService(updatedConversation);
                   return updatedConversation;
                 }
               });
@@ -554,7 +490,6 @@ export default function ConversationScreen() {
                 };
 
                 if (isComplete) {
-                  syncConversationToRealtimeService(updatedConversation);
                 }
 
                 return updatedConversation;
@@ -619,29 +554,6 @@ export default function ConversationScreen() {
       const connectionPromise = session.connect();
       initPromises.push(connectionPromise);
 
-      // 2. Initialize realtime sync (if user is logged in)
-      if (user) {
-        const syncPromise = (async () => {
-          try {
-            const syncService = createRealtimeConversationSync({
-              userId: user.id,
-              topic: selectedTopic,
-              complexId: undefined,
-              enableSessionRecovery: true,
-            });
-
-            setRealtimeSync(syncService);
-            realtimeSyncRef.current = syncService;
-
-            await syncService.startSession();
-            console.log('🔄 Real-time sync service initialized');
-          } catch (error) {
-            console.error('❌ Failed to initialize real-time sync:', error);
-            // Don't throw - sync failure shouldn't prevent voice conversation
-          }
-        })();
-        initPromises.push(syncPromise);
-      }
 
       // Wait for all initializations with timeout
       const connectionTimeout = setTimeout(() => {
@@ -668,12 +580,6 @@ export default function ConversationScreen() {
 
     setIsCleaningUp(true);
 
-    // Cancel any pending sync operations
-    if (syncTimerRef.current) {
-      clearTimeout(syncTimerRef.current);
-      syncTimerRef.current = null;
-    }
-
     if (sessionRef.current) {
       try {
         sessionRef.current.disconnect();
@@ -683,16 +589,6 @@ export default function ConversationScreen() {
       sessionRef.current = null;
     }
 
-    if (realtimeSyncRef.current) {
-      try {
-        await realtimeSyncRef.current.endSession();
-        console.log('🔄 Real-time sync service ended');
-      } catch (error) {
-        console.warn('⚠️ Error during real-time sync cleanup:', error);
-      }
-      realtimeSyncRef.current = null;
-      setRealtimeSync(null);
-    }
 
     if (recordingTimerRef.current) {
       clearInterval(recordingTimerRef.current);
@@ -804,43 +700,38 @@ export default function ConversationScreen() {
     if (sessionRef.current && isConnected && finalText.trim()) {
       const messageText = finalText.trim();
 
+      // Process detection in background without blocking UI
       emotionPartsDetector.addMessage(messageText).then(detectedLists => {
-        setDetectedItems(detectedLists);
+        // Batch all state updates together
+        unstable_batchedUpdates(() => {
+          setDetectedItems(detectedLists);
 
-        setTimeout(() => {
-          if (realtimeSyncRef.current && user) {
-            realtimeSyncRef.current.updateDetectedData({
-              emotions: detectedLists.emotions,
-              parts: detectedLists.parts,
-              needs: detectedLists.needs,
-            }).catch(error => console.error('❌ Failed to sync detected data:', error));
+          const conversationId = Date.now().toString() || undefined;
+
+          // Convert string arrays to DetectedItem arrays with proper structure
+          const emotionItems = detectedLists.emotions.map(emotion => ({
+            name: emotion,
+            confidence: 0.8
+          }));
+          const partItems = detectedLists.parts.map(part => ({
+            name: part,
+            confidence: 0.8
+          }));
+          const needItems = detectedLists.needs.map(need => ({
+            name: need,
+            confidence: 0.8
+          }));
+
+          setDetectedEmotionsData(transformDetectedEmotions(emotionItems, conversationId));
+          setDetectedPartsData(transformDetectedParts(partItems, conversationId));
+          setDetectedNeedsData(transformDetectedNeeds(needItems, conversationId));
+
+          if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+            setShouldRenderBubbleCharts(true);
+            setShowSquareCards(true);
           }
-        }, 100);
+        });
 
-        const conversationId = Date.now().toString() || undefined;
-
-        // Convert string arrays to DetectedItem arrays with proper structure
-        const emotionItems = detectedLists.emotions.map(emotion => ({
-          name: emotion,
-          confidence: 0.8
-        }));
-        const partItems = detectedLists.parts.map(part => ({
-          name: part,
-          confidence: 0.8
-        }));
-        const needItems = detectedLists.needs.map(need => ({
-          name: need,
-          confidence: 0.8
-        }));
-
-        setDetectedEmotionsData(transformDetectedEmotions(emotionItems, conversationId));
-        setDetectedPartsData(transformDetectedParts(partItems, conversationId));
-        setDetectedNeedsData(transformDetectedNeeds(needItems, conversationId));
-
-        if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
-          setShouldRenderBubbleCharts(true);
-          setShowSquareCards(true);
-        }
       }).catch(error => {
         console.error('Error analyzing message:', error);
       });
@@ -984,7 +875,9 @@ export default function ConversationScreen() {
     router.push({
       pathname: '/save-conversation',
       params: {
-        sessionId: realtimeSync?.sessionId
+        sessionId: conversationSessionId.current,
+        topic: selectedTopic,
+        messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing))
       }
     });
 

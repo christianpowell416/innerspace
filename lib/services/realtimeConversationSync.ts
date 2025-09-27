@@ -15,12 +15,14 @@ import {
   saveAllDetectedData,
   updateDetectedData
 } from './detectedDataService';
+import { getMessageQueue, MessageQueue, QueuedMessage } from './messageQueue';
 
 export interface RealtimeSyncConfig {
   userId: string;
   complexId?: string;
   topic: string;
   enableSessionRecovery?: boolean;
+  enableBackgroundSave?: boolean; // New option for parallel saving
 }
 
 export interface SessionState {
@@ -77,7 +79,8 @@ export function createRealtimeConversationSync(
   let conversationId: string | null = null;
   let sessionId: string = generateSessionId();
   let isActive = false;
-  // Auto-save timer removed - syncing only on updates
+  // Message queue for parallel, non-blocking saves
+  let messageQueue: MessageQueue | null = null;
   let currentMessages: ConversationMessage[] = [];
   let currentDetectedData: {
     emotions?: DetectedItem[];
@@ -95,6 +98,30 @@ export function createRealtimeConversationSync(
         sessionId = generateSessionId();
         isActive = true;
 
+        // Initialize message queue for parallel saving
+        if (config.enableBackgroundSave !== false) {
+          messageQueue = getMessageQueue({
+            batchSize: 5,
+            flushInterval: 100, // Process every 100ms
+            maxRetries: 3,
+            onBatchProcess: async (batch: QueuedMessage[]) => {
+              // Process batch in background without blocking
+              if (!isActive) return;
+
+              try {
+                // Update draft data with batch
+                const messages = batch.map(q => q.message);
+                await updateDraftData(sessionId, {
+                  messages: [...currentMessages, ...messages],
+                  updatedAt: Date.now(),
+                });
+              } catch (error) {
+                console.error('❌ Background save failed:', error);
+              }
+            },
+          });
+        }
+
         // Initialize session state
         sessionState = {
           sessionId,
@@ -107,12 +134,15 @@ export function createRealtimeConversationSync(
           isActive: true,
         };
 
-        // Save initial session state for recovery
+        // Save initial session state for recovery (non-blocking)
         if (config.enableSessionRecovery) {
-          await saveSessionState(sessionState);
+          // Don't await - let it run in background
+          saveSessionState(sessionState).catch(err =>
+            console.warn('⚠️ Session state save failed:', err)
+          );
         }
 
-        // Initialize draft data in AsyncStorage
+        // Initialize draft data (non-blocking)
         const draftData: DraftConversationData = {
           sessionId,
           topic: config.topic,
@@ -122,7 +152,11 @@ export function createRealtimeConversationSync(
           createdAt: Date.now(),
           updatedAt: Date.now(),
         };
-        await saveDraftData(draftData);
+
+        // Don't await - let it run in background
+        saveDraftData(draftData).catch(err =>
+          console.warn('⚠️ Draft data save failed:', err)
+        );
 
         console.log('✅ Real-time session started:', sessionId);
         return sessionId; // Return sessionId instead of conversationId
@@ -150,13 +184,26 @@ export function createRealtimeConversationSync(
           sessionState.lastSaveTime = Date.now();
         }
 
-        // Save to draft storage
-        await updateDraftData(sessionId, {
-          messages: validMessages,
-          updatedAt: Date.now(),
-        });
+        if (messageQueue) {
+          // Use message queue for non-blocking save
+          const newMessages = validMessages.filter(msg =>
+            !messageQueue.getMessage(msg.id)
+          );
 
-        console.log(`📝 Updated messages: ${validMessages.length} total (saved to draft)`);
+          newMessages.forEach(msg => {
+            messageQueue.enqueue(msg);
+          });
+
+          console.log(`📝 Queued ${newMessages.length} new messages (${validMessages.length} total)`);
+        } else {
+          // Fallback to direct save (still non-blocking)
+          updateDraftData(sessionId, {
+            messages: validMessages,
+            updatedAt: Date.now(),
+          }).catch(error => console.error('❌ Background save failed:', error));
+
+          console.log(`📝 Updated messages: ${validMessages.length} total`);
+        }
       } catch (error) {
         console.error('❌ Failed to update messages:', error);
       }
@@ -223,28 +270,36 @@ export function createRealtimeConversationSync(
       try {
         console.log('🏁 Ending real-time conversation session');
 
+        // Flush message queue if using it
+        if (messageQueue) {
+          await messageQueue.flush();
+        }
+
         // Force final sync
         if (currentMessages.length > 0) {
           await sync.forceSync();
         }
 
-        // Auto-save timer removed
-
         // Mark session as inactive
         isActive = false;
         if (sessionState) {
           sessionState.isActive = false;
-          await sync.saveSessionState(sessionState);
+          // Non-blocking save
+          sync.saveSessionState(sessionState).catch(err =>
+            console.warn('⚠️ Final session state save failed:', err)
+          );
         }
 
-        // Clear session recovery data
+        // Clear message queue
+        if (messageQueue) {
+          messageQueue.clear();
+          messageQueue = null;
+        }
+
+        // Clear session recovery data (non-blocking)
         if (config.enableSessionRecovery) {
-          try {
-            const stateKey = `session_state_${sessionId}`;
-            await AsyncStorage.removeItem(stateKey);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
+          const stateKey = `session_state_${sessionId}`;
+          AsyncStorage.removeItem(stateKey).catch(() => {});
         }
 
         console.log('✅ Real-time session ended successfully');
@@ -277,10 +332,19 @@ export function createRealtimeConversationSync(
     },
 
     forceSync: async (): Promise<void> => {
-      if (!isActive || currentMessages.length === 0) return;
+      if (!isActive) return;
 
       try {
-        console.log('⚡ Syncing draft data to storage...');
+        console.log('⚡ Force syncing data...');
+
+        // Flush message queue first if using it
+        if (messageQueue) {
+          await messageQueue.flush();
+          // Get all messages from cache
+          currentMessages = messageQueue.getAllMessages();
+        }
+
+        if (currentMessages.length === 0) return;
 
         // Update draft with latest data
         await updateDraftData(sessionId, {
@@ -292,12 +356,15 @@ export function createRealtimeConversationSync(
         // Update session state
         if (sessionState) {
           sessionState.lastSaveTime = Date.now();
-          await sync.saveSessionState(sessionState);
+          // Non-blocking save
+          sync.saveSessionState(sessionState).catch(err =>
+            console.warn('⚠️ Session state save failed:', err)
+          );
         }
 
-        console.log('✅ Draft data synced to AsyncStorage');
+        console.log('✅ Force sync completed');
       } catch (error) {
-        console.error('❌ Draft sync failed:', error);
+        console.error('❌ Force sync failed:', error);
         throw error;
       }
     },

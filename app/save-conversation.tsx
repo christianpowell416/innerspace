@@ -17,7 +17,17 @@ import {
 import {
   saveAllDetectedData
 } from '@/lib/services/detectedDataService';
-import { DraftConversationData } from '@/lib/services/realtimeConversationSync';
+// Draft conversation data type
+interface DraftConversationData {
+  sessionId?: string;
+  topic: string;
+  messages: ConversationMessage[];
+  detectedData?: {
+    emotions?: DetectedItem[];
+    parts?: DetectedItem[];
+    needs?: DetectedItem[];
+  };
+}
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -74,13 +84,22 @@ export default function SaveConversationScreen() {
   const lastScrollTime = useRef(Date.now());
   const velocityDecayTimer = useRef<number | null>(null);
 
-  // Extract session ID or direct conversation data from params
+  // Extract conversation data from params
   const sessionId = params.sessionId as string | undefined;
-  const directData = params.conversationData ?
-    (typeof params.conversationData === 'string' ?
-      JSON.parse(params.conversationData) :
-      params.conversationData) :
-    null;
+  const topic = params.topic as string | undefined;
+  const messagesStr = params.messages as string | undefined;
+
+  // Parse messages if provided
+  const messages = messagesStr ?
+    (typeof messagesStr === 'string' ? JSON.parse(messagesStr) : messagesStr) :
+    [];
+
+  // Create draft data from params
+  const directData: DraftConversationData | null = (topic && messages.length > 0) ? {
+    sessionId,
+    topic,
+    messages
+  } : null;
 
   const [conversationData, setConversationData] = useState<DraftConversationData | null>(directData);
 
@@ -94,7 +113,7 @@ export default function SaveConversationScreen() {
       }
 
       if (!sessionId) {
-        console.warn('No sessionId or direct data provided to save-conversation');
+        console.warn('No conversation data provided to save-conversation');
         return;
       }
 
@@ -507,7 +526,7 @@ export default function SaveConversationScreen() {
                         {
                           marginTop: index === 0 ? 0 : dynamicMargin,
                           zIndex: index + 1,
-                          height: 350,
+                          height: 340,
                           borderRadius: CARD_BORDER_RADIUS,
                         }
                       ]}
@@ -519,7 +538,7 @@ export default function SaveConversationScreen() {
                           styles.card,
                           styles.addNewCard,
                           {
-                            height: 350,
+                            height: 340,
                             overflow: 'hidden',
                           }
                         ]}
@@ -579,7 +598,7 @@ export default function SaveConversationScreen() {
                       {
                         marginTop: index === 0 ? 0 : dynamicMargin,
                         zIndex: index + 1,
-                        height: 350,
+                        height: 340,
                       }
                     ]}
                   >
@@ -590,7 +609,7 @@ export default function SaveConversationScreen() {
                         styles.card,
                         {
                           backgroundColor,
-                          height: 350,
+                          height: 340,
                           overflow: 'hidden',
                         }
                       ]}

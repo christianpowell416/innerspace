@@ -415,7 +415,7 @@ export default function ChatScreen() {
                   {
                     zIndex: index + 1,
                     marginTop: index === 0 ? 0 : dynamicMargin,
-                    height: 350,
+                    height: 340,
                   }
                 ]}
               >
