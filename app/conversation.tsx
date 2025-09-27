@@ -516,8 +516,6 @@ export default function ConversationScreen() {
                   isThinking: false
                 };
 
-                // Sync the complete conversation after final response
-                syncConversationToRealtimeService(updatedConversation);
 
                 return updatedConversation;
               }

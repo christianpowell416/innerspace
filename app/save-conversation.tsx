@@ -34,6 +34,7 @@ import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState, useRef } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -478,9 +479,10 @@ export default function SaveConversationScreen() {
           >
             {loading ? (
               <View style={styles.loadingContainer}>
-                <Text style={[styles.loadingText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                  Loading complexes...
-                </Text>
+                <ActivityIndicator
+                  size="large"
+                  color={isDark ? '#FFFFFF' : '#007AFF'}
+                />
               </View>
             ) : complexes.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -900,14 +902,9 @@ const styles = StyleSheet.create({
   },
   // Loading and error states
   loadingContainer: {
-    flex: 1,
+    height: 400,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 40,
-  },
-  loadingText: {
-    fontSize: 18,
-    fontFamily: 'Georgia',
   },
   emptyContainer: {
     flex: 1,
