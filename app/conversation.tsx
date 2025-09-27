@@ -328,7 +328,8 @@ export default function ConversationScreen() {
                   updatedConversation[existingIndex] = {
                     ...updatedConversation[existingIndex],
                     isRecording: false,
-                    isProcessing: true
+                    isProcessing: true,
+                    isThinking: false
                   };
                   return updatedConversation;
                 }
@@ -412,15 +413,19 @@ export default function ConversationScreen() {
               const recordingMessageId = userMessageAddedForSessionRef.current;
 
               setConversation(prev => {
-                const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId && msg.isRecording);
+                // Look for the recording/processing message by ID only
+                const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
                 if (existingIndex >= 0) {
-                  // Update existing recording message
+                  // Replace the entire message object to ensure all flags are cleared
                   const updatedConversation = [...prev];
+                  const originalMessage = updatedConversation[existingIndex];
                   updatedConversation[existingIndex] = {
-                    ...updatedConversation[existingIndex],
+                    type: originalMessage.type,
                     text: transcriptText,
-                    isRecording: false,
-                    isProcessing: false,
+                    id: originalMessage.id,
+                    sessionId: originalMessage.sessionId,
+                    timestamp: originalMessage.timestamp,
+                    // Explicitly no indicator flags - they're all cleared
                   };
                   return updatedConversation;
                 } else {

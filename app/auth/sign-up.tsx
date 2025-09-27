@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StyleSheet, TextInput, Alert, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, TextInput, Alert, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -136,9 +136,13 @@ export default function SignUpScreen() {
               onPress={handleSignUp}
               disabled={loading}
             >
-              <ThemedText style={styles.buttonText}>
-                {loading ? 'Creating Account...' : 'Sign Up'}
-              </ThemedText>
+              {loading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <ThemedText style={styles.buttonText}>
+                  Sign Up
+                </ThemedText>
+              )}
             </TouchableOpacity>
 
 

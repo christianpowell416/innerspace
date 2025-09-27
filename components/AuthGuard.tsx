@@ -49,7 +49,9 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
   if (loading) {
     return (
-      <ThemedView style={styles.loadingContainer} />
+      <ThemedView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007AFF" />
+      </ThemedView>
     );
   }
 

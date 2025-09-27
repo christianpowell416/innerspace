@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
+  ActivityIndicator,
   View,
   Text,
   TextInput,
@@ -64,7 +65,9 @@ export default function RequirementsEditor() {
   if (isLoading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#000' : '#fff' }]}>
-        <ThemedView style={styles.content} />
+        <ThemedView style={[styles.content, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={isDark ? '#FFFFFF' : '#007AFF'} />
+        </ThemedView>
       </SafeAreaView>
     );
   }

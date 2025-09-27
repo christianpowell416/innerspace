@@ -902,7 +902,7 @@ const styles = StyleSheet.create({
   },
   // Loading and error states
   loadingContainer: {
-    height: 400,
+    height: 500,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import {
+  ActivityIndicator,
   View,
   Text,
   Pressable,
@@ -130,9 +131,10 @@ export default function ConversationHistoryScreen() {
           <View style={styles.errorContainer}>
             {loading ? (
               <>
-                <Text style={[styles.errorText, { color: isDark ? '#FFFFFF' : '#000000' }]}>
-                  Loading conversation...
-                </Text>
+                <ActivityIndicator
+                  size="large"
+                  color={isDark ? '#FFFFFF' : '#007AFF'}
+                />
               </>
             ) : error ? (
               <>

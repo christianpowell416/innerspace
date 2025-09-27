@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import { forceSimulation, forceCollide, forceCenter, forceManyBody } from 'd3-force';
 import Hypher from 'hypher';
 import english from 'hyphenation.en-us';
@@ -326,7 +326,7 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
     return (
       <View style={[styles.container, { width: containerWidth, height: containerHeight }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? '#fff' : '#000' }]}>...</Text>
+          <ActivityIndicator size="small" color={isDark ? '#fff' : '#007AFF'} />
         </View>
       </View>
     );

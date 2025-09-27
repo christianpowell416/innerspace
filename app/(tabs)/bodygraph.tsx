@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, Dimensions, Alert, Pressable, View } from 'react-native';
+import { StyleSheet, Dimensions, Alert, Pressable, View, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 
@@ -730,7 +730,9 @@ export default function BodygraphScreen() {
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.container} />
+        <ThemedView style={[styles.container, styles.loadingContainer]}>
+          <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#FFFFFF' : '#007AFF'} />
+        </ThemedView>
       </SafeAreaView>
     );
   }

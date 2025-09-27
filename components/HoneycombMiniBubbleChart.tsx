@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { View, StyleSheet, Text, ActivityIndicator } from 'react-native';
 import { forceSimulation, forceCollide, forceCenter, forceManyBody } from 'd3-force';
 import Hypher from 'hypher';
 import english from 'hyphenation.en-us';
@@ -249,7 +249,7 @@ export function HoneycombMiniBubbleChart({
     return (
       <View style={[styles.container, { width, height }]}>
         <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: isDark ? '#fff' : '#000' }]}>...</Text>
+          <ActivityIndicator size="small" color={isDark ? '#fff' : '#007AFF'} />
         </View>
       </View>
     );

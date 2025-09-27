@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, TextInput, Alert, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { StyleSheet, TextInput, Alert, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -125,9 +125,13 @@ export default function SignInScreen() {
               onPress={handleSignIn}
               disabled={loading}
             >
-              <ThemedText style={[styles.buttonText, { color: colorScheme === 'dark' ? '#000000' : '#FFFFFF' }]}>
-                {loading ? 'Signing In...' : 'Sign In'}
-              </ThemedText>
+              {loading ? (
+                <ActivityIndicator size="small" color={colorScheme === 'dark' ? '#000000' : '#FFFFFF'} />
+              ) : (
+                <ThemedText style={[styles.buttonText, { color: colorScheme === 'dark' ? '#000000' : '#FFFFFF' }]}>
+                  Sign In
+                </ThemedText>
+              )}
             </TouchableOpacity>
 
             {signInWithGoogle ? (
