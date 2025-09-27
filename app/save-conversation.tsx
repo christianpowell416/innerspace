@@ -89,11 +89,17 @@ export default function SaveConversationScreen() {
   const sessionId = params.sessionId as string | undefined;
   const topic = params.topic as string | undefined;
   const messagesStr = params.messages as string | undefined;
+  const complexesStr = params.complexes as string | undefined;
 
   // Parse messages if provided
   const messages = messagesStr ?
     (typeof messagesStr === 'string' ? JSON.parse(messagesStr) : messagesStr) :
     [];
+
+  // Parse complexes if provided (preloaded from conversation page)
+  const preloadedComplexes = complexesStr ?
+    (typeof complexesStr === 'string' ? JSON.parse(complexesStr) : complexesStr) :
+    null;
 
   // Create draft data from params
   const directData: DraftConversationData | null = (topic && messages.length > 0) ? {
@@ -136,12 +142,16 @@ export default function SaveConversationScreen() {
     loadDraftData();
   }, [sessionId, directData]);
 
-  // Load complexes on mount
+  // Load complexes on mount (use preloaded if available)
   useEffect(() => {
-    if (user) {
+    if (preloadedComplexes) {
+      console.log('📦 Using preloaded complexes:', preloadedComplexes.length);
+      setComplexes(preloadedComplexes);
+      setLoading(false);
+    } else if (user) {
       loadUserComplexes();
     }
-  }, [user]);
+  }, [user, preloadedComplexes]);
 
   const loadUserComplexes = async () => {
     try {

@@ -2,6 +2,7 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { loadComplexes, ComplexData } from '@/lib/services/complexManagementService';
 import {
   ConversationAnalysisCallbacks,
   conversationAnalyzer
@@ -117,6 +118,7 @@ export default function ConversationScreen() {
   const [detectedEmotionsData, setDetectedEmotionsData] = useState<EmotionBubbleData[]>([]);
   const [detectedPartsData, setDetectedPartsData] = useState<PartBubbleData[]>([]);
   const [detectedNeedsData, setDetectedNeedsData] = useState<NeedBubbleData[]>([]);
+  const [cachedComplexes, setCachedComplexes] = useState<ComplexData[]>([]);
   const [emotionsChartDimensions, setEmotionsChartDimensions] = useState({ width: 110, height: 110 });
   const [partsChartDimensions, setPartsChartDimensions] = useState({ width: 110, height: 110 });
   const [needsChartDimensions, setNeedsChartDimensions] = useState({ width: 110, height: 110 });
@@ -215,13 +217,14 @@ export default function ConversationScreen() {
       // Set flag to prevent usePreventRemove from triggering again
       setHasNavigatedToSave(true);
 
-      // Navigate to save screen with session ID
+      // Navigate to save screen with session ID and cached complexes
       router.replace({
         pathname: '/save-conversation',
         params: {
           sessionId: conversationSessionId.current,
           topic: selectedTopic,
-          messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing))
+          messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing)),
+          complexes: JSON.stringify(cachedComplexes)
         }
       });
 
@@ -809,6 +812,22 @@ export default function ConversationScreen() {
     }
   }, [isConnected, isListening, isAIResponding, isFirstOpen, hasUserInteracted]);
 
+  // Load complexes when user is available for caching
+  useEffect(() => {
+    const loadComplexesForCache = async () => {
+      if (user && cachedComplexes.length === 0) {
+        try {
+          const complexes = await loadComplexes(user.id);
+          setCachedComplexes(complexes);
+          console.log('📦 Cached complexes for save screen:', complexes.length);
+        } catch (error) {
+          console.error('Failed to cache complexes:', error);
+        }
+      }
+    };
+    loadComplexesForCache();
+  }, [user]);
+
   // Navigation is now handled directly from save-conversation screen
 
 
@@ -874,13 +893,14 @@ export default function ConversationScreen() {
     console.log('🔄 [DEBUG] Setting hasNavigatedToSave = true in usePreventRemove');
     setHasNavigatedToSave(true);
 
-    // Navigate to save conversation screen with session ID
+    // Navigate to save conversation screen with session ID and cached complexes
     router.push({
       pathname: '/save-conversation',
       params: {
         sessionId: conversationSessionId.current,
         topic: selectedTopic,
-        messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing))
+        messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing)),
+        complexes: JSON.stringify(cachedComplexes)
       }
     });
 
