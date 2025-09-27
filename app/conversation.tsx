@@ -3,6 +3,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { loadComplexes, ComplexData } from '@/lib/services/complexManagementService';
+import { backgroundSaver } from '@/lib/services/backgroundSaver';
 import {
   ConversationAnalysisCallbacks,
   conversationAnalyzer
@@ -147,57 +148,7 @@ export default function ConversationScreen() {
 
 
 
-  const shouldDisplayAIImmediately = () => {
-    const currentSession = currentUserInputSessionRef.current;
-    const result = (
-      allowAIDisplay &&
-      currentSession &&
-      userMessageAddedForSessionRef.current === currentSession
-    );
-    return result;
-  };
 
-  const addUserMessageWithAnimation = (text: string) => {
-    const fadeAnim = new Animated.Value(0);
-    const messageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-
-    const currentSession = currentUserInputSessionRef.current;
-    if (currentSession) {
-      userMessageAddedForSessionRef.current = currentSession;
-    }
-
-    setIsProcessingUserInput(false);
-
-    setConversation(prev => {
-      const lastMessage = prev[prev.length - 1];
-      const isImmediateDuplicate = lastMessage &&
-        lastMessage.type === 'user' &&
-        lastMessage.text === text;
-
-      if (isImmediateDuplicate) {
-        return prev;
-      }
-
-      const newMessage = {
-        type: 'user' as const,
-        text,
-        id: messageId,
-        sessionId: currentUserInputSessionRef.current || undefined,
-        timestamp: Date.now(),
-        fadeAnim
-      };
-
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start(() => {
-        setAllowAIDisplay(true);
-      });
-
-      return [...prev, newMessage];
-    });
-  };
 
   const createAnimatedWords = (text: string) => {
     return text.split(' ').filter(word => word.length > 0).map(word => ({
@@ -270,6 +221,17 @@ export default function ConversationScreen() {
   const initializeSession = async () => {
     try {
       setIsLoading(true);
+
+      // Initialize background saver for this session
+      if (user) {
+        backgroundSaver.initialize({
+          sessionId: conversationSessionId.current,
+          userId: user.id,
+          topic: selectedTopic,
+          complexId: undefined,
+        });
+      }
+
       const sessionInstructions = await generateVoiceInstructions(null);
 
       const session = createVoiceSession(
@@ -404,6 +366,14 @@ export default function ConversationScreen() {
                   }
                 });
 
+                // Save detected data in background
+                if (user) {
+                  backgroundSaver.saveDetectedData({
+                    emotions: detectedLists.emotions.map(e => ({ name: e, confidence: 0.8 })),
+                    parts: detectedLists.parts.map(p => ({ name: p, confidence: 0.8 })),
+                    needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
+                  });
+                }
               }).catch(error => {
                 console.error('Error analyzing message:', error);
               });
@@ -422,7 +392,7 @@ export default function ConversationScreen() {
                   // Replace the entire message object to ensure all flags are cleared
                   const updatedConversation = [...prev];
                   const originalMessage = updatedConversation[existingIndex];
-                  updatedConversation[existingIndex] = {
+                  const finalMessage = {
                     type: originalMessage.type,
                     text: transcriptText,
                     id: originalMessage.id,
@@ -430,6 +400,13 @@ export default function ConversationScreen() {
                     timestamp: originalMessage.timestamp,
                     // Explicitly no indicator flags - they're all cleared
                   };
+                  updatedConversation[existingIndex] = finalMessage;
+
+                  // Fire-and-forget save (non-blocking)
+                  if (user) {
+                    backgroundSaver.saveMessage(finalMessage);
+                  }
+
                   return updatedConversation;
                 } else {
                   // Add new user message if no recording indicator found
@@ -442,6 +419,12 @@ export default function ConversationScreen() {
                     timestamp: Date.now()
                   };
                   const updatedConversation = [...prev, newMessage];
+
+                  // Fire-and-forget save (non-blocking)
+                  if (user) {
+                    backgroundSaver.saveMessage(newMessage);
+                  }
+
                   return updatedConversation;
                 }
               });
@@ -518,12 +501,17 @@ export default function ConversationScreen() {
 
               if (existingMessageIndex >= 0) {
                 const updatedConversation = [...prev];
-                updatedConversation[existingMessageIndex] = {
+                const finalAIMessage = {
                   ...updatedConversation[existingMessageIndex],
                   text: response,
                   isThinking: false
                 };
+                updatedConversation[existingMessageIndex] = finalAIMessage;
 
+                // Save AI response when complete
+                if (isComplete && user) {
+                  backgroundSaver.saveMessage(finalAIMessage);
+                }
 
                 return updatedConversation;
               }
@@ -585,6 +573,11 @@ export default function ConversationScreen() {
     if (isCleaningUp) return;
 
     setIsCleaningUp(true);
+
+    // Force save any pending messages
+    if (user) {
+      await backgroundSaver.forceSave();
+    }
 
     if (sessionRef.current) {
       try {
@@ -738,18 +731,36 @@ export default function ConversationScreen() {
           }
         });
 
+        // Save detected data in background
+        if (user) {
+          backgroundSaver.saveDetectedData({
+            emotions: detectedLists.emotions.map(e => ({ name: e, confidence: 0.8 })),
+            parts: detectedLists.parts.map(p => ({ name: p, confidence: 0.8 })),
+            needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
+          });
+        }
       }).catch(error => {
         console.error('Error analyzing message:', error);
       });
 
-      const newSessionId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
-      setCurrentUserInputSession(newSessionId);
-      currentUserInputSessionRef.current = newSessionId;
+      // Create user message with sequential ID
+      const userMessage = {
+        type: 'user' as const,
+        text: messageText,
+        id: generateMessageId(),
+        timestamp: Date.now(),
+        sessionId: conversationSessionId.current,
+      };
 
-      setAllowAIDisplay(false);
+      // Add user message immediately
+      setConversation(prev => [...prev, userMessage]);
 
-      addUserMessageWithAnimation(messageText);
+      // Fire-and-forget save
+      if (user) {
+        backgroundSaver.saveMessage(userMessage);
+      }
 
+      // Send to AI
       sessionRef.current.sendMessage(messageText);
 
       setTextInput('');
@@ -783,6 +794,11 @@ export default function ConversationScreen() {
 
     // Add user message immediately
     setConversation(prev => [...prev, userMessage]);
+
+    // Fire-and-forget save
+    if (user) {
+      backgroundSaver.saveMessage(userMessage);
+    }
 
     // Send to AI
     setIsAIResponding(true);
