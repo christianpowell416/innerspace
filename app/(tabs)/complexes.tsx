@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Alert } from 'react-native';
 
 import { getConversationById, ConversationData } from '@/lib/services/conversationService';
+import { loadComplexes, ComplexData } from '@/lib/services/complexManagementService';
 
 const CARD_BORDER_RADIUS = 24;
 
@@ -35,12 +36,38 @@ export default function ChatScreen() {
   const [scrollViewHeight, setScrollViewHeight] = useState(0);
   const [voiceModalOpenedFromDetail, setVoiceModalOpenedFromDetail] = useState(false);
   const [searchBarPullProgress, setSearchBarPullProgress] = useState(0);
+  const [complexes, setComplexes] = useState<ComplexData[]>([]);
+  const [loading, setLoading] = useState(true);
   const searchBarTranslateY = useRef(new Animated.Value(-60));
   const searchBarOpacity = useRef(new Animated.Value(0));
   const scrollViewPaddingTop = useRef(new Animated.Value(10));
   const scrollViewRef = useRef<any>(null);
   const lastScrollTime = useRef(Date.now());
   const velocityDecayTimer = useRef<number | null>(null);
+
+  // Load complexes from database
+  useEffect(() => {
+    const loadUserComplexes = async () => {
+      if (user) {
+        try {
+          setLoading(true);
+          const userComplexes = await loadComplexes(user.id);
+          // Add default colors if not present
+          const complexesWithColors = userComplexes.map((complex, index) => ({
+            ...complex,
+            color: complex.color || ['#FF6B6B', '#4ECDC4', '#FFD700', '#DDA0DD', '#98D8C8', '#FFA07A', '#87CEEB', '#98FB98'][index % 8]
+          }));
+          setComplexes(complexesWithColors);
+        } catch (error) {
+          console.error('Error loading complexes:', error);
+          Alert.alert('Error', 'Failed to load complexes');
+        } finally {
+          setLoading(false);
+        }
+      }
+    };
+    loadUserComplexes();
+  }, [user]);
 
   // Listen for new chat trigger
   useEffect(() => {
@@ -123,7 +150,8 @@ export default function ChatScreen() {
   };
 
 
-  const conversationData = [
+  // Removed hardcoded conversationData - now loading from database
+  /*
     {
       id: 1,
       title: 'Work Stress Discussion',
@@ -194,7 +222,7 @@ export default function ChatScreen() {
       color: '#4ECDC4', // Teal for connection
       description: 'Explored feelings of loneliness and difficulty maintaining meaningful friendships as an adult. We discussed the challenges of making connections outside of work environments, identified personal barriers to vulnerability in relationships, and created actionable steps for nurturing existing friendships while remaining open to new social opportunities and community involvement.'
     }
-  ];
+  */
 
   const handleCardPress = (card: any) => {
     // Navigate to complex detail page with modal presentation
@@ -374,21 +402,33 @@ export default function ChatScreen() {
           onContentSizeChange={(width, height) => setContentHeight(height)}
           onLayout={(event) => setScrollViewHeight(event.nativeEvent.layout.height)}
         >
-          {conversationData.map((conversation, index) => {
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <Text style={[styles.loadingText, { color: colorScheme === 'dark' ? '#AAAAAA' : '#666666' }]}>
+                Loading complexes...
+              </Text>
+            </View>
+          ) : complexes.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyText, { color: colorScheme === 'dark' ? '#AAAAAA' : '#666666' }]}>
+                No complexes found. Start a conversation to create your first complex.
+              </Text>
+            </View>
+          ) : complexes.map((complex, index) => {
             // Calculate card's position on screen
             // Each card is 350px tall with dynamic margin based on velocity
             const cardTop = index * 140; // Position of card relative to scroll content
             const cardCenter = cardTop + 175; // Center of the card (350/2 = 175)
-            
+
             // Calculate card's position relative to viewport
             const viewportHeight = 800; // Approximate viewport height
             const cardPositionInViewport = cardCenter - scrollY;
-            
+
             // Normalize position (0 = top of viewport, 1 = bottom of viewport)
             const normalizedPosition = Math.max(0, Math.min(1, cardPositionInViewport / viewportHeight));
-            
-            // Get color for this conversation/complex
-            const complexColor = conversation.color || '#888888';
+
+            // Get color for this complex
+            const complexColor = complex.color || '#888888';
             const isDark = colorScheme === 'dark';
             const backgroundColor = isDark
               ? `${complexColor}23` // 23% opacity for dark mode (25% less intense)
@@ -408,8 +448,8 @@ export default function ChatScreen() {
             const dynamicMargin = baseMargin + velocitySpread; // Less negative = more space
             
             return (
-              <View 
-                key={conversation.id}
+              <View
+                key={complex.id}
                 style={[
                   styles.cardShadowContainer,
                   {
@@ -431,8 +471,14 @@ export default function ChatScreen() {
                     }
                   ]}
                 >
-                <Pressable 
-                  onPress={() => handleCardPress(conversation)}
+                <Pressable
+                  onPress={() => handleCardPress({
+                    id: complex.id,
+                    title: complex.name,
+                    date: new Date(complex.created_at || '').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }),
+                    description: complex.description || 'A collection of related conversations',
+                    color: complex.color
+                  })}
                   style={styles.cardPressable}
                 >
                   <View style={styles.cardHeader}>
@@ -440,20 +486,20 @@ export default function ChatScreen() {
                       styles.cardTitle,
                       { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
                     ]}>
-                      {conversation.title}
+                      {complex.name}
                     </Text>
                     <Text style={[
                       styles.cardDate,
                       { color: colorScheme === 'dark' ? '#CCCCCC' : '#666666' }
                     ]}>
-                      {conversation.date}
+                      {new Date(complex.created_at || '').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' })}
                     </Text>
                   </View>
                   <Text style={[
                     styles.cardDescription,
                     { color: colorScheme === 'dark' ? '#DDDDDD' : '#444444' }
                   ]}>
-                    {conversation.description}
+                    {complex.description || 'A collection of related conversations'}
                   </Text>
                 </Pressable>
                 </BlurView>
@@ -719,5 +765,27 @@ const styles = StyleSheet.create({
     right: 0,
     height: 35, // 35px gradient blur
     zIndex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 100,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontFamily: 'Georgia',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 100,
+    paddingHorizontal: 20,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontFamily: 'Georgia',
+    textAlign: 'center',
   },
 });
