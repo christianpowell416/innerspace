@@ -647,7 +647,7 @@ const styles = StyleSheet.create({
     borderRadius: CARD_BORDER_RADIUS,
     paddingTop: 16,
     paddingHorizontal: 20,
-    paddingBottom: 30,
+    paddingBottom: 16,
     height: 340,
   },
   cardText: {
