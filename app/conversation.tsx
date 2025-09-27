@@ -463,7 +463,7 @@ export default function ConversationScreen() {
               }];
             });
           },
-          onResponseStreaming: (response, isComplete) => {
+          onResponseStreaming: (response) => {
             if (!response) return;
 
             const responseId = currentResponseIdRef.current;
@@ -479,9 +479,6 @@ export default function ConversationScreen() {
                   text: response,
                   isThinking: false
                 };
-
-                if (isComplete) {
-                }
 
                 return updatedConversation;
               }
@@ -509,7 +506,7 @@ export default function ConversationScreen() {
                 updatedConversation[existingMessageIndex] = finalAIMessage;
 
                 // Save AI response when complete
-                if (isComplete && user) {
+                if (user) {
                   backgroundSaver.saveMessage(finalAIMessage);
                 }
 
