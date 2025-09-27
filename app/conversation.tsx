@@ -819,7 +819,6 @@ export default function ConversationScreen() {
         try {
           const complexes = await loadComplexes(user.id);
           setCachedComplexes(complexes);
-          console.log('📦 Cached complexes for save screen:', complexes.length);
         } catch (error) {
           console.error('Failed to cache complexes:', error);
         }

@@ -64,8 +64,9 @@ export default function SaveConversationScreen() {
   const params = useLocalSearchParams();
   const { user } = useAuth();
 
-  console.log('🔄 [DEBUG] SaveConversationScreen mounted');
-  console.log('🔄 [DEBUG] Params received:', params);
+  // Debug logs commented out to reduce console spam
+  // console.log('🔄 [DEBUG] SaveConversationScreen mounted');
+  // console.log('🔄 [DEBUG] Params received:', params);
 
   // State management
   const [complexes, setComplexes] = useState<ComplexData[]>([]);
@@ -115,7 +116,6 @@ export default function SaveConversationScreen() {
     const loadDraftData = async () => {
       // If we already have direct data, use that
       if (directData) {
-        console.log('📝 Using direct conversation data');
         return;
       }
 
@@ -130,9 +130,6 @@ export default function SaveConversationScreen() {
         if (draftData) {
           const parsed = JSON.parse(draftData) as DraftConversationData;
           setConversationData(parsed);
-          console.log('📝 Loaded draft data for session:', sessionId);
-        } else {
-          console.warn('No draft data found for session:', sessionId);
         }
       } catch (error) {
         console.error('Failed to load draft data:', error);
@@ -144,14 +141,13 @@ export default function SaveConversationScreen() {
 
   // Load complexes on mount (use preloaded if available)
   useEffect(() => {
-    if (preloadedComplexes) {
-      console.log('📦 Using preloaded complexes:', preloadedComplexes.length);
+    if (preloadedComplexes && preloadedComplexes.length > 0) {
       setComplexes(preloadedComplexes);
       setLoading(false);
-    } else if (user) {
+    } else if (user && !preloadedComplexes) {
       loadUserComplexes();
     }
-  }, [user, preloadedComplexes]);
+  }, [user]); // Remove preloadedComplexes from dependencies to prevent re-runs
 
   const loadUserComplexes = async () => {
     try {
