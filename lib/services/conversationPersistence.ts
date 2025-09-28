@@ -35,7 +35,7 @@ export async function saveConversation(
   options: SaveConversationOptions = {}
 ) {
   try {
-    console.log('💾 Saving conversation:', { userId, topic, messageCount: messages.length });
+    console.log('💾 Saving conversation');
 
     // Filter out detection_log messages - they should not be saved to database
     const saveableMessages = messages.filter(msg => msg.type !== 'detection_log');
@@ -60,15 +60,14 @@ export async function saveConversation(
       .single();
 
     if (error) {
-      console.error('❌ Error saving conversation:', error);
       throw new Error(`Failed to save conversation: ${error.message}`);
     }
 
-    console.log('✅ Conversation saved successfully:', data.id);
+    console.log('✅ Conversation saved');
     return data;
 
   } catch (error) {
-    console.error('❌ saveConversation error:', error);
+    // Re-throw the error without additional logging since the caller will handle it
     throw error;
   }
 }
@@ -82,7 +81,6 @@ export async function loadConversations(
   offset = 0
 ) {
   try {
-    console.log('📖 Loading conversations:', { userId, complexId, offset });
 
     let query = supabase
       .from('conversations')
@@ -100,15 +98,12 @@ export async function loadConversations(
     const { data, error } = await query;
 
     if (error) {
-      console.error('❌ Error loading conversations:', error);
       throw new Error(`Failed to load conversations: ${error.message}`);
     }
 
-    console.log('✅ Loaded conversations:', data?.length || 0);
     return data || [];
 
   } catch (error) {
-    console.error('❌ loadConversations error:', error);
     throw error;
   }
 }
@@ -118,7 +113,6 @@ export async function loadConversations(
  */
 export async function loadConversation(conversationId: string, userId: string) {
   try {
-    console.log('📖 Loading conversation:', conversationId);
 
     const { data, error } = await supabase
       .from('conversations')
@@ -132,15 +126,12 @@ export async function loadConversation(conversationId: string, userId: string) {
         // No rows returned
         return null;
       }
-      console.error('❌ Error loading conversation:', error);
       throw new Error(`Failed to load conversation: ${error.message}`);
     }
 
-    console.log('✅ Conversation loaded');
     return data;
 
   } catch (error) {
-    console.error('❌ loadConversation error:', error);
     throw error;
   }
 }
@@ -154,7 +145,6 @@ export async function updateConversation(
   updates: Partial<Database['public']['Tables']['conversations']['Update']>
 ) {
   try {
-    console.log('✏️ Updating conversation:', conversationId);
 
     const { data, error } = await supabase
       .from('conversations')
@@ -168,15 +158,12 @@ export async function updateConversation(
       .single();
 
     if (error) {
-      console.error('❌ Error updating conversation:', error);
       throw new Error(`Failed to update conversation: ${error.message}`);
     }
 
-    console.log('✅ Conversation updated');
     return data;
 
   } catch (error) {
-    console.error('❌ updateConversation error:', error);
     throw error;
   }
 }
@@ -202,7 +189,6 @@ export async function updateConversationWithMessages(
  */
 export async function deleteConversation(conversationId: string, userId: string) {
   try {
-    console.log('🗑️ Deleting conversation:', conversationId);
 
     const { error } = await supabase
       .from('conversations')
@@ -211,14 +197,11 @@ export async function deleteConversation(conversationId: string, userId: string)
       .eq('user_id', userId);
 
     if (error) {
-      console.error('❌ Error deleting conversation:', error);
       throw new Error(`Failed to delete conversation: ${error.message}`);
     }
 
-    console.log('✅ Conversation deleted');
 
   } catch (error) {
-    console.error('❌ deleteConversation error:', error);
     throw error;
   }
 }
@@ -228,7 +211,6 @@ export async function deleteConversation(conversationId: string, userId: string)
  */
 export async function getConversationStats(userId: string) {
   try {
-    console.log('📊 Getting conversation stats for user:', userId);
 
     // Get total count
     const { count: totalCount, error: countError } = await supabase
@@ -237,7 +219,6 @@ export async function getConversationStats(userId: string) {
       .eq('user_id', userId);
 
     if (countError) {
-      console.error('❌ Error getting conversation count:', countError);
       throw new Error(`Failed to get conversation stats: ${countError.message}`);
     }
 
@@ -248,7 +229,6 @@ export async function getConversationStats(userId: string) {
       .eq('user_id', userId);
 
     if (complexError) {
-      console.error('❌ Error getting complex data:', complexError);
       throw new Error(`Failed to get complex stats: ${complexError.message}`);
     }
 
@@ -264,11 +244,9 @@ export async function getConversationStats(userId: string) {
       conversationsByComplex: complexCounts,
     };
 
-    console.log('✅ Conversation stats loaded:', stats);
     return stats;
 
   } catch (error) {
-    console.error('❌ getConversationStats error:', error);
     throw error;
   }
 }
@@ -302,7 +280,6 @@ export async function getRecentConversations(userId: string) {
   try {
     return await loadConversations(userId, undefined, 0);
   } catch (error) {
-    console.error('❌ getRecentConversations error:', error);
     throw error;
   }
 }

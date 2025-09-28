@@ -19,6 +19,7 @@ import {
   VoiceSession
 } from '@/lib/services/voiceSessionService';
 import { getSelectedVoice, setSelectedVoice, VoiceType } from '@/lib/services/voiceSettings';
+import { getVoiceCharacteristics } from '@/lib/services/voiceCharacteristics';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
 import { FlowchartStructure } from '@/lib/types/flowchart';
 import { NeedBubbleData, PartBubbleData } from '@/lib/types/partsNeedsChart';
@@ -34,7 +35,7 @@ import { useFocusEffect, usePreventRemove } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { unstable_batchedUpdates } from 'react-native';
 import {
   Alert,
@@ -118,10 +119,6 @@ export default function ConversationScreen() {
 
   // Helper to add detection log messages for newly detected items
   const addDetectionLogMessages = (previousDetectedItems: DetectedLists, newDetectedItems: DetectedLists, userMessageId?: string) => {
-    console.log('🔍 [DEBUG] Comparing detection results:', {
-      previous: previousDetectedItems,
-      new: newDetectedItems
-    });
     const detectionMessages: Array<{
       id: string;
       text: string;
@@ -228,6 +225,13 @@ export default function ConversationScreen() {
   const currentResponseIdRef = useRef<string | null>(null);
   const userMessageAddedForSessionRef = useRef<string | null>(null);
 
+  // Track if we need to reload session after settings change
+  const shouldReloadSessionRef = useRef(false);
+
+  // Computed value to track if any messages have indicator flags
+  const hasIndicatorMessages = useMemo(() => {
+    return conversation.some(msg => msg.isRecording || msg.isProcessing || msg.isThinking);
+  }, [conversation]);
 
   // Helper functions for logging
   const setIsListeningWithLogging = (listening: boolean) => {
@@ -331,7 +335,32 @@ export default function ConversationScreen() {
     }
   };
 
-  const initializeSession = async () => {
+  const reloadSessionWithNewSettings = async (newVoice?: VoiceType) => {
+    try {
+      console.log('🔄 Reloading session with updated characteristics and voice:', newVoice || selectedVoice);
+
+      // Disconnect existing session
+      if (sessionRef.current) {
+        sessionRef.current.disconnect();
+        sessionRef.current = null;
+      }
+
+      // Reset session states
+      setIsConnected(false);
+      setIsListeningWithLogging(false);
+      setIsAIResponding(false);
+      isAIRespondingRef.current = false;
+
+      // Reload with new settings - use provided voice or current selectedVoice
+      await initializeSession(newVoice);
+
+      console.log('✅ Session reloaded with updated characteristics');
+    } catch (error) {
+      console.error('❌ Error reloading session:', error);
+    }
+  };
+
+  const initializeSession = async (voiceOverride?: VoiceType) => {
     try {
       setIsLoading(true);
 
@@ -346,13 +375,18 @@ export default function ConversationScreen() {
       }
 
       const sessionInstructions = await generateVoiceInstructions(null);
+      const characteristics = await getVoiceCharacteristics();
+
+      // Use override voice if provided, otherwise use current selectedVoice
+      const voiceToUse = voiceOverride || selectedVoice;
 
       const session = createVoiceSession(
         {
-          voice: selectedVoice,
+          voice: voiceToUse,
           temperature: 0.7,
           sessionInstructions,
-          enableVAD: false
+          enableVAD: false,
+          characteristics
         },
         {
           onConnected: () => {
@@ -444,9 +478,14 @@ export default function ConversationScreen() {
               }
 
               // Process detection in background without blocking UI
-              console.log('🔍 [DEBUG] Starting emotion detection for transcript:', transcriptText);
               emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
-                console.log('🔍 [DEBUG] Detection completed, received lists:', detectedLists);
+                if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+                  console.log('🔍 Detected:', {
+                    emotions: detectedLists.emotions,
+                    parts: detectedLists.parts,
+                    needs: detectedLists.needs
+                  });
+                }
                 // Batch all state updates together
                 unstable_batchedUpdates(() => {
                   // Store previous detected items for comparison
@@ -506,7 +545,6 @@ export default function ConversationScreen() {
 
               // Find and update the recording message in place
               const recordingMessageId = userMessageAddedForSessionRef.current;
-              console.log('📝 Looking for recording message with ID:', recordingMessageId);
 
               // Clear the ref now that we've captured the ID - prevents it from being used again
               userMessageAddedForSessionRef.current = null;
@@ -514,13 +552,11 @@ export default function ConversationScreen() {
               setConversation(prev => {
                 // Look for the recording/processing message by ID only
                 const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
-                console.log('📝 Found message at index:', existingIndex, 'out of', prev.length, 'messages');
 
                 if (existingIndex >= 0) {
                   // Replace the entire message object to ensure all flags are cleared
                   const updatedConversation = [...prev];
                   const originalMessage = updatedConversation[existingIndex];
-                  console.log('📝 Updating message from:', originalMessage, 'with text:', transcriptText);
 
                   const finalMessage = {
                     type: originalMessage.type,
@@ -566,11 +602,27 @@ export default function ConversationScreen() {
               // Clear the ref now that we've used it (not in onResponseComplete)
               // userMessageAddedForSessionRef.current = null;
             } else {
+              // Update the recording message in real-time with partial transcript
               setTranscript(transcriptText);
+              const recordingMessageId = userMessageAddedForSessionRef.current;
+              if (recordingMessageId && transcriptText) {
+                setConversation(prev => {
+                  const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
+                  if (existingIndex >= 0) {
+                    const updatedConversation = [...prev];
+                    updatedConversation[existingIndex] = {
+                      ...updatedConversation[existingIndex],
+                      text: transcriptText,
+                      isRecording: true // Keep the recording flag
+                    };
+                    return updatedConversation;
+                  }
+                  return prev;
+                });
+              }
             }
           },
           onResponseStart: (responseId) => {
-            console.log('🎬 onResponseStart called with responseId:', responseId);
             setIsAIResponding(true);
             setCurrentResponseId(responseId);
             setIsStreaming(true);
@@ -579,7 +631,6 @@ export default function ConversationScreen() {
             isAIRespondingRef.current = true;
             isStreamingRef.current = true;
             currentResponseIdRef.current = responseId;
-            console.log('🎬 Set currentResponseIdRef.current to:', currentResponseIdRef.current);
 
             // Add AI message with the response ID
             setConversation(prev => {
@@ -599,7 +650,6 @@ export default function ConversationScreen() {
             });
           },
           onResponseStreaming: (response, isComplete) => {
-            console.log('🌊 onResponseStreaming called - response:', response?.substring(0, 50));
             if (!response) return;
 
             setConversation(prev => {
@@ -612,10 +662,8 @@ export default function ConversationScreen() {
                 }
               }
 
-              console.log('🌊 Found AI message at index:', aiMessageIndex);
 
               if (aiMessageIndex === -1) {
-                console.log('🌊 No thinking AI message found!');
                 return prev;
               }
 
@@ -775,12 +823,23 @@ export default function ConversationScreen() {
 
   const openSettingsModal = () => {
     // Don't open settings while recording
-    if (isListening) return;
+    if (isListening) {
+      console.log('⚠️ Cannot open settings while recording');
+      return;
+    }
+
+    console.log('🎛️ Opening settings modal');
+    // Mark that we should check for updated settings on return
+    shouldReloadSessionRef.current = true;
+    console.log('🔄 Set shouldReloadSessionRef.current = true');
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
       pathname: '/voice-settings',
-      params: { selectedVoice }
+      params: {
+        selectedVoice,
+        returnToConversation: 'true' // Mark that we should check for updates on return
+      }
     });
   };
 
@@ -854,9 +913,14 @@ export default function ConversationScreen() {
       };
 
       // Process detection in background without blocking UI
-      console.log('🔍 [DEBUG] Starting emotion detection for text input:', messageText);
       emotionPartsDetector.addMessage(messageText).then(detectedLists => {
-        console.log('🔍 [DEBUG] Detection completed, received lists:', detectedLists);
+        if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+          console.log('🔍 Detected:', {
+            emotions: detectedLists.emotions,
+            parts: detectedLists.parts,
+            needs: detectedLists.needs
+          });
+        }
         // Batch all state updates together
         unstable_batchedUpdates(() => {
           // Store previous detected items for comparison
@@ -946,9 +1010,14 @@ export default function ConversationScreen() {
     };
 
     // Process detection in background without blocking UI
-    console.log('🔍 [DEBUG] Starting emotion detection for text input:', messageText);
     emotionPartsDetector.addMessage(messageText).then(detectedLists => {
-      console.log('🔍 [DEBUG] Detection completed, received lists:', detectedLists);
+      if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+        console.log('🔍 Detected:', {
+          emotions: detectedLists.emotions,
+          parts: detectedLists.parts,
+          needs: detectedLists.needs
+        });
+      }
       // Batch all state updates together
       unstable_batchedUpdates(() => {
         // Store previous detected items for comparison
@@ -1089,15 +1158,34 @@ export default function ConversationScreen() {
     };
   }, []);
 
-  // Handle proper cleanup when leaving screen
+  // Handle proper cleanup when leaving screen and reload session if settings changed
   useFocusEffect(
     React.useCallback(() => {
+      console.log('🔍 ConversationScreen: useFocusEffect - Screen focused');
+      console.log('🔍 shouldReloadSessionRef.current:', shouldReloadSessionRef.current);
+      console.log('🔍 sessionRef.current exists:', !!sessionRef.current);
+
       // Reset the navigation flag when screen regains focus
       // This ensures usePreventRemove works on every navigation attempt
       setHasNavigatedToSave(false);
 
+      // Check if we need to reload session after returning from settings
+      if (shouldReloadSessionRef.current && sessionRef.current) {
+        console.log('🔄 Triggering session reload after returning from settings');
+        shouldReloadSessionRef.current = false;
+
+        // Update the selected voice and reload session with new settings
+        getSelectedVoice().then(voice => {
+          console.log('🎤 Retrieved voice from settings:', voice);
+          setSelectedVoice(voice);
+          // Reload session with new characteristics and voice
+          reloadSessionWithNewSettings(voice);
+        });
+      }
+
       // Return cleanup function
       return () => {
+        console.log('🔍 ConversationScreen: useFocusEffect - Screen losing focus');
         // The screen is losing focus - don't cleanup yet as user might come back
       };
     }, [])
@@ -1105,19 +1193,12 @@ export default function ConversationScreen() {
 
   // Handle navigation to save conversation screen when closing with content
   usePreventRemove(conversation.length > 0 && !hasNavigatedToSave, ({ data }) => {
-    console.log('🔄 [DEBUG] usePreventRemove triggered - conversation length:', conversation.length);
-    console.log('🔄 [DEBUG] hasNavigatedToSave:', hasNavigatedToSave);
-    console.log('🔄 [DEBUG] presetComplexId:', presetComplexId);
-
     // Set flag to prevent this from triggering again
-    console.log('🔄 [DEBUG] Setting hasNavigatedToSave = true in usePreventRemove');
     setHasNavigatedToSave(true);
 
     // If opened from a complex detail page, save directly to that complex
     if (presetComplexId) {
-      console.log('🔄 [DEBUG] Auto-saving to preset complex:', presetComplexId);
       backgroundSaver.forceSaveWithComplex(presetComplexId).then(() => {
-        console.log('🔄 [DEBUG] Auto-save successful, cleaning up and going back');
         cleanupSession();
         // Dismiss all modals and return to the tabs
         router.dismissAll();
@@ -1136,7 +1217,6 @@ export default function ConversationScreen() {
         });
       });
     } else {
-      console.log('🔄 [DEBUG] Navigating to save-conversation screen...');
       // Navigate to save conversation screen with session ID and cached complexes
       router.push({
         pathname: '/save-conversation',
@@ -1148,8 +1228,6 @@ export default function ConversationScreen() {
         }
       });
     }
-
-    console.log('🔄 [DEBUG] usePreventRemove handling completed');
   });
 
   // Auto-scroll to bottom when new messages are added
@@ -1215,7 +1293,7 @@ export default function ConversationScreen() {
   // Recording indicator animation loop for pulsing effect
   useEffect(() => {
     const shouldAnimate =
-      isListening || isProcessingUserInput || conversation.some(msg => msg.isRecording || msg.isProcessing || msg.isThinking);
+      isListening || isProcessingUserInput || hasIndicatorMessages;
 
     if (shouldAnimate) {
       Animated.loop(
@@ -1236,7 +1314,7 @@ export default function ConversationScreen() {
       recordingIndicatorOpacity.stopAnimation();
       recordingIndicatorOpacity.setValue(0);
     }
-  }, [isListening, isProcessingUserInput, conversation, recordingIndicatorOpacity]);
+  }, [isListening, isProcessingUserInput, hasIndicatorMessages, recordingIndicatorOpacity]);
 
   const conversationBottomPadding = showTextInput
     ? (showSquareCards ? 0 : 100) // No padding when mini charts are visible since container is smaller
@@ -1571,19 +1649,37 @@ export default function ConversationScreen() {
                       >
                         {/* Show indicator or message text based on state */}
                         {message.isRecording ? (
-                          // User recording indicator
+                          // User recording indicator with live transcript
                           <View style={[styles.recordingIndicatorContainer, { justifyContent: 'flex-end' }]}>
-                            <Animated.View
-                              style={[
-                                styles.recordingIndicator,
-                                {
-                                  backgroundColor: isDark ? '#CCCCCC' : '#555555',
-                                  opacity: recordingIndicatorOpacity
-                                }
-                              ]}
-                            >
-                              <Text style={[styles.recordingText, { color: isDark ? '#000000' : '#FFFFFF' }]}>●</Text>
-                            </Animated.View>
+                            {message.text ? (
+                              // Show live transcript text if available
+                              <Text
+                                style={[
+                                  styles.messageText,
+                                  {
+                                    color: isDark ? '#CCCCCC' : '#555555',
+                                    fontWeight: 'normal',
+                                    textAlign: 'right',
+                                    opacity: 0.8 // Slightly faded to indicate it's still being recorded
+                                  }
+                                ]}
+                              >
+                                {message.text}
+                              </Text>
+                            ) : (
+                              // Show recording indicator if no text yet
+                              <Animated.View
+                                style={[
+                                  styles.recordingIndicator,
+                                  {
+                                    backgroundColor: isDark ? '#CCCCCC' : '#555555',
+                                    opacity: recordingIndicatorOpacity
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.recordingText, { color: isDark ? '#000000' : '#FFFFFF' }]}>●</Text>
+                              </Animated.View>
+                            )}
                           </View>
                         ) : message.isProcessing ? (
                           // User processing indicator with pulsating animation
@@ -2019,7 +2115,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
   },
-  conversationContainer: { flex: 1, paddingHorizontal: 16, paddingVertical: 12 },
+  conversationContainer: { flex: 1, paddingHorizontal: 16, paddingBottom: 12, paddingTop: 0 },
   emptyConversationContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 50 },
   emptyConversationText: { fontSize: 16, textAlign: 'center', fontStyle: 'italic' },
   messageTextContainer: { marginVertical: 12, minHeight: 24, paddingTop: 2 },

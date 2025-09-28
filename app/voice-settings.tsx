@@ -18,6 +18,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { getSelectedVoice, setSelectedVoice, getAllVoices, VoiceType } from '@/lib/services/voiceSettings';
 import { getUserProfile } from '@/lib/services/auth';
 import { generateRealtimeVoiceSample } from '@/lib/services/realtimeVoiceSample';
+import { getVoiceCharacteristics, saveVoiceCharacteristics } from '@/lib/services/voiceCharacteristics';
 
 export default function VoiceSettingsScreen() {
   const colorScheme = useColorScheme();
@@ -29,25 +30,27 @@ export default function VoiceSettingsScreen() {
 
   // Slider state variables
   const [genderValue, setGenderValue] = useState(0.5); // 0 = Empathetic, 1 = Direct
-  const [speedValue, setSpeedValue] = useState(0.5); // 0 = Slow, 1 = Fast
   const [verbosityValue, setVerbosityValue] = useState(0.5); // 0 = Talkative, 1 = Concise
 
   // Previous values for haptic feedback on value change
   const [prevGenderValue, setPrevGenderValue] = useState(0.5);
-  const [prevSpeedValue, setPrevSpeedValue] = useState(0.5);
   const [prevVerbosityValue, setPrevVerbosityValue] = useState(0.5);
 
   // User's name for personalized greetings
   const [userName, setUserName] = useState<string>('');
+
+  // Track if we need to save characteristics
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handleClose = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.back();
   };
 
-  // Load user profile on component mount
+  // Load user profile and characteristics on component mount
   useEffect(() => {
     loadUserProfile();
+    loadCharacteristics();
   }, []);
 
   const loadUserProfile = async () => {
@@ -60,6 +63,43 @@ export default function VoiceSettingsScreen() {
       console.error('Error loading user profile:', error);
     }
   };
+
+  const loadCharacteristics = async () => {
+    try {
+      const characteristics = await getVoiceCharacteristics();
+      setGenderValue(characteristics.empathyLevel);
+      setVerbosityValue(characteristics.verbosity);
+      setPrevGenderValue(characteristics.empathyLevel);
+      setPrevVerbosityValue(characteristics.verbosity);
+    } catch (error) {
+      console.error('Error loading voice characteristics:', error);
+    }
+  };
+
+  // Save characteristics with debounce
+  const saveCharacteristicsDebounced = () => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+    saveTimeoutRef.current = setTimeout(() => {
+      const characteristics = {
+        empathyLevel: genderValue,
+        speakingSpeed: 0.5, // Default speed
+        verbosity: verbosityValue
+      };
+      console.log('💾 Saving voice characteristics:', characteristics);
+      saveVoiceCharacteristics(characteristics).then(() => {
+        console.log('✅ Voice characteristics saved successfully');
+      }).catch(error => {
+        console.error('❌ Error saving voice characteristics:', error);
+      });
+    }, 500); // Wait 500ms after last change before saving
+  };
+
+  // Save characteristics when any slider changes
+  useEffect(() => {
+    saveCharacteristicsDebounced();
+  }, [genderValue, verbosityValue]);
 
   // Greeting variations for voice samples
   const getGreetings = (name: string) => {
@@ -262,6 +302,7 @@ export default function VoiceSettingsScreen() {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           }
 
+                          console.log('🎚️ Empathy slider changed:', value);
                           setPrevGenderValue(value);
                           setGenderValue(value);
                         }}
@@ -275,70 +316,6 @@ export default function VoiceSettingsScreen() {
                     </View>
                 </View>
 
-                {/* Speed Slider */}
-                <View style={styles.sliderContainer}>
-                  <View style={styles.sliderHeader}>
-                    <Text style={[
-                      styles.sliderLabel,
-                      { color: '#FFFFFF', fontSize: 15 }
-                    ]}>
-                      Slow
-                    </Text>
-                    <Text style={[
-                      styles.sliderLabel,
-                      { color: '#FFFFFF', fontSize: 15 }
-                    ]}>
-                      Fast
-                    </Text>
-                  </View>
-                  <View style={styles.sliderWithTicks}>
-                      {/* Tick marks behind the slider */}
-                      {[0, 0.25, 0.5, 0.75, 1].map((tick, index) => {
-                        // Account for slider's internal padding - thumb doesn't reach edges
-                        // Slider typically has ~3% padding on each side
-                        const padding = 3;
-                        const effectiveRange = 100 - (2 * padding);
-                        const tickPosition = padding + (tick * effectiveRange);
-                        return (
-                          <View
-                            key={index}
-                            style={[
-                              styles.tickMarkBehind,
-                              {
-                                left: `${tickPosition}%`,
-                                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.4)' : 'rgba(0, 0, 0, 0.4)'
-                              }
-                            ]}
-                          />
-                        );
-                      })}
-                      <Slider
-                        style={styles.slider}
-                        minimumValue={0}
-                        maximumValue={1}
-                        step={0.25}
-                        value={speedValue}
-                        onValueChange={(value) => {
-                          // Trigger haptic feedback when crossing intervals
-                          const roundedValue = Math.round(value / 0.25) * 0.25;
-                          const roundedPrevValue = Math.round(prevSpeedValue / 0.25) * 0.25;
-
-                          if (roundedValue !== roundedPrevValue) {
-                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                          }
-
-                          setPrevSpeedValue(value);
-                          setSpeedValue(value);
-                        }}
-                        onSlidingComplete={(value) => {
-                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        }}
-                        minimumTrackTintColor={isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'}
-                        maximumTrackTintColor={isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.3)'}
-                        thumbTintColor={isDark ? '#6BB6FF' : '#007AFF'}
-                      />
-                    </View>
-                </View>
 
                 {/* Verbosity Slider */}
                 <View style={styles.sliderContainer}>
@@ -392,6 +369,7 @@ export default function VoiceSettingsScreen() {
                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                           }
 
+                          console.log('🎚️ Verbosity slider changed:', value);
                           setPrevVerbosityValue(value);
                           setVerbosityValue(value);
                         }}

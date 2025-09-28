@@ -25,8 +25,6 @@ class EmotionPartsDetector {
 
   constructor() {
     this.apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
-    console.log('🤖 [DETECTOR] Constructor - API key length:', this.apiKey ? this.apiKey.length : 0);
-    console.log('🤖 [DETECTOR] Constructor - API key prefix:', this.apiKey ? this.apiKey.substring(0, 7) : 'none');
   }
 
   /**
@@ -150,10 +148,8 @@ RESPONSE FORMAT: JSON only, no explanations
    * Analyze text using AI for intelligent emotion/parts/needs detection
    */
   async analyzeText(text: string): Promise<DetectedLists> {
-    console.log('🤖 [DETECTOR] Starting analysis for text:', text);
 
     if (!text || typeof text !== 'string') {
-      console.log('🤖 [DETECTOR] Invalid text input, returning current lists');
       return this.getCurrentLists();
     }
 
@@ -162,12 +158,10 @@ RESPONSE FORMAT: JSON only, no explanations
       return this.getCurrentLists();
     }
 
-    console.log('🤖 [DETECTOR] API key found, making request...');
 
 
     try {
       const response = await this.makeAPIRequest(text);
-      console.log('🤖 [DETECTOR] API response status:', response.status);
 
       if (!response.ok) {
         console.warn('🤖 [DETECTOR] API request failed with status:', response.status);
@@ -175,9 +169,7 @@ RESPONSE FORMAT: JSON only, no explanations
       }
 
       const result = await response.json();
-      console.log('🤖 [DETECTOR] API result:', result);
       const aiResponse = result.choices[0]?.message?.content;
-      console.log('🤖 [DETECTOR] AI response content:', aiResponse);
 
       if (!aiResponse) {
         console.warn('🤖 [DETECTOR] No AI response content found');
@@ -231,9 +223,7 @@ RESPONSE FORMAT: JSON only, no explanations
       }
 
       if (foundEmotions > 0 || foundParts > 0 || foundNeeds > 0) {
-        console.log(`📊 [DETECTION] AI Summary: ${foundEmotions} emotions, ${foundParts} parts, ${foundNeeds} needs detected`);
       } else {
-        console.log('📊 [DETECTION] AI found no new items in this text');
       }
 
     } catch (error) {
@@ -274,11 +264,7 @@ RESPONSE FORMAT: JSON only, no explanations
    */
   async addMessage(content: string, callbacks?: DetectionCallbacks): Promise<DetectedLists> {
     const lists = await this.analyzeText(content);
-    console.log('📋 [DETECTION] Current totals:', {
-      emotions: lists.emotions.length,
-      parts: lists.parts.length,
-      needs: lists.needs.length
-    });
+    // Current totals - emotions: lists.emotions.length, parts: lists.parts.length, needs: lists.needs.length
     callbacks?.onDetectionUpdate?.(lists);
     return lists;
   }

@@ -4,6 +4,7 @@ import { setAudioModeAsync, requestRecordingPermissionsAsync } from 'expo-audio'
 import { RecordingOptions, RecordingPresets } from 'expo-audio';
 import { FlowchartStructure } from '../types/flowchart';
 import { voiceConversationInstructions } from '../../assets/flowchart/conversation_instructions.js';
+import { VoiceCharacteristics, generatePromptModifiers } from './voiceCharacteristics';
 
 const OPENAI_REALTIME_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
 const REALTIME_API_URL = 'wss://api.openai.com/v1/realtime';
@@ -77,12 +78,12 @@ const checkAudioForSpeechContent = async (wavBase64: string): Promise<boolean> =
   }
 };
 
-const extractSystemPromptFromVoiceInstructions = (): string => {
+const extractSystemPromptFromVoiceInstructions = (characteristics?: VoiceCharacteristics): string => {
   try {
     const lines = voiceConversationInstructions.split('\n');
     let systemPrompt = '';
     let currentSection = '';
-    
+
     for (const line of lines) {
       if (line.startsWith('## System Prompt')) {
         currentSection = 'system';
@@ -92,12 +93,17 @@ const extractSystemPromptFromVoiceInstructions = (): string => {
       } else if (line.trim() === '' && currentSection !== 'system') {
         continue;
       }
-      
+
       if (currentSection === 'system') {
         systemPrompt += line + '\n';
       }
     }
-    
+
+    // Add user's preferred communication style if provided
+    if (characteristics) {
+      systemPrompt += generatePromptModifiers(characteristics);
+    }
+
     return systemPrompt.trim();
   } catch (error) {
     console.error('❌ Error extracting system prompt from voice instructions:', error);
@@ -209,6 +215,7 @@ export interface VoiceSessionConfig {
   voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' | 'marin' | 'cedar';
   temperature?: number;
   enableVAD?: boolean; // Enable Voice Activity Detection for hands-free mode
+  characteristics?: VoiceCharacteristics; // User's preferred communication style
 }
 
 export interface VoiceSession {
@@ -255,6 +262,7 @@ export const createVoiceSession = (
   let isReceivingAudio = false;
   let hasActiveResponse = false;
   let continuousRecordingInterval: NodeJS.Timeout | null = null;
+
   let isJsonResponse = false;
   let hasStartedPlayingResponse = false;
 
@@ -282,7 +290,6 @@ export const createVoiceSession = (
 
   // Helper function to add text to word buffer and start streaming
   const addToWordBuffer = (text: string, responseId: string, isComplete: boolean = false) => {
-    console.log('📝 addToWordBuffer - text:', text, 'isComplete:', isComplete, 'pendingTextChunk:', pendingTextChunk, 'responseId:', responseId);
 
     // Only skip if it's clearly JSON structure, not regular punctuation
     // Check for JSON-like patterns but not single punctuation marks with spaces
@@ -290,7 +297,6 @@ export const createVoiceSession = (
         text.includes('"role":') || text.includes('"content":') || text.includes('"assistant"') ||
         text.includes('"response":') || text === '{"' || text === ':"' || text === '",' || text === '}')) {
       // Don't add JSON structure words to buffer - wait for content extraction
-      console.log('📝 Skipping JSON structure');
       return;
     }
 
@@ -319,11 +325,9 @@ export const createVoiceSession = (
       if (textToProcess) {
         // Split text into words, preserving spaces
         const words = textToProcess.split(/(\s+)/).filter(word => word.length > 0);
-        console.log('📝 Processing text into words:', textToProcess, '-> words:', words);
 
         // Add new words to buffer
         wordBuffer.push(...words);
-        console.log('📝 Word buffer after adding:', wordBuffer);
       }
     } else if (pendingTextChunk.length > 50) {
       // If we have accumulated a lot of text without spaces (unlikely but possible),
@@ -344,13 +348,11 @@ export const createVoiceSession = (
 
   // Helper function to stream next word from buffer
   const streamNextWord = () => {
-    console.log('🔄 streamNextWord - wordBuffer length:', wordBuffer.length, 'currentWordIndex:', currentWordIndex, 'streamingResponseId:', streamingResponseId, 'currentResponseId:', currentResponseId);
     if (currentWordIndex < wordBuffer.length && streamingResponseId && currentResponseId) {
       const word = wordBuffer[currentWordIndex];
       displayedText += word;
       currentWordIndex++;
 
-      console.log('📤 Streaming word to UI:', word, 'displayedText so far:', displayedText);
 
       // Send updated text to UI - only if we have a valid response ID
       if (currentResponseId) {
@@ -423,7 +425,7 @@ export const createVoiceSession = (
             type: 'session.update',
             session: {
               modalities: ['text', 'audio'],
-              instructions: config.sessionInstructions || extractSystemPromptFromVoiceInstructions(),
+              instructions: config.sessionInstructions || extractSystemPromptFromVoiceInstructions(config.characteristics),
               voice: config.voice || 'alloy',
               input_audio_format: 'pcm16',
               output_audio_format: 'pcm16',
@@ -841,7 +843,6 @@ export const createVoiceSession = (
                 audio: pcmBase64
               };
               websocket.send(JSON.stringify(audioAppendMessage));
-              console.log(`📡 Sent final ${finalPcmData.length} bytes of PCM audio`);
             }
 
             // Commit the audio buffer to trigger transcription and response
@@ -933,7 +934,6 @@ export const createVoiceSession = (
 
 
     startContinuousListening: async () => {
-      console.log('🔄 Starting continuous listening mode with VAD');
       if (!websocket || !isConnected) {
         console.log('❌ Cannot start continuous listening - no websocket or not connected');
         return;
@@ -1021,7 +1021,6 @@ export const createVoiceSession = (
     get isListening() { return isListening; },
     get isPlaying() { 
       const result = isPlaying && !!currentSound;
-      console.log(`🔍 isPlaying getter called: ${result} (isPlaying=${isPlaying}, currentSound=${!!currentSound})`);
       return result; 
     },
     get isContinuousMode() { return isContinuousMode; }
@@ -1193,7 +1192,6 @@ export const createVoiceSession = (
             callbacks.onResponseComplete?.();
           } else if (streamingAudioBuffer.length >= 100) {
             // Continue with next segment
-            console.log(`🔄 Continuing with next segment (${streamingAudioBuffer.length} chunks)`);
             setTimeout(() => processNextSegment(), 100);
           } else if (!isReceivingAudio && streamingAudioBuffer.length > 0) {
             // Final segment with remaining chunks (less than 100)
@@ -1325,7 +1323,6 @@ export const createVoiceSession = (
           break;
           
         case 'response.created':
-          console.log('🌟 response.created event - message:', message);
           // Reset for new response
           clearWordStreaming(); // Clear any previous word streaming
           currentTranscript = '';
@@ -1333,7 +1330,6 @@ export const createVoiceSession = (
           streamingAudioBuffer = []; // Reset audio buffer for new response
           currentResponseId = message.response?.id || Date.now().toString();
           lastProcessedResponse = null;
-          console.log('🌟 Set currentResponseId to:', currentResponseId, 'lastInputWasText:', lastInputWasText);
 
 
           // Notify UI of new response start
@@ -1504,7 +1500,6 @@ export const createVoiceSession = (
         case 'conversation.item.input_audio_transcription.delta':
           // Partial transcription as user speaks - show real-time transcription
           if (message.delta) {
-            console.log('🎵 Real-time transcription:', message.delta);
             callbacks.onTranscript?.(message.delta, false);
           }
           break;
@@ -1512,7 +1507,6 @@ export const createVoiceSession = (
         case 'conversation.item.input_audio_transcription.completed':
           // Final transcription from real-time API (USER INPUT)
           if (message.transcript) {
-            console.log('✅ Final transcription completed:', message.transcript);
             callbacks.onTranscript?.(message.transcript, true);
           }
           break;
@@ -1541,7 +1535,6 @@ export const createVoiceSession = (
               }
             };
             websocket?.send(JSON.stringify(responseMessage));
-            console.log('📤 Requested AI response after speech stopped');
 
             hasActiveResponse = true;
             callbacks.onListeningStop?.();

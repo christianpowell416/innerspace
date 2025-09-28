@@ -43,12 +43,6 @@ class BackgroundSaver {
     topic: string;
     complexId?: string;
   }): void {
-    console.log('🔄 BackgroundSaver: Initializing session', {
-      sessionId: metadata.sessionId,
-      userId: metadata.userId,
-      topic: metadata.topic,
-      complexId: metadata.complexId
-    });
 
     this.metadata = {
       ...metadata,
@@ -66,7 +60,6 @@ class BackgroundSaver {
       this.saveTimer = null;
     }
 
-    console.log('✅ BackgroundSaver: Session initialized successfully');
   }
 
   /**
@@ -78,12 +71,6 @@ class BackgroundSaver {
       return;
     }
 
-    console.log('💾 BackgroundSaver: Saving message', {
-      messageId: message.id,
-      role: message.role,
-      contentLength: message.content?.length || 0,
-      messageCount: this.metadata.messageCount + 1
-    });
 
     // Add to cache immediately (synchronous)
     const savedMessage: SavedMessage = {
@@ -97,11 +84,9 @@ class BackgroundSaver {
     this.pendingSaves.add(message.id);
     this.metadata.messageCount++;
 
-    console.log('📱 BackgroundSaver: Added to cache, writing to AsyncStorage');
     // Write to AsyncStorage immediately (non-blocking)
     this.writeToAsyncStorage(message);
 
-    console.log('⏰ BackgroundSaver: Scheduling batch save to Supabase');
     // Schedule batch save to Supabase
     this.scheduleBatchSave();
   }
@@ -119,11 +104,6 @@ class BackgroundSaver {
       return;
     }
 
-    console.log('🎯 BackgroundSaver: Saving detected data', {
-      emotions: data.emotions?.length || 0,
-      parts: data.parts?.length || 0,
-      needs: data.needs?.length || 0
-    });
 
     // Save to AsyncStorage cache immediately
     const cacheKey = `detected_${this.metadata.sessionId}`;
@@ -139,7 +119,6 @@ class BackgroundSaver {
           needs: data.needs || current.needs || [],
           updatedAt: Date.now(),
         };
-        console.log('✅ BackgroundSaver: Detected data cached to AsyncStorage');
         return AsyncStorage.setItem(cacheKey, JSON.stringify(updated));
       })
       .catch(error => {
@@ -171,10 +150,6 @@ class BackgroundSaver {
       clearTimeout(this.saveTimer);
     }
 
-    console.log('⏱️ BackgroundSaver: Scheduling batch save in 2 seconds', {
-      pendingMessages: this.pendingSaves.size,
-      isProcessing: this.isProcessing
-    });
 
     // Batch saves every 2 seconds
     this.saveTimer = setTimeout(() => {
@@ -187,18 +162,9 @@ class BackgroundSaver {
    */
   private async processBatchSave(): Promise<void> {
     if (this.isProcessing || this.pendingSaves.size === 0 || !this.metadata) {
-      console.log('⏸️ BackgroundSaver: Skipping batch save', {
-        isProcessing: this.isProcessing,
-        pendingSaves: this.pendingSaves.size,
-        hasMetadata: !!this.metadata
-      });
       return;
     }
 
-    console.log('🚀 BackgroundSaver: Starting batch save process', {
-      pendingMessages: this.pendingSaves.size,
-      conversationId: this.metadata.conversationId
-    });
 
     this.isProcessing = true;
 
@@ -213,13 +179,8 @@ class BackgroundSaver {
         }
       }
 
-      console.log('📋 BackgroundSaver: Prepared messages for save', {
-        totalMessages: messagesToSave.length,
-        messageIds: messagesToSave.map(m => m.id)
-      });
 
       if (messagesToSave.length === 0) {
-        console.log('✅ BackgroundSaver: No messages to save, exiting');
         this.isProcessing = false;
         return;
       }
@@ -227,7 +188,6 @@ class BackgroundSaver {
       // Attempt to save to Supabase
       try {
         if (!this.metadata.conversationId) {
-          console.log('🆕 BackgroundSaver: Creating new conversation in Supabase');
           // First save - create new conversation
           const result = await saveConversation(
             this.metadata.userId,
@@ -238,21 +198,14 @@ class BackgroundSaver {
 
           if (result?.id) {
             this.metadata.conversationId = result.id;
-            console.log('✅ BackgroundSaver: New conversation created', {
-              conversationId: result.id
-            });
           }
         } else {
-          console.log('🔄 BackgroundSaver: Updating existing conversation', {
-            conversationId: this.metadata.conversationId
-          });
           // Update existing conversation
           await updateConversationWithMessages(
             this.metadata.conversationId,
             this.metadata.userId,
             messagesToSave
           );
-          console.log('✅ BackgroundSaver: Conversation updated successfully');
         }
 
         // Mark as synced
@@ -263,7 +216,6 @@ class BackgroundSaver {
           }
         }
 
-        console.log('✅ BackgroundSaver: All messages marked as synced');
 
         // Clear pending saves
         this.pendingSaves.clear();
@@ -279,7 +231,6 @@ class BackgroundSaver {
 
     } finally {
       this.isProcessing = false;
-      console.log('🏁 BackgroundSaver: Batch save process completed');
     }
   }
 
@@ -291,9 +242,6 @@ class BackgroundSaver {
       clearTimeout(this.retryTimer);
     }
 
-    console.log('🔄 BackgroundSaver: Scheduling retry in 5 seconds', {
-      pendingMessages: this.pendingSaves.size
-    });
 
     // Retry in 5 seconds
     this.retryTimer = setTimeout(() => {
@@ -333,7 +281,6 @@ class BackgroundSaver {
    * Force save all pending messages (used when conversation ends)
    */
   async forceSave(): Promise<void> {
-    console.log('🔥 BackgroundSaver: Force saving all pending messages');
 
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -341,14 +288,12 @@ class BackgroundSaver {
     }
 
     await this.processBatchSave();
-    console.log('✅ BackgroundSaver: Force save completed');
   }
 
   /**
    * Force save all pending messages and assign to a specific complex
    */
   async forceSaveWithComplex(complexId: string): Promise<void> {
-    console.log('🔥 BackgroundSaver: Force saving all pending messages with complex ID:', complexId);
 
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
@@ -361,7 +306,6 @@ class BackgroundSaver {
     }
 
     await this.processBatchSave();
-    console.log('✅ BackgroundSaver: Force save with complex completed');
   }
 
   /**
@@ -377,7 +321,6 @@ class BackgroundSaver {
    * Clear all data
    */
   clear(): void {
-    console.log('🧹 BackgroundSaver: Clearing all data and timers');
 
     this.metadata = null;
     this.messageCache.clear();
@@ -393,7 +336,6 @@ class BackgroundSaver {
       this.retryTimer = null;
     }
 
-    console.log('✅ BackgroundSaver: All data cleared');
   }
 }
 
