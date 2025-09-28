@@ -84,7 +84,6 @@ export default function VoiceSettingsScreen() {
     saveTimeoutRef.current = setTimeout(() => {
       const characteristics = {
         empathyLevel: genderValue,
-        speakingSpeed: 0.5, // Default speed
         verbosity: verbosityValue
       };
       console.log('💾 Saving voice characteristics:', characteristics);

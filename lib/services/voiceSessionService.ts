@@ -79,6 +79,8 @@ const checkAudioForSpeechContent = async (wavBase64: string): Promise<boolean> =
 };
 
 const extractSystemPromptFromVoiceInstructions = (characteristics?: VoiceCharacteristics): string => {
+  console.log('🔍 extractSystemPromptFromVoiceInstructions called with:', JSON.stringify(characteristics));
+
   try {
     const lines = voiceConversationInstructions.split('\n');
     let systemPrompt = '';
@@ -99,9 +101,16 @@ const extractSystemPromptFromVoiceInstructions = (characteristics?: VoiceCharact
       }
     }
 
+    console.log('📋 Base prompt length:', systemPrompt.length);
+
     // Add user's preferred communication style if provided
     if (characteristics) {
-      systemPrompt += generatePromptModifiers(characteristics);
+      console.log('📋 Adding user preferences for characteristics:', JSON.stringify(characteristics));
+      const modifiers = generatePromptModifiers(characteristics);
+      systemPrompt += modifiers;
+      console.log('📋 Final prompt length after modifiers:', systemPrompt.length);
+    } else {
+      console.log('📋 Using default system prompt (no characteristics provided)');
     }
 
     return systemPrompt.trim();
@@ -421,11 +430,15 @@ export const createVoiceSession = (
           isConnected = true;
           
           // Session configuration with audio support (August 2025 specifications)
+          const finalInstructions = config.sessionInstructions || extractSystemPromptFromVoiceInstructions(config.characteristics);
+          console.log('🔄 Sending session.update with instructions length:', finalInstructions.length);
+          console.log('🎛️ Session characteristics:', config.characteristics);
+
           const sessionConfig = {
             type: 'session.update',
             session: {
               modalities: ['text', 'audio'],
-              instructions: config.sessionInstructions || extractSystemPromptFromVoiceInstructions(config.characteristics),
+              instructions: finalInstructions,
               voice: config.voice || 'alloy',
               input_audio_format: 'pcm16',
               output_audio_format: 'pcm16',
@@ -489,8 +502,10 @@ export const createVoiceSession = (
     },
 
     disconnect: () => {
+      console.log('🔌 VoiceSession.disconnect() called');
 
       if (websocket) {
+        console.log('🔌 Closing websocket connection...');
         websocket.close();
         websocket = null;
       }

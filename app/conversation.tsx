@@ -131,7 +131,10 @@ export default function ConversationScreen() {
 
     // Check for new emotions
     newDetectedItems.emotions.forEach(emotion => {
-      if (!previousDetectedItems.emotions.includes(emotion)) {
+      const detectionKey = `emotion:${emotion.toLowerCase()}`;
+      // Only show if not already shown AND not in previous detected items
+      if (!shownDetectionMessagesRef.current.has(detectionKey) && !previousDetectedItems.emotions.includes(emotion)) {
+        shownDetectionMessagesRef.current.add(detectionKey);
         detectionMessages.push({
           id: generateMessageId(),
           text: `new emotion logged: ${emotion.toLowerCase()}`,
@@ -146,7 +149,10 @@ export default function ConversationScreen() {
 
     // Check for new parts
     newDetectedItems.parts.forEach(part => {
-      if (!previousDetectedItems.parts.includes(part)) {
+      const detectionKey = `part:${part.toLowerCase()}`;
+      // Only show if not already shown AND not in previous detected items
+      if (!shownDetectionMessagesRef.current.has(detectionKey) && !previousDetectedItems.parts.includes(part)) {
+        shownDetectionMessagesRef.current.add(detectionKey);
         detectionMessages.push({
           id: generateMessageId(),
           text: `new part logged: ${part.toLowerCase()}`,
@@ -161,7 +167,10 @@ export default function ConversationScreen() {
 
     // Check for new needs
     newDetectedItems.needs.forEach(need => {
-      if (!previousDetectedItems.needs.includes(need)) {
+      const detectionKey = `need:${need.toLowerCase()}`;
+      // Only show if not already shown AND not in previous detected items
+      if (!shownDetectionMessagesRef.current.has(detectionKey) && !previousDetectedItems.needs.includes(need)) {
+        shownDetectionMessagesRef.current.add(detectionKey);
         detectionMessages.push({
           id: generateMessageId(),
           text: `new need logged: ${need.toLowerCase()}`,
@@ -218,6 +227,9 @@ export default function ConversationScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const colorPulseAnim = useRef(new Animated.Value(0)).current;
   const recordingIndicatorOpacity = useRef(new Animated.Value(0)).current;
+
+  // Track which detection messages have already been shown
+  const shownDetectionMessagesRef = useRef<Set<string>>(new Set());
 
   // Refs for callback state to prevent closure issues
   const isAIRespondingRef = useRef(false);
@@ -317,7 +329,13 @@ export default function ConversationScreen() {
   const loadVoiceSettingAndInitialize = async () => {
     try {
       const voice = await getSelectedVoice();
+      console.log('🔧 Loading saved voice setting:', voice);
       setSelectedVoiceState(voice);
+
+      // Also log the saved characteristics
+      const savedCharacteristics = await getVoiceCharacteristics();
+      console.log('🔧 Loading saved characteristics:', savedCharacteristics);
+
       setTimeout(() => {
         initializeSession();
       }, 500);
@@ -337,10 +355,15 @@ export default function ConversationScreen() {
 
   const reloadSessionWithNewSettings = async (newVoice?: VoiceType) => {
     try {
-      console.log('🔄 Reloading session with updated characteristics and voice:', newVoice || selectedVoice);
+      console.log('🔄 START: Reloading session with updated characteristics and voice:', newVoice || selectedVoice);
+
+      // Get the current characteristics to log them
+      const currentCharacteristics = await getVoiceCharacteristics();
+      console.log('🎛️ Current characteristics:', currentCharacteristics);
 
       // Disconnect existing session
       if (sessionRef.current) {
+        console.log('🔌 Disconnecting existing session...');
         sessionRef.current.disconnect();
         sessionRef.current = null;
       }
@@ -352,9 +375,10 @@ export default function ConversationScreen() {
       isAIRespondingRef.current = false;
 
       // Reload with new settings - use provided voice or current selectedVoice
+      console.log('🔄 Initializing new session...');
       await initializeSession(newVoice);
 
-      console.log('✅ Session reloaded with updated characteristics');
+      console.log('✅ END: Session reloaded with updated characteristics');
     } catch (error) {
       console.error('❌ Error reloading session:', error);
     }
@@ -374,17 +398,18 @@ export default function ConversationScreen() {
         });
       }
 
-      const sessionInstructions = await generateVoiceInstructions(null);
       const characteristics = await getVoiceCharacteristics();
+      console.log('🎯 Using characteristics for new session:', characteristics);
 
       // Use override voice if provided, otherwise use current selectedVoice
       const voiceToUse = voiceOverride || selectedVoice;
+      console.log('🎯 Using voice for new session:', voiceToUse);
 
       const session = createVoiceSession(
         {
           voice: voiceToUse,
           temperature: 0.7,
-          sessionInstructions,
+          sessionInstructions: null, // Let the session generate instructions with characteristics
           enableVAD: false,
           characteristics
         },
@@ -449,7 +474,7 @@ export default function ConversationScreen() {
               });
             }
           },
-          onTranscript: (transcriptText, isFinal) => {
+          onTranscript: async (transcriptText, isFinal) => {
             if (isFinal) {
               console.log('👤 User:', transcriptText);
 
@@ -477,8 +502,13 @@ export default function ConversationScreen() {
                 return;
               }
 
-              // Process detection in background without blocking UI
-              emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
+              // Store recording message ID before we clear it
+              const recordingMessageId = userMessageAddedForSessionRef.current;
+
+              // Process detection and wait for it to complete before continuing
+              try {
+                const detectedLists = await emotionPartsDetector.addMessage(transcriptText);
+
                 if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
                   console.log('🔍 Detected:', {
                     emotions: detectedLists.emotions,
@@ -486,6 +516,7 @@ export default function ConversationScreen() {
                     needs: detectedLists.needs
                   });
                 }
+
                 // Batch all state updates together
                 unstable_batchedUpdates(() => {
                   // Store previous detected items for comparison
@@ -522,8 +553,7 @@ export default function ConversationScreen() {
                     setShowSquareCards(true);
                   }
 
-                  // Add detection log messages for newly detected items
-                  const recordingMessageId = userMessageAddedForSessionRef.current;
+                  // Add detection log messages immediately after the user message
                   addDetectionLogMessages(previousDetectedItems, detectedLists, recordingMessageId || undefined);
                 });
 
@@ -535,16 +565,16 @@ export default function ConversationScreen() {
                     needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
                   });
                 }
-              }).catch(error => {
+              } catch (error) {
                 console.error('Error analyzing message:', error);
-              });
+              }
 
               setIsProcessingUserInput(true);
               setTranscript('');
               setPendingUserMessage(transcriptText);
 
               // Find and update the recording message in place
-              const recordingMessageId = userMessageAddedForSessionRef.current;
+              // Note: recordingMessageId was already captured above before the detection
 
               // Clear the ref now that we've captured the ID - prevents it from being used again
               userMessageAddedForSessionRef.current = null;
@@ -818,6 +848,9 @@ export default function ConversationScreen() {
     isStreamingRef.current = false;
     currentResponseIdRef.current = null;
 
+    // Clear shown detection messages for new conversation
+    shownDetectionMessagesRef.current.clear();
+
     setIsCleaningUp(false);
   };
 
@@ -899,7 +932,7 @@ export default function ConversationScreen() {
     }
   };
 
-  const processSendText = (finalText: string) => {
+  const processSendText = async (finalText: string) => {
     if (sessionRef.current && isConnected && finalText.trim()) {
       const messageText = finalText.trim();
 
@@ -912,8 +945,21 @@ export default function ConversationScreen() {
         sessionId: conversationSessionId.current,
       };
 
-      // Process detection in background without blocking UI
-      emotionPartsDetector.addMessage(messageText).then(detectedLists => {
+      // Add user message immediately
+      setConversation(prev => [...prev, userMessage]);
+
+      // Fire-and-forget save
+      if (user) {
+        backgroundSaver.saveMessage(userMessage);
+      }
+
+      // Clear input for better UX
+      setTextInput('');
+
+      // Process detection and wait for it to complete before sending to AI
+      try {
+        const detectedLists = await emotionPartsDetector.addMessage(messageText);
+
         if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
           console.log('🔍 Detected:', {
             emotions: detectedLists.emotions,
@@ -921,6 +967,7 @@ export default function ConversationScreen() {
             needs: detectedLists.needs
           });
         }
+
         // Batch all state updates together
         unstable_batchedUpdates(() => {
           // Store previous detected items for comparison
@@ -953,7 +1000,7 @@ export default function ConversationScreen() {
             setShowSquareCards(true);
           }
 
-          // Add detection log messages for newly detected items after the user message
+          // Add detection log messages immediately after user message
           addDetectionLogMessages(previousDetectedItems, detectedLists, userMessage.id);
         });
 
@@ -965,22 +1012,12 @@ export default function ConversationScreen() {
             needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
           });
         }
-      }).catch(error => {
+      } catch (error) {
         console.error('Error analyzing message:', error);
-      });
-
-      // Add user message immediately
-      setConversation(prev => [...prev, userMessage]);
-
-      // Fire-and-forget save
-      if (user) {
-        backgroundSaver.saveMessage(userMessage);
       }
 
-      // Send to AI
+      // Now send to AI after detection is complete
       sessionRef.current.sendMessage(messageText);
-
-      setTextInput('');
 
       setTimeout(() => {
         textInputRef.current?.focus();
@@ -993,7 +1030,7 @@ export default function ConversationScreen() {
     handleSendText();
   };
 
-  const handleSendText = () => {
+  const handleSendText = async () => {
     // For send button, use the current text input value
     if (!sessionRef.current || !isConnected || !textInput?.trim()) return;
 
@@ -1009,8 +1046,22 @@ export default function ConversationScreen() {
       sessionId: conversationSessionId.current,
     };
 
-    // Process detection in background without blocking UI
-    emotionPartsDetector.addMessage(messageText).then(detectedLists => {
+    // Add user message immediately
+    setConversation(prev => [...prev, userMessage]);
+
+    // Fire-and-forget save
+    if (user) {
+      backgroundSaver.saveMessage(userMessage);
+    }
+
+    // Clear input immediately for better UX
+    setTextInput('');
+    textInputRef.current?.setNativeProps({ text: '' });
+
+    // Process detection and wait for it to complete before sending to AI
+    try {
+      const detectedLists = await emotionPartsDetector.addMessage(messageText);
+
       if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
         console.log('🔍 Detected:', {
           emotions: detectedLists.emotions,
@@ -1018,6 +1069,7 @@ export default function ConversationScreen() {
           needs: detectedLists.needs
         });
       }
+
       // Batch all state updates together
       unstable_batchedUpdates(() => {
         // Store previous detected items for comparison
@@ -1050,7 +1102,7 @@ export default function ConversationScreen() {
           setShowSquareCards(true);
         }
 
-        // Add detection log messages for newly detected items after the user message
+        // Add detection log messages immediately after user message
         addDetectionLogMessages(previousDetectedItems, detectedLists, userMessage.id);
       });
 
@@ -1062,19 +1114,11 @@ export default function ConversationScreen() {
           needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
         });
       }
-    }).catch(error => {
+    } catch (error) {
       console.error('Error analyzing message:', error);
-    });
-
-    // Add user message immediately
-    setConversation(prev => [...prev, userMessage]);
-
-    // Fire-and-forget save
-    if (user) {
-      backgroundSaver.saveMessage(userMessage);
     }
 
-    // Send to AI
+    // Now send to AI after detection is complete
     setIsAIResponding(true);
     isAIRespondingRef.current = true;
 
@@ -1085,10 +1129,6 @@ export default function ConversationScreen() {
       setIsAIResponding(false);
       isAIRespondingRef.current = false;
     }
-
-    // Clear input
-    setTextInput('');
-    textInputRef.current?.setNativeProps({ text: '' });
   };
 
   // Only show tooltip when connected and idle if this is first open or user had recording issues

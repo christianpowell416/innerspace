@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface VoiceCharacteristics {
   empathyLevel: number; // 0 = Empathetic, 1 = Direct
-  speakingSpeed?: number; // Deprecated, kept for backwards compatibility
   verbosity: number; // 0 = Talkative, 1 = Concise
 }
 
@@ -15,6 +14,7 @@ const DEFAULT_CHARACTERISTICS: VoiceCharacteristics = {
 
 export async function saveVoiceCharacteristics(characteristics: VoiceCharacteristics): Promise<void> {
   try {
+    console.log('💾 About to save to AsyncStorage:', JSON.stringify(characteristics));
     await AsyncStorage.setItem(CHARACTERISTICS_KEY, JSON.stringify(characteristics));
   } catch (error) {
     console.error('Error saving voice characteristics:', error);
@@ -25,8 +25,18 @@ export async function saveVoiceCharacteristics(characteristics: VoiceCharacteris
 export async function getVoiceCharacteristics(): Promise<VoiceCharacteristics> {
   try {
     const stored = await AsyncStorage.getItem(CHARACTERISTICS_KEY);
+    console.log('📖 Raw from AsyncStorage:', stored);
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      console.log('📖 Parsed from AsyncStorage:', JSON.stringify(parsed));
+      // Remove deprecated speakingSpeed if it exists
+      const { speakingSpeed, ...validCharacteristics } = parsed;
+      const result = {
+        empathyLevel: validCharacteristics.empathyLevel ?? DEFAULT_CHARACTERISTICS.empathyLevel,
+        verbosity: validCharacteristics.verbosity ?? DEFAULT_CHARACTERISTICS.verbosity
+      };
+      console.log('📖 Returning characteristics:', JSON.stringify(result));
+      return result;
     }
     return DEFAULT_CHARACTERISTICS;
   } catch (error) {
@@ -36,7 +46,14 @@ export async function getVoiceCharacteristics(): Promise<VoiceCharacteristics> {
 }
 
 export function generatePromptModifiers(characteristics: VoiceCharacteristics): string {
-  console.log('🎛️ Generating prompt modifiers for characteristics:', characteristics);
+  console.log('🎛️ Generating prompt modifiers for characteristics:', JSON.stringify(characteristics));
+
+  // Validate characteristics
+  if (!characteristics || typeof characteristics.empathyLevel !== 'number' || typeof characteristics.verbosity !== 'number') {
+    console.error('❌ Invalid characteristics object:', characteristics);
+    return '';
+  }
+
   let modifiers: string[] = [];
 
   // Empathy level (0 = Empathetic, 1 = Direct)
