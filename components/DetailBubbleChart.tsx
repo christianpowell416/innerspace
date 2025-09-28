@@ -380,7 +380,7 @@ export function DetailBubbleChart({ data, config, onBubblePress, loading = false
       <View style={[styles.chartContainer, { width: config.width, height: config.height }]}>
         {bubbles && bubbles.length > 0 && bubbles.map((bubble) => {
           const radius = bubble?.radius || 10;
-          const bubbleName = bubble?.name || '';
+          const bubbleName = (bubble?.name || '').toLowerCase();
           const fontSize = getFontSize(bubbleName, radius);
           const textLines = wrapText(bubbleName, radius);
           const isSelected = selectedBubble === bubble?.id;

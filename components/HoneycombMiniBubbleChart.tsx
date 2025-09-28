@@ -261,7 +261,7 @@ export function HoneycombMiniBubbleChart({
         {bubbles.map((bubble) => {
           const radius = bubble.radius;
           const fontSize = getFontSize(radius);
-          const textLines = wrapText(bubble.name, radius);
+          const textLines = wrapText(bubble.name.toLowerCase(), radius);
 
           return (
             <View

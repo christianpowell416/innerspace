@@ -2,10 +2,12 @@ import { FlowchartRow, FlowchartInsert, FlowchartUpdate } from './types/flowchar
 
 export interface ConversationMessage {
   id: string;
-  type: 'user' | 'assistant';
+  type: 'user' | 'assistant' | 'detection_log';
   text: string;
   timestamp: number;
   sessionId?: string;
+  detectionType?: 'emotion' | 'part' | 'need';
+  detectionName?: string;
 }
 
 export interface DetectedItem {

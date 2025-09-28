@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { StyleSheet, View, Text, Pressable, ScrollView, Animated, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, Pressable, ScrollView, Animated, Dimensions, ActivityIndicator, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -7,11 +7,14 @@ import * as Haptics from 'expo-haptics';
 
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
-import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsNeedsTestData';
-import { generateTestEmotionData } from '@/lib/utils/testData';
 import { PartBubbleData, NeedBubbleData } from '@/lib/types/partsNeedsChart';
 import { EmotionBubbleData } from '@/lib/types/bubbleChart';
 import { getConversationById, ConversationData } from '@/lib/services/conversationService';
+import { loadConversations, ConversationData as DatabaseConversationData } from '@/lib/services/conversationPersistence';
+import { loadAllDetectedData } from '@/lib/services/detectedDataService';
+import { transformDetectedEmotions, transformDetectedParts, transformDetectedNeeds } from '@/lib/utils/detectionDataTransform';
+import { useAuth } from '@/contexts/AuthContext';
+import { DetectedItem } from '@/lib/database.types';
 
 // Import chart components directly (temporarily removing lazy loading to fix error)
 import PartsHoneycombMiniBubbleChart from '@/components/PartsHoneycombMiniBubbleChart';
@@ -25,6 +28,7 @@ export default function ComplexDetailModal() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const { id, title, date, description, color } = useLocalSearchParams();
+  const { user } = useAuth();
 
   const handleClose = () => {
     router.back();
@@ -32,7 +36,7 @@ export default function ComplexDetailModal() {
 
   // Convert params to the right types
   const complexData = {
-    id: typeof id === 'string' ? parseInt(id) : 0,
+    id: typeof id === 'string' ? id : '',  // Keep ID as string since Supabase uses UUID strings
     title: typeof title === 'string' ? title : '',
     date: typeof date === 'string' ? date : '',
     description: typeof description === 'string' ? description : '',
@@ -52,6 +56,8 @@ export default function ComplexDetailModal() {
   const [loadedExpandedCharts, setLoadedExpandedCharts] = useState<Set<string>>(new Set());
   const [componentsCache, setComponentsCache] = useState<Set<string>>(new Set());
   const [scrollPosition, setScrollPosition] = useState(0);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [conversations, setConversations] = useState<DatabaseConversationData[]>([]);
 
   // Animated values for chart interactions
   const cardOpacity = useRef({
@@ -275,53 +281,100 @@ export default function ComplexDetailModal() {
     });
   };
 
-  // Full conversation data (same as in complexes.tsx)
-  const conversationData = [
-    {
-      id: 1,
-      title: 'Work Stress Discussion',
-      date: '12/8/24',
-      description: 'Explored feelings of overwhelm at work and discussed comprehensive coping strategies for managing deadlines.'
-    },
-    {
-      id: 2,
-      title: 'Relationship Boundaries',
-      date: '12/5/24',
-      description: 'Talked about setting healthy boundaries with family members and learning to say no without guilt.'
-    },
-    {
-      id: 3,
-      title: 'Self-Confidence Building',
-      date: '12/1/24',
-      description: 'Worked on identifying negative self-talk patterns and developing positive affirmations for daily practice.'
-    },
-    {
-      id: 4,
-      title: 'Anxiety Management',
-      date: '11/28/24',
-      description: 'Discussed breathing techniques and mindfulness exercises to help manage anxiety during social situations.'
-    },
-    {
-      id: 5,
-      title: 'Career Transition',
-      date: '11/25/24',
-      description: 'Explored fears around changing careers and identified steps to move toward a more fulfilling path.'
-    }
-  ];
 
-  // Initialize chart data on component mount
+  // Load real conversation data for the complex
   useEffect(() => {
-    // Load chart data immediately on page load
-    setTimeout(() => {
-      setShouldLoadMiniCharts(true);
-      setShouldRenderCharts(true);
+    const loadComplexData = async () => {
+      if (!user || !complexData.id) {
+        console.warn('Missing user or complex ID');
+        setIsLoadingData(false);
+        return;
+      }
 
-      // Generate test data
-      setPartsData(generateTestPartsData(Math.floor(Math.random() * 6) + 1));
-      setNeedsData(generateTestNeedsData(Math.floor(Math.random() * 6) + 1));
-      setEmotionsData(generateTestEmotionData(Math.floor(Math.random() * 6) + 1));
-    }, 100);
-  }, []);
+      try {
+        setIsLoadingData(true);
+        console.log('🔍 Loading conversations for complex:', complexData.id, 'Type:', typeof complexData.id);
+        console.log('🔍 Complex data received:', complexData);
+
+        // Load all conversations for this complex
+        const complexIdStr = String(complexData.id);
+        console.log('🔍 Complex ID being used for conversation loading:', complexIdStr, 'Type:', typeof complexData.id);
+
+        // Basic validation - check if ID looks reasonable
+        if (!complexIdStr || complexIdStr.length < 10) {
+          console.error('❌ Invalid complex ID format:', complexIdStr);
+          Alert.alert('Error', 'Invalid complex ID. This complex may need to be recreated.');
+          setIsLoadingData(false);
+          return;
+        }
+
+        const loadedConversations = await loadConversations(user.id, complexIdStr);
+
+        if (!loadedConversations || loadedConversations.length === 0) {
+          console.log('No conversations found for complex');
+          setShouldLoadMiniCharts(true);
+          setShouldRenderCharts(true);
+          setIsLoadingData(false);
+          return;
+        }
+
+        // Store conversations for display
+        setConversations(loadedConversations);
+
+        console.log(`Found ${loadedConversations.length} conversations for complex`);
+
+        // Aggregate all detected data from all conversations
+        const aggregatedEmotions: DetectedItem[] = [];
+        const aggregatedParts: DetectedItem[] = [];
+        const aggregatedNeeds: DetectedItem[] = [];
+
+        // Load detected data for each conversation
+        for (const conversation of loadedConversations) {
+          try {
+            const detectedData = await loadAllDetectedData(conversation.id!, user.id);
+
+            if (detectedData.emotions) {
+              aggregatedEmotions.push(...detectedData.emotions);
+            }
+            if (detectedData.parts) {
+              aggregatedParts.push(...detectedData.parts);
+            }
+            if (detectedData.needs) {
+              aggregatedNeeds.push(...detectedData.needs);
+            }
+          } catch (error) {
+            console.error('Error loading detected data for conversation:', conversation.id, error);
+          }
+        }
+
+        console.log('Aggregated data:', {
+          emotions: aggregatedEmotions.length,
+          parts: aggregatedParts.length,
+          needs: aggregatedNeeds.length
+        });
+
+        // Transform the aggregated data to bubble chart format
+        if (aggregatedEmotions.length > 0) {
+          setEmotionsData(transformDetectedEmotions(aggregatedEmotions));
+        }
+        if (aggregatedParts.length > 0) {
+          setPartsData(transformDetectedParts(aggregatedParts));
+        }
+        if (aggregatedNeeds.length > 0) {
+          setNeedsData(transformDetectedNeeds(aggregatedNeeds));
+        }
+
+        setShouldLoadMiniCharts(true);
+        setShouldRenderCharts(true);
+      } catch (error) {
+        console.error('Error loading complex data:', error);
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    loadComplexData();
+  }, [user, complexData.id]);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: isDark ? `${complexData.color}15` : `${complexData.color}10` }]} edges={['top', 'left', 'right']}>
@@ -410,7 +463,7 @@ export default function ComplexDetailModal() {
                             width={emotionsChartDimensions.width}
                             height={emotionsChartDimensions.height}
                             callbacks={{ onBubblePress: handleEmotionPress }}
-                            loading={emotionsData.length === 0}
+                            loading={isLoadingData}
                           />
                         ) : null}
                       </View>
@@ -467,7 +520,7 @@ export default function ComplexDetailModal() {
                             width={partsChartDimensions.width}
                             height={partsChartDimensions.height}
                             callbacks={{ onBubblePress: handlePartPress }}
-                            loading={partsData.length === 0}
+                            loading={isLoadingData}
                           />
                         ) : null}
                       </View>
@@ -524,7 +577,7 @@ export default function ComplexDetailModal() {
                             width={needsChartDimensions.width}
                             height={needsChartDimensions.height}
                             callbacks={{ onBubblePress: handleNeedPress }}
-                            loading={needsData.length === 0}
+                            loading={isLoadingData}
                           />
                         ) : null}
                       </View>
@@ -578,7 +631,7 @@ export default function ComplexDetailModal() {
                         width={emotionsChartDimensions.width}
                         height={emotionsChartDimensions.height}
                         callbacks={{ onBubblePress: handleEmotionPress }}
-                        loading={emotionsData.length === 0}
+                        loading={isLoadingData}
                       />
                     ) : null}
                   </View>
@@ -629,7 +682,7 @@ export default function ComplexDetailModal() {
                         width={partsChartDimensions.width}
                         height={partsChartDimensions.height}
                         callbacks={{ onBubblePress: handlePartPress }}
-                        loading={partsData.length === 0}
+                        loading={isLoadingData}
                       />
                     ) : null}
                   </View>
@@ -680,7 +733,7 @@ export default function ComplexDetailModal() {
                         width={needsChartDimensions.width}
                         height={needsChartDimensions.height}
                         callbacks={{ onBubblePress: handleNeedPress }}
-                        loading={needsData.length === 0}
+                        loading={isLoadingData}
                       />
                     ) : null}
                   </View>
@@ -721,7 +774,7 @@ export default function ComplexDetailModal() {
                   styles.countBadgeText,
                   { color: '#FFFFFF' }
                 ]}>
-                  5
+                  {conversations.length}
                 </Text>
               </Animated.View>
 
@@ -754,7 +807,7 @@ export default function ComplexDetailModal() {
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     console.log('Add new conversation pressed');
-                    router.push('/conversation?topic=general');
+                    router.push(`/conversation?topic=general&complexId=${complexData.id}`);
                   }}
                   style={[
                     styles.minimizeButton,
@@ -786,13 +839,35 @@ export default function ComplexDetailModal() {
                 transform: [{ translateY: contentTranslateY }],
               }}>
                 <View style={styles.conversationList}>
-                  {[
-                    { id: "550e8400-e29b-41d4-a716-446655440001", excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
-                    { id: "550e8400-e29b-41d4-a716-446655440002", excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
-                    { id: "550e8400-e29b-41d4-a716-446655440003", excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
-                    { id: "550e8400-e29b-41d4-a716-446655440004", excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
-                    { id: "550e8400-e29b-41d4-a716-446655440005", excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
-                  ].map((item, index) => {
+                  {conversations.length === 0 && !isLoadingData ? (
+                    <View style={[styles.emptyStateContainer, {
+                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                    }]}>
+                      <Text style={[styles.emptyStateText, {
+                        color: isDark ? '#AAAAAA' : '#666666'
+                      }]}>
+                        No conversations yet. Start a new conversation to begin tracking.
+                      </Text>
+                    </View>
+                  ) : isLoadingData ? (
+                    <View style={[styles.emptyStateContainer, {
+                      backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+                      borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                    }]}>
+                      <ActivityIndicator size="small" color={isDark ? '#FFFFFF' : '#007AFF'} />
+                    </View>
+                  ) : conversations.map((item, index) => {
+                    const conversationDate = new Date(item.created_at || '').toLocaleDateString('en-US', {
+                      month: 'numeric',
+                      day: 'numeric',
+                      year: '2-digit'
+                    });
+                    const conversationTitle = item.title || 'Untitled Conversation';
+                    const conversationExcerpt = item.summary ||
+                      (item.messages && item.messages.length > 0 ?
+                        item.messages.find(m => m.type === 'user')?.text?.substring(0, 100) + '...' :
+                        'No preview available');
                     return (
                       <View
                         key={index}
@@ -821,7 +896,7 @@ export default function ComplexDetailModal() {
                           <Pressable
                             onPress={() => {
                               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                              handleConversationHistoryPress(item.id);
+                              handleConversationHistoryPress(item.id!);
                             }}
                             style={styles.complexCardPressable}
                           >
@@ -830,20 +905,20 @@ export default function ComplexDetailModal() {
                                 styles.complexCardTitle,
                                 { color: isDark ? '#FFFFFF' : '#000000' }
                               ]}>
-                                {item.title}
+                                {conversationTitle}
                               </Text>
                               <Text style={[
                                 styles.complexCardDate,
                                 { color: isDark ? '#CCCCCC' : '#666666' }
                               ]}>
-                                {item.date}
+                                {conversationDate}
                               </Text>
                             </View>
                             <Text style={[
                               styles.complexCardExcerpt,
                               { color: isDark ? '#DDDDDD' : '#444444' }
                             ]}>
-                              {item.excerpt}
+                              {conversationExcerpt}
                             </Text>
                           </Pressable>
                         </BlurView>
@@ -1084,5 +1159,20 @@ const styles = StyleSheet.create({
     fontFamily: 'Georgia',
     fontStyle: 'italic',
     marginBottom: 15,
+  },
+  emptyStateContainer: {
+    padding: 20,
+    borderRadius: 16,
+    borderWidth: 1,
+    marginVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 100,
+  },
+  emptyStateText: {
+    fontSize: 15,
+    fontFamily: 'Georgia',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });

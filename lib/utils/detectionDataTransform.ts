@@ -21,6 +21,16 @@ import {
 import { DetectedItem } from '../database.types';
 
 /**
+ * Convert text to title case (first letter of each word uppercase)
+ */
+const toTitleCase = (text: string): string => {
+  return text.toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
+/**
  * Tracks frequency and metadata for detected items across a conversation session
  */
 interface DetectionTracker {
@@ -119,11 +129,16 @@ const calculateIntensity = (frequency: number): number => {
  */
 export const transformDetectedEmotions = (
   emotions: DetectedItem[],
-  conversationId?: string
+  conversationIds?: string | string[]
 ): EmotionBubbleData[] => {
-  if (conversationId) {
-    sessionTracker.setConversationId(conversationId);
-  }
+  // Handle both string and array formats for conversationIds
+  const idsArray = Array.isArray(conversationIds)
+    ? conversationIds
+    : conversationIds ? [conversationIds] : [];
+
+  // Use the first conversation ID for session tracking (backward compatibility)
+  const primaryConversationId = idsArray[0] || `conv-${Date.now()}`;
+  sessionTracker.setConversationId(primaryConversationId);
 
   // Filter out invalid items and map valid ones
   return emotions
@@ -136,14 +151,14 @@ export const transformDetectedEmotions = (
 
     return {
       id: `detected-emotion-${emotion.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
-      emotion: emotion.charAt(0).toUpperCase() + emotion.slice(1), // Capitalize first letter
+      emotion: toTitleCase(emotion), // Title case for headings
       frequency: tracker.count,
       intensity,
       color: getEmotionColor(emotion),
       radius,
       category: getEmotionCategory(emotion),
       lastSeen: tracker.lastDetected,
-      conversationIds: [tracker.conversationId || `conv-${Date.now()}`],
+      conversationIds: idsArray.length > 0 ? idsArray : [`conv-${Date.now()}`],
     };
   });
 };
@@ -153,11 +168,16 @@ export const transformDetectedEmotions = (
  */
 export const transformDetectedParts = (
   parts: DetectedItem[],
-  conversationId?: string
+  conversationIds?: string | string[]
 ): PartBubbleData[] => {
-  if (conversationId) {
-    sessionTracker.setConversationId(conversationId);
-  }
+  // Handle both string and array formats for conversationIds
+  const idsArray = Array.isArray(conversationIds)
+    ? conversationIds
+    : conversationIds ? [conversationIds] : [];
+
+  // Use the first conversation ID for session tracking (backward compatibility)
+  const primaryConversationId = idsArray[0] || `conv-${Date.now()}`;
+  sessionTracker.setConversationId(primaryConversationId);
 
   // Filter out invalid items and map valid ones
   return parts
@@ -170,14 +190,14 @@ export const transformDetectedParts = (
 
     return {
       id: `detected-part-${part.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
-      name: part.charAt(0).toUpperCase() + part.slice(1), // Capitalize first letter
+      name: toTitleCase(part), // Title case for headings
       frequency: tracker.count,
       intensity,
       color: getPartColor(part),
       radius,
       category: getPartCategory(part),
       lastSeen: tracker.lastDetected,
-      conversationIds: [tracker.conversationId || `conv-${Date.now()}`],
+      conversationIds: idsArray.length > 0 ? idsArray : [`conv-${Date.now()}`],
     };
   });
 };
@@ -187,11 +207,16 @@ export const transformDetectedParts = (
  */
 export const transformDetectedNeeds = (
   needs: DetectedItem[],
-  conversationId?: string
+  conversationIds?: string | string[]
 ): NeedBubbleData[] => {
-  if (conversationId) {
-    sessionTracker.setConversationId(conversationId);
-  }
+  // Handle both string and array formats for conversationIds
+  const idsArray = Array.isArray(conversationIds)
+    ? conversationIds
+    : conversationIds ? [conversationIds] : [];
+
+  // Use the first conversation ID for session tracking (backward compatibility)
+  const primaryConversationId = idsArray[0] || `conv-${Date.now()}`;
+  sessionTracker.setConversationId(primaryConversationId);
 
   // Filter out invalid items and map valid ones
   return needs
@@ -204,14 +229,14 @@ export const transformDetectedNeeds = (
 
     return {
       id: `detected-need-${need.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`,
-      name: need.charAt(0).toUpperCase() + need.slice(1), // Capitalize first letter
+      name: toTitleCase(need), // Title case for headings
       frequency: tracker.count,
       intensity,
       color: getNeedColor(need),
       radius,
       category: getNeedCategory(need),
       lastSeen: tracker.lastDetected,
-      conversationIds: [tracker.conversationId || `conv-${Date.now()}`],
+      conversationIds: idsArray.length > 0 ? idsArray : [`conv-${Date.now()}`],
     };
   });
 };

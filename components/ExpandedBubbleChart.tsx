@@ -421,7 +421,7 @@ export function ExpandedBubbleChart({ data, config, onBubblePress, loading = fal
       <View style={[styles.chartContainer, { width: config.width, height: config.height }]}>
         {bubbles && bubbles.length > 0 && bubbles.map((bubble) => {
           const radius = bubble?.radius || 10;
-          const bubbleName = bubble?.name || '';
+          const bubbleName = (bubble?.name || '').toLowerCase();
           const fontSize = getFontSize(bubbleName, radius);
           const textLines = wrapTextForBubble(bubbleName, radius, fontSize);
           const isSelected = selectedBubble === bubble?.id;

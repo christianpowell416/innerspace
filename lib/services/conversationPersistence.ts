@@ -37,13 +37,16 @@ export async function saveConversation(
   try {
     console.log('💾 Saving conversation:', { userId, topic, messageCount: messages.length });
 
+    // Filter out detection_log messages - they should not be saved to database
+    const saveableMessages = messages.filter(msg => msg.type !== 'detection_log');
+
     // Prepare conversation data
     const conversationData: Database['public']['Tables']['conversations']['Insert'] = {
       user_id: userId,
       complex_id: options.complexId || null,
       topic,
       title: options.title || generateConversationTitle(messages),
-      messages,
+      messages: saveableMessages,
       summary: options.summary || null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -76,18 +79,16 @@ export async function saveConversation(
 export async function loadConversations(
   userId: string,
   complexId?: string | null,
-  limit = 50,
   offset = 0
 ) {
   try {
-    console.log('📖 Loading conversations:', { userId, complexId, limit, offset });
+    console.log('📖 Loading conversations:', { userId, complexId, offset });
 
     let query = supabase
       .from('conversations')
       .select('*')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('created_at', { ascending: false });
 
     // Filter by complex if specified
     if (complexId !== undefined) {
@@ -178,6 +179,22 @@ export async function updateConversation(
     console.error('❌ updateConversation error:', error);
     throw error;
   }
+}
+
+/**
+ * Update an existing conversation with new messages
+ */
+export async function updateConversationWithMessages(
+  conversationId: string,
+  userId: string,
+  messages: ConversationMessage[]
+) {
+  // Filter out detection_log messages - they should not be saved to database
+  const saveableMessages = messages.filter(msg => msg.type !== 'detection_log');
+
+  return updateConversation(conversationId, userId, {
+    messages: saveableMessages,
+  });
 }
 
 /**
@@ -281,9 +298,9 @@ function generateConversationTitle(messages: ConversationMessage[]): string {
 /**
  * Helper function to get recent conversations for quick access
  */
-export async function getRecentConversations(userId: string, limit = 10) {
+export async function getRecentConversations(userId: string) {
   try {
-    return await loadConversations(userId, undefined, limit, 0);
+    return await loadConversations(userId, undefined, 0);
   } catch (error) {
     console.error('❌ getRecentConversations error:', error);
     throw error;

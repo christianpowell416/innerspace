@@ -43,14 +43,11 @@ import { generateTestPartsData, generateTestNeedsData } from '@/lib/utils/partsN
 import { router } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  loadUserEmotions,
-  loadUserParts,
-  loadUserNeeds,
-  getEmotionStatistics,
-  UserEmotion,
-  UserPart,
-  UserNeed
-} from '@/lib/services/emotionsPartsNeedsService';
+  loadInnerspaceEmotions,
+  loadInnerspaceParts,
+  loadInnerspaceNeeds,
+  getInnerspaceEmotionStats
+} from '@/lib/services/innerspaceDataService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -89,50 +86,6 @@ export default function InnerspaceScreen() {
   // Progressive loading states
   const [loadedChartComponents, setLoadedChartComponents] = useState<Set<TabType>>(new Set());
   const [shouldRenderCharts, setShouldRenderCharts] = useState(false);
-
-  // Data transformation functions
-  const transformEmotionToChartData = useCallback((emotion: UserEmotion): EmotionBubbleData => {
-    return {
-      id: emotion.id || `emotion-${Date.now()}-${Math.random()}`,
-      emotion: emotion.emotion_name,
-      frequency: emotion.frequency || 1,
-      intensity: emotion.intensity,
-      color: emotion.color || getEmotionColor(emotion.emotion_name),
-      radius: Math.max(18, Math.min(45, (emotion.frequency || 1) * 3 + emotion.intensity * 2)),
-      category: emotion.category || 'general',
-      lastSeen: new Date(emotion.last_experienced || Date.now()),
-      conversationIds: [`user-${user?.id}`],
-    };
-  }, [user?.id]);
-
-  const transformPartToChartData = useCallback((part: UserPart): PartBubbleData => {
-    return {
-      id: part.id || `part-${Date.now()}-${Math.random()}`,
-      name: part.part_name,
-      frequency: part.frequency || 1,
-      intensity: part.intensity,
-      color: part.color || getPartColor(part.part_name),
-      radius: Math.max(18, Math.min(45, (part.frequency || 1) * 3 + part.intensity * 2)),
-      category: part.part_type,
-      lastSeen: new Date(part.last_active || Date.now()),
-      conversationIds: [`user-${user?.id}`],
-    };
-  }, [user?.id]);
-
-  const transformNeedToChartData = useCallback((need: UserNeed): NeedBubbleData => {
-    const gap = (need.desired_level || 8) - (need.current_level || 5);
-    return {
-      id: need.id || `need-${Date.now()}-${Math.random()}`,
-      name: need.need_name,
-      frequency: need.priority || 5,
-      intensity: gap > 0 ? gap * 2 : 1, // Higher gap = higher intensity
-      color: need.color || getNeedColor(need.need_name),
-      radius: Math.max(18, Math.min(45, (need.priority || 5) * 4 + gap * 3)),
-      category: need.category || 'general',
-      lastSeen: new Date(need.last_assessed || Date.now()),
-      conversationIds: [`user-${user?.id}`],
-    };
-  }, [user?.id]);
 
   // Function to recalculate bubble sizes based on sort type
   const recalculateBubbleSizes = useCallback((bubbles: EmotionBubbleData[], sortType: SortType, config: BubbleChartConfig) => {
@@ -222,15 +175,14 @@ export default function InnerspaceScreen() {
         setEmotionBubbles(sortedBubbles);
         setEmotionStats(testStats);
       } else {
-        // Load real data from Supabase
-        console.log('🌐 Loading real emotion data from Supabase');
+        // Load real data from detected_emotions table
+        console.log('🌐 Loading real emotion data from detected_emotions');
 
-        const [emotions, stats] = await Promise.all([
-          loadUserEmotions(user.id),
-          getEmotionStatistics(user.id)
+        const [bubbles, stats] = await Promise.all([
+          loadInnerspaceEmotions(user.id),
+          getInnerspaceEmotionStats(user.id)
         ]);
 
-        const bubbles = emotions.map(transformEmotionToChartData);
         console.log('📊 Loaded emotions from database:', bubbles.length);
 
         const sortedBubbles = recalculateBubbleSizes(bubbles, sortBy, config);
@@ -243,7 +195,7 @@ export default function InnerspaceScreen() {
     } finally {
       setEmotionsLoading(false);
     }
-  }, [user?.id, isDark, sortBy, recalculateBubbleSizes, transformEmotionToChartData]);
+  }, [user?.id, isDark, sortBy, recalculateBubbleSizes]);
 
   // Load parts data
   const loadPartsData = useCallback(async () => {
@@ -258,9 +210,8 @@ export default function InnerspaceScreen() {
         const testParts = generateTestPartsData(12);
         setPartsBubbles(testParts);
       } else {
-        // Load real data from Supabase
-        const parts = await loadUserParts(user.id);
-        const bubbles = parts.map(transformPartToChartData);
+        // Load real data from detected_parts table
+        const bubbles = await loadInnerspaceParts(user.id);
         const sortedBubbles = recalculateBubbleSizes(bubbles, sortBy, bubbleConfig);
         setPartsBubbles(sortedBubbles);
       }
@@ -270,7 +221,7 @@ export default function InnerspaceScreen() {
     } finally {
       setPartsLoading(false);
     }
-  }, [user?.id, sortBy, recalculateBubbleSizes, transformPartToChartData]);
+  }, [user?.id, sortBy, recalculateBubbleSizes, bubbleConfig]);
 
   // Load needs data
   const loadNeedsData = useCallback(async () => {
@@ -285,9 +236,8 @@ export default function InnerspaceScreen() {
         const testNeeds = generateTestNeedsData(10);
         setNeedsBubbles(testNeeds);
       } else {
-        // Load real data from Supabase
-        const needs = await loadUserNeeds(user.id);
-        const bubbles = needs.map(transformNeedToChartData);
+        // Load real data from detected_needs table
+        const bubbles = await loadInnerspaceNeeds(user.id);
         const sortedBubbles = recalculateBubbleSizes(bubbles, sortBy, bubbleConfig);
         setNeedsBubbles(sortedBubbles);
       }
@@ -297,7 +247,7 @@ export default function InnerspaceScreen() {
     } finally {
       setNeedsLoading(false);
     }
-  }, [user?.id, sortBy, recalculateBubbleSizes, transformNeedToChartData]);
+  }, [user?.id, sortBy, recalculateBubbleSizes, bubbleConfig]);
 
   // Progressive loading - start after component mounts
   useEffect(() => {

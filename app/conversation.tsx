@@ -2,6 +2,7 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useAuth } from '@/contexts/AuthContext';
 import { useColorScheme } from '@/hooks/useColorScheme';
+import { useKeyboardHeight } from '@/hooks/useKeyboardHeight';
 import { loadComplexes, ComplexData } from '@/lib/services/complexManagementService';
 import { backgroundSaver } from '@/lib/services/backgroundSaver';
 import {
@@ -38,6 +39,7 @@ import { unstable_batchedUpdates } from 'react-native';
 import {
   Alert,
   Animated,
+  Dimensions,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -56,13 +58,15 @@ import { NeedsHoneycombMiniBubbleChart } from '@/components/NeedsHoneycombMiniBu
 import { PartsHoneycombMiniBubbleChart } from '@/components/PartsHoneycombMiniBubbleChart';
 
 export default function ConversationScreen() {
-  const { topic } = useLocalSearchParams();
+  const { topic, complexId } = useLocalSearchParams();
   const selectedTopic = typeof topic === 'string' ? topic : 'general';
+  const presetComplexId = typeof complexId === 'string' ? complexId : undefined;
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { user } = useAuth();
+  const { keyboardHeight, isKeyboardVisible: isKeyboardShowing } = useKeyboardHeight();
 
   // Core state variables
   const [isConnected, setIsConnected] = useState(false);
@@ -74,7 +78,7 @@ export default function ConversationScreen() {
   const [conversation, setConversation] = useState<Array<{
     id: string;
     text: string;
-    type: 'user' | 'assistant';
+    type: 'user' | 'assistant' | 'detection_log';
     timestamp: number;
     sessionId?: string | null;
     isRecording?: boolean;
@@ -82,6 +86,8 @@ export default function ConversationScreen() {
     isThinking?: boolean;
     fadeAnim?: Animated.Value;
     words?: Array<{ text: string; opacity: Animated.Value }>;
+    detectionType?: 'emotion' | 'part' | 'need';
+    detectionName?: string;
   }>>([]);
   const [textInput, setTextInput] = useState('');
   const [recordingStartTime, setRecordingStartTime] = useState<Date | null>(null);
@@ -108,6 +114,88 @@ export default function ConversationScreen() {
   const generateMessageId = () => {
     messageCounter.current += 1;
     return `msg-${conversationSessionId.current}-${messageCounter.current}`;
+  };
+
+  // Helper to add detection log messages for newly detected items
+  const addDetectionLogMessages = (previousDetectedItems: DetectedLists, newDetectedItems: DetectedLists, userMessageId?: string) => {
+    console.log('🔍 [DEBUG] Comparing detection results:', {
+      previous: previousDetectedItems,
+      new: newDetectedItems
+    });
+    const detectionMessages: Array<{
+      id: string;
+      text: string;
+      type: 'detection_log';
+      timestamp: number;
+      sessionId: string;
+      detectionType: 'emotion' | 'part' | 'need';
+      detectionName: string;
+    }> = [];
+
+    // Check for new emotions
+    newDetectedItems.emotions.forEach(emotion => {
+      if (!previousDetectedItems.emotions.includes(emotion)) {
+        detectionMessages.push({
+          id: generateMessageId(),
+          text: `new emotion logged: ${emotion.toLowerCase()}`,
+          type: 'detection_log',
+          timestamp: Date.now(),
+          sessionId: conversationSessionId.current,
+          detectionType: 'emotion',
+          detectionName: emotion
+        });
+      }
+    });
+
+    // Check for new parts
+    newDetectedItems.parts.forEach(part => {
+      if (!previousDetectedItems.parts.includes(part)) {
+        detectionMessages.push({
+          id: generateMessageId(),
+          text: `new part logged: ${part.toLowerCase()}`,
+          type: 'detection_log',
+          timestamp: Date.now(),
+          sessionId: conversationSessionId.current,
+          detectionType: 'part',
+          detectionName: part
+        });
+      }
+    });
+
+    // Check for new needs
+    newDetectedItems.needs.forEach(need => {
+      if (!previousDetectedItems.needs.includes(need)) {
+        detectionMessages.push({
+          id: generateMessageId(),
+          text: `new need logged: ${need.toLowerCase()}`,
+          type: 'detection_log',
+          timestamp: Date.now(),
+          sessionId: conversationSessionId.current,
+          detectionType: 'need',
+          detectionName: need
+        });
+      }
+    });
+
+    // Add detection messages to conversation if any were found
+    if (detectionMessages.length > 0) {
+      setConversation(prev => {
+        if (userMessageId) {
+          // Find the user message and insert detection messages right after it
+          const userMessageIndex = prev.findIndex(msg => msg.id === userMessageId);
+          if (userMessageIndex !== -1) {
+            const newConversation = [...prev];
+            // Insert detection messages after the user message
+            newConversation.splice(userMessageIndex + 1, 0, ...detectionMessages);
+            return newConversation;
+          }
+        }
+        // Fallback: append to end if user message not found
+        return [...prev, ...detectionMessages];
+      });
+
+      // Note: Detection log messages are not saved to database - they're UI-only
+    }
   };
 
   const [allowAIDisplay, setAllowAIDisplay] = useState(false);
@@ -165,20 +253,45 @@ export default function ConversationScreen() {
   const handleClose = () => {
 
     if (conversation.length > 0) {
-      // Set flag to prevent usePreventRemove from triggering again
-      setHasNavigatedToSave(true);
+      // If opened from a complex detail page, save directly to that complex
+      if (presetComplexId) {
+        // Force save the conversation with the preset complex ID
+        const messagesForSave = conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing);
 
-      // Navigate to save screen with session ID and cached complexes
-      router.replace({
-        pathname: '/save-conversation',
-        params: {
-          sessionId: conversationSessionId.current,
-          topic: selectedTopic,
-          messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing)),
-          complexes: JSON.stringify(cachedComplexes)
-        }
-      });
+        backgroundSaver.forceSaveWithComplex(presetComplexId).then(() => {
+          cleanupSession();
+          // Dismiss all modals and return to the tabs
+          router.dismissAll();
+        }).catch((error) => {
+          console.error('Failed to save conversation to complex:', error);
+          // Fallback to save conversation screen
+          setHasNavigatedToSave(true);
+          router.replace({
+            pathname: '/save-conversation',
+            params: {
+              sessionId: conversationSessionId.current,
+              topic: selectedTopic,
+              messages: JSON.stringify(messagesForSave),
+              complexes: JSON.stringify(cachedComplexes),
+              preselectedComplexId: presetComplexId
+            }
+          });
+        });
+      } else {
+        // Set flag to prevent usePreventRemove from triggering again
+        setHasNavigatedToSave(true);
 
+        // Navigate to save screen with session ID and cached complexes
+        router.replace({
+          pathname: '/save-conversation',
+          params: {
+            sessionId: conversationSessionId.current,
+            topic: selectedTopic,
+            messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing)),
+            complexes: JSON.stringify(cachedComplexes)
+          }
+        });
+      }
     } else {
       cleanupSession();
       router.back();
@@ -228,7 +341,7 @@ export default function ConversationScreen() {
           sessionId: conversationSessionId.current,
           userId: user.id,
           topic: selectedTopic,
-          complexId: undefined,
+          complexId: presetComplexId,
         });
       }
 
@@ -322,7 +435,7 @@ export default function ConversationScreen() {
                 isAIRespondingRef.current = false;
                 isStreamingRef.current = false;
                 currentResponseIdRef.current = null;
-                userMessageAddedForSessionRef.current = null;
+                userMessageAddedForSessionRef.current = null; // Clear on cancellation
 
                 // Show tooltip briefly
                 setShowWelcomeTooltip(true);
@@ -331,9 +444,14 @@ export default function ConversationScreen() {
               }
 
               // Process detection in background without blocking UI
+              console.log('🔍 [DEBUG] Starting emotion detection for transcript:', transcriptText);
               emotionPartsDetector.addMessage(transcriptText).then(detectedLists => {
+                console.log('🔍 [DEBUG] Detection completed, received lists:', detectedLists);
                 // Batch all state updates together
                 unstable_batchedUpdates(() => {
+                  // Store previous detected items for comparison
+                  const previousDetectedItems = detectedItems;
+
                   setDetectedItems(detectedLists);
 
                   const conversationId = Date.now().toString() || undefined;
@@ -364,6 +482,10 @@ export default function ConversationScreen() {
                     setShouldRenderBubbleCharts(true);
                     setShowSquareCards(true);
                   }
+
+                  // Add detection log messages for newly detected items
+                  const recordingMessageId = userMessageAddedForSessionRef.current;
+                  addDetectionLogMessages(previousDetectedItems, detectedLists, recordingMessageId || undefined);
                 });
 
                 // Save detected data in background
@@ -384,14 +506,22 @@ export default function ConversationScreen() {
 
               // Find and update the recording message in place
               const recordingMessageId = userMessageAddedForSessionRef.current;
+              console.log('📝 Looking for recording message with ID:', recordingMessageId);
+
+              // Clear the ref now that we've captured the ID - prevents it from being used again
+              userMessageAddedForSessionRef.current = null;
 
               setConversation(prev => {
                 // Look for the recording/processing message by ID only
                 const existingIndex = prev.findIndex(msg => msg.id === recordingMessageId);
+                console.log('📝 Found message at index:', existingIndex, 'out of', prev.length, 'messages');
+
                 if (existingIndex >= 0) {
                   // Replace the entire message object to ensure all flags are cleared
                   const updatedConversation = [...prev];
                   const originalMessage = updatedConversation[existingIndex];
+                  console.log('📝 Updating message from:', originalMessage, 'with text:', transcriptText);
+
                   const finalMessage = {
                     type: originalMessage.type,
                     text: transcriptText,
@@ -432,11 +562,15 @@ export default function ConversationScreen() {
               // Clear pending state
               setPendingUserMessage(null);
               setAllowAIDisplay(true);
+
+              // Clear the ref now that we've used it (not in onResponseComplete)
+              // userMessageAddedForSessionRef.current = null;
             } else {
               setTranscript(transcriptText);
             }
           },
           onResponseStart: (responseId) => {
+            console.log('🎬 onResponseStart called with responseId:', responseId);
             setIsAIResponding(true);
             setCurrentResponseId(responseId);
             setIsStreaming(true);
@@ -445,6 +579,7 @@ export default function ConversationScreen() {
             isAIRespondingRef.current = true;
             isStreamingRef.current = true;
             currentResponseIdRef.current = responseId;
+            console.log('🎬 Set currentResponseIdRef.current to:', currentResponseIdRef.current);
 
             // Add AI message with the response ID
             setConversation(prev => {
@@ -463,26 +598,36 @@ export default function ConversationScreen() {
               }];
             });
           },
-          onResponseStreaming: (response) => {
+          onResponseStreaming: (response, isComplete) => {
+            console.log('🌊 onResponseStreaming called - response:', response?.substring(0, 50));
             if (!response) return;
 
-            const responseId = currentResponseIdRef.current;
-            if (!responseId) return;
-
             setConversation(prev => {
-              const existingMessageIndex = prev.findIndex(msg => msg.id === responseId);
-
-              if (existingMessageIndex >= 0) {
-                const updatedConversation = [...prev];
-                updatedConversation[existingMessageIndex] = {
-                  ...updatedConversation[existingMessageIndex],
-                  text: response,
-                  isThinking: false
-                };
-
-                return updatedConversation;
+              // Find the last assistant message (should be the one we're updating)
+              let aiMessageIndex = -1;
+              for (let i = prev.length - 1; i >= 0; i--) {
+                if (prev[i].type === 'assistant') {
+                  aiMessageIndex = i;
+                  break;
+                }
               }
-              return prev;
+
+              console.log('🌊 Found AI message at index:', aiMessageIndex);
+
+              if (aiMessageIndex === -1) {
+                console.log('🌊 No thinking AI message found!');
+                return prev;
+              }
+
+              // Update the found AI message with the response text
+              const updatedConversation = [...prev];
+              updatedConversation[aiMessageIndex] = {
+                ...updatedConversation[aiMessageIndex],
+                text: response,
+                isThinking: false
+              };
+
+              return updatedConversation;
             });
           },
           onResponse: (response) => {
@@ -523,7 +668,7 @@ export default function ConversationScreen() {
             isAIRespondingRef.current = false;
             isStreamingRef.current = false;
             currentResponseIdRef.current = null;
-            userMessageAddedForSessionRef.current = null;
+            // Don't clear userMessageAddedForSessionRef here - it's cleared after transcript processing
           },
           onFlowchartGenerated: (flowchart) => {
             // Flowchart generation temporarily disabled
@@ -629,6 +774,9 @@ export default function ConversationScreen() {
   };
 
   const openSettingsModal = () => {
+    // Don't open settings while recording
+    if (isListening) return;
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     router.push({
       pathname: '/voice-settings',
@@ -696,10 +844,24 @@ export default function ConversationScreen() {
     if (sessionRef.current && isConnected && finalText.trim()) {
       const messageText = finalText.trim();
 
+      // Create user message with sequential ID first so we have the ID for detection
+      const userMessage = {
+        type: 'user' as const,
+        text: messageText,
+        id: generateMessageId(),
+        timestamp: Date.now(),
+        sessionId: conversationSessionId.current,
+      };
+
       // Process detection in background without blocking UI
+      console.log('🔍 [DEBUG] Starting emotion detection for text input:', messageText);
       emotionPartsDetector.addMessage(messageText).then(detectedLists => {
+        console.log('🔍 [DEBUG] Detection completed, received lists:', detectedLists);
         // Batch all state updates together
         unstable_batchedUpdates(() => {
+          // Store previous detected items for comparison
+          const previousDetectedItems = detectedItems;
+
           setDetectedItems(detectedLists);
 
           const conversationId = Date.now().toString() || undefined;
@@ -726,6 +888,9 @@ export default function ConversationScreen() {
             setShouldRenderBubbleCharts(true);
             setShowSquareCards(true);
           }
+
+          // Add detection log messages for newly detected items after the user message
+          addDetectionLogMessages(previousDetectedItems, detectedLists, userMessage.id);
         });
 
         // Save detected data in background
@@ -739,15 +904,6 @@ export default function ConversationScreen() {
       }).catch(error => {
         console.error('Error analyzing message:', error);
       });
-
-      // Create user message with sequential ID
-      const userMessage = {
-        type: 'user' as const,
-        text: messageText,
-        id: generateMessageId(),
-        timestamp: Date.now(),
-        sessionId: conversationSessionId.current,
-      };
 
       // Add user message immediately
       setConversation(prev => [...prev, userMessage]);
@@ -780,7 +936,7 @@ export default function ConversationScreen() {
     const messageText = textInput.trim();
     console.log('👤 User:', messageText);
 
-    // Create user message with sequential ID
+    // Create user message with sequential ID first so we have the ID for detection
     const userMessage = {
       type: 'user' as const,
       text: messageText,
@@ -788,6 +944,58 @@ export default function ConversationScreen() {
       timestamp: Date.now(),
       sessionId: conversationSessionId.current,
     };
+
+    // Process detection in background without blocking UI
+    console.log('🔍 [DEBUG] Starting emotion detection for text input:', messageText);
+    emotionPartsDetector.addMessage(messageText).then(detectedLists => {
+      console.log('🔍 [DEBUG] Detection completed, received lists:', detectedLists);
+      // Batch all state updates together
+      unstable_batchedUpdates(() => {
+        // Store previous detected items for comparison
+        const previousDetectedItems = detectedItems;
+
+        setDetectedItems(detectedLists);
+
+        const conversationId = Date.now().toString() || undefined;
+
+        // Convert string arrays to DetectedItem arrays with proper structure
+        const emotionItems = detectedLists.emotions.map(emotion => ({
+          name: emotion,
+          confidence: 0.8
+        }));
+        const partItems = detectedLists.parts.map(part => ({
+          name: part,
+          confidence: 0.8
+        }));
+        const needItems = detectedLists.needs.map(need => ({
+          name: need,
+          confidence: 0.8
+        }));
+
+        setDetectedEmotionsData(transformDetectedEmotions(emotionItems, conversationId));
+        setDetectedPartsData(transformDetectedParts(partItems, conversationId));
+        setDetectedNeedsData(transformDetectedNeeds(needItems, conversationId));
+
+        if (detectedLists.emotions.length > 0 || detectedLists.parts.length > 0 || detectedLists.needs.length > 0) {
+          setShouldRenderBubbleCharts(true);
+          setShowSquareCards(true);
+        }
+
+        // Add detection log messages for newly detected items after the user message
+        addDetectionLogMessages(previousDetectedItems, detectedLists, userMessage.id);
+      });
+
+      // Save detected data in background
+      if (user) {
+        backgroundSaver.saveDetectedData({
+          emotions: detectedLists.emotions.map(e => ({ name: e, confidence: 0.8 })),
+          parts: detectedLists.parts.map(p => ({ name: p, confidence: 0.8 })),
+          needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
+        });
+      }
+    }).catch(error => {
+      console.error('Error analyzing message:', error);
+    });
 
     // Add user message immediately
     setConversation(prev => [...prev, userMessage]);
@@ -899,24 +1107,49 @@ export default function ConversationScreen() {
   usePreventRemove(conversation.length > 0 && !hasNavigatedToSave, ({ data }) => {
     console.log('🔄 [DEBUG] usePreventRemove triggered - conversation length:', conversation.length);
     console.log('🔄 [DEBUG] hasNavigatedToSave:', hasNavigatedToSave);
-    console.log('🔄 [DEBUG] Navigating to save-conversation screen...');
+    console.log('🔄 [DEBUG] presetComplexId:', presetComplexId);
 
     // Set flag to prevent this from triggering again
     console.log('🔄 [DEBUG] Setting hasNavigatedToSave = true in usePreventRemove');
     setHasNavigatedToSave(true);
 
-    // Navigate to save conversation screen with session ID and cached complexes
-    router.push({
-      pathname: '/save-conversation',
-      params: {
-        sessionId: conversationSessionId.current,
-        topic: selectedTopic,
-        messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing)),
-        complexes: JSON.stringify(cachedComplexes)
-      }
-    });
+    // If opened from a complex detail page, save directly to that complex
+    if (presetComplexId) {
+      console.log('🔄 [DEBUG] Auto-saving to preset complex:', presetComplexId);
+      backgroundSaver.forceSaveWithComplex(presetComplexId).then(() => {
+        console.log('🔄 [DEBUG] Auto-save successful, cleaning up and going back');
+        cleanupSession();
+        // Dismiss all modals and return to the tabs
+        router.dismissAll();
+      }).catch((error) => {
+        console.error('Failed to auto-save conversation to complex:', error);
+        // Fallback to save conversation screen
+        router.push({
+          pathname: '/save-conversation',
+          params: {
+            sessionId: conversationSessionId.current,
+            topic: selectedTopic,
+            messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing)),
+            complexes: JSON.stringify(cachedComplexes),
+            preselectedComplexId: presetComplexId
+          }
+        });
+      });
+    } else {
+      console.log('🔄 [DEBUG] Navigating to save-conversation screen...');
+      // Navigate to save conversation screen with session ID and cached complexes
+      router.push({
+        pathname: '/save-conversation',
+        params: {
+          sessionId: conversationSessionId.current,
+          topic: selectedTopic,
+          messages: JSON.stringify(conversation.filter(msg => msg.text && !msg.isRecording && !msg.isProcessing)),
+          complexes: JSON.stringify(cachedComplexes)
+        }
+      });
+    }
 
-    console.log('🔄 [DEBUG] router.push to save-conversation completed');
+    console.log('🔄 [DEBUG] usePreventRemove handling completed');
   });
 
   // Auto-scroll to bottom when new messages are added
@@ -927,6 +1160,16 @@ export default function ConversationScreen() {
       }, 100);
     }
   }, [conversation.length]);
+
+  // Adjust scroll position when mini charts toggle
+  useEffect(() => {
+    if (conversation.length > 0) {
+      // Scroll to end when mini charts visibility changes to keep bottom messages visible
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    }
+  }, [showSquareCards]);
 
   // Start/stop color pulse animation based on state
   useEffect(() => {
@@ -996,7 +1239,7 @@ export default function ConversationScreen() {
   }, [isListening, isProcessingUserInput, conversation, recordingIndicatorOpacity]);
 
   const conversationBottomPadding = showTextInput
-    ? (showSquareCards ? 200 : 100) // More padding when mini charts are visible
+    ? (showSquareCards ? 0 : 100) // No padding when mini charts are visible since container is smaller
     : 120; // room for voice controls
 
   return (
@@ -1312,7 +1555,8 @@ export default function ConversationScreen() {
                   ]}
                   contentContainerStyle={{
                     flexGrow: 1,
-                    paddingBottom: conversationBottomPadding + (showSquareCards ? 0 : 0)
+                    paddingTop: showSquareCards ? 20 : 10,
+                    paddingBottom: conversationBottomPadding
                   }}
                   onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
                 >
@@ -1370,6 +1614,30 @@ export default function ConversationScreen() {
                             >
                               <Text style={[styles.recordingText, { color: isDark ? '#000000' : '#FFFFFF' }]}>●</Text>
                             </Animated.View>
+                          </View>
+                        ) : message.type === 'detection_log' ? (
+                          // Detection log message - centered and italicized
+                          <View
+                            style={[
+                              styles.recordingIndicatorContainer,
+                              { justifyContent: 'center' }
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.messageText,
+                                {
+                                  color: isDark ? '#888888' : '#666666',
+                                  fontWeight: 'normal',
+                                  textAlign: 'center',
+                                  fontStyle: 'italic',
+                                  fontSize: 16,
+                                  opacity: 0.8
+                                }
+                              ]}
+                            >
+                              {message.text}
+                            </Text>
                           </View>
                         ) : (
                           // Normal message text
@@ -1512,25 +1780,35 @@ export default function ConversationScreen() {
                   <View style={styles.voiceControlsContainer}>
                     {/* Text Input Toggle Button */}
                     <View style={styles.leftControls}>
-                      <Pressable
-                        style={{
-                          width: 44,
-                          height: 44,
-                          borderRadius: 22,
-                          backgroundColor: isDark ? '#333333' : '#E0E0E0',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                        }}
-                        onPress={() => {
-                          setShowTextInput(true);
-                          setShowWelcomeTooltip(false);
-                          setTimeout(() => {
-                            textInputRef.current?.focus();
-                          }, 150);
-                        }}
-                      >
-                        <IconSymbol size={20} name="pencil" color={isDark ? '#FFFFFF' : '#000000'} />
-                      </Pressable>
+                      <View style={{ opacity: isListening ? 0.4 : 1 }}>
+                        <Pressable
+                          style={{
+                            width: 44,
+                            height: 44,
+                            borderRadius: 22,
+                            backgroundColor: isDark ? '#333333' : '#E0E0E0',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                          onPress={() => {
+                            // Don't allow switching to text input while recording
+                            if (isListening) return;
+
+                            setShowTextInput(true);
+                            setShowWelcomeTooltip(false);
+                            setTimeout(() => {
+                              textInputRef.current?.focus();
+                            }, 150);
+                          }}
+                          disabled={isListening}
+                        >
+                          <IconSymbol
+                            size={20}
+                            name="pencil"
+                            color={isListening ? (isDark ? '#666' : '#999') : (isDark ? '#FFFFFF' : '#000000')}
+                          />
+                        </Pressable>
+                      </View>
                     </View>
 
                     {/* Centered Voice Button */}
@@ -1590,15 +1868,24 @@ export default function ConversationScreen() {
 
                     {/* Settings Button */}
                     <View style={styles.rightControls}>
-                      <Pressable
-                        style={[
-                          styles.settingsButton,
-                          { backgroundColor: isDark ? '#333333' : '#E0E0E0' }
-                        ]}
-                        onPress={openSettingsModal}
-                      >
-                        <IconSymbol size={20} name="slider.horizontal.3" color={isDark ? '#fff' : '#000'} />
-                      </Pressable>
+                      <View style={{ opacity: isListening ? 0.4 : 1 }}>
+                        <Pressable
+                          style={[
+                            styles.settingsButton,
+                            {
+                              backgroundColor: isDark ? '#333333' : '#E0E0E0',
+                            }
+                          ]}
+                          onPress={openSettingsModal}
+                          disabled={isListening}
+                        >
+                          <IconSymbol
+                            size={20}
+                            name="slider.horizontal.3"
+                            color={isListening ? (isDark ? '#666' : '#999') : (isDark ? '#fff' : '#000')}
+                          />
+                        </Pressable>
+                      </View>
                     </View>
                   </View>
                 </View>

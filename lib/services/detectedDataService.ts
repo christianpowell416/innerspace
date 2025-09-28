@@ -204,7 +204,6 @@ export async function loadDetectedEmotions(conversationId: string, userId: strin
       .eq('conversation_id', conversationId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -234,7 +233,6 @@ export async function loadDetectedParts(conversationId: string, userId: string) 
       .eq('conversation_id', conversationId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -264,7 +262,6 @@ export async function loadDetectedNeeds(conversationId: string, userId: string) 
       .eq('conversation_id', conversationId)
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(1)
       .maybeSingle();
 
     if (error) {
@@ -317,7 +314,7 @@ export async function loadAllDetectedData(conversationId: string, userId: string
 /**
  * Get aggregated detected data for a user across all conversations
  */
-export async function getAggregatedDetectedData(userId: string, limit = 100) {
+export async function getAggregatedDetectedData(userId: string) {
   try {
     console.log('📊 Getting aggregated detected data for user:', userId);
 
@@ -328,19 +325,19 @@ export async function getAggregatedDetectedData(userId: string, limit = 100) {
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(limit),
+,
       supabase
         .from('detected_parts')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(limit),
+,
       supabase
         .from('detected_needs')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
-        .limit(limit),
+,
     ]);
 
     if (emotionsData.error || partsData.error || needsData.error) {

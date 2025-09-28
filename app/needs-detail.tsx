@@ -28,6 +28,8 @@ import {
   UserPart
 } from '@/lib/services/emotionsPartsNeedsService';
 import { getEmotionColor, getPartColor } from '@/lib/utils/dataColors';
+import { loadLinkedDataForNeed } from '@/lib/services/linkedDetectionService';
+import { findComplexesWithNeed, ComplexPreview } from '@/lib/services/complexDetectionService';
 
 // Lazy load detail chart components
 const EmotionsDetailBubbleChart = React.lazy(() => import('@/components/EmotionsDetailBubbleChart').then(module => ({ default: module.EmotionsDetailBubbleChart })));
@@ -35,6 +37,14 @@ const PartsDetailBubbleChart = React.lazy(() => import('@/components/PartsDetail
 
 // Configuration
 const USE_TEST_DATA = false;
+
+// Helper function to convert text to title case
+const toTitleCase = (text: string): string => {
+  return text.toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
 
 export default function NeedsDetailScreen() {
   const colorScheme = useColorScheme();
@@ -62,6 +72,7 @@ export default function NeedsDetailScreen() {
   const [partsChartDimensions, setPartsChartDimensions] = React.useState({ width: 180, height: 140 });
   const [shouldLoadDetailCharts, setShouldLoadDetailCharts] = React.useState(false);
   const [shouldRenderCharts, setShouldRenderCharts] = React.useState(false);
+  const [complexes, setComplexes] = React.useState<ComplexPreview[]>([]);
 
   // Data transformation functions
   const transformEmotionToChartData = React.useCallback((emotion: UserEmotion): EmotionBubbleData => {
@@ -74,7 +85,7 @@ export default function NeedsDetailScreen() {
       radius: Math.max(18, Math.min(45, (emotion.frequency || 1) * 3 + emotion.intensity * 2)),
       category: emotion.category || 'general',
       lastSeen: new Date(emotion.last_experienced || Date.now()),
-      conversationIds: [`user-${user?.id}`],
+      conversationIds: [],  // User's general emotions/parts don't have specific conversation IDs
     };
   }, [user?.id]);
 
@@ -88,7 +99,7 @@ export default function NeedsDetailScreen() {
       color: part.color || getPartColor(part.part_name),
       radius: Math.max(18, Math.min(45, (part.frequency || 1) * 3 + part.intensity * 2)),
       lastActive: new Date(part.last_active || Date.now()),
-      conversationIds: [`user-${user?.id}`],
+      conversationIds: [],  // User's general emotions/parts don't have specific conversation IDs
       description: part.description,
       role: part.role,
       triggers: part.triggers || [],
@@ -100,55 +111,69 @@ export default function NeedsDetailScreen() {
     router.back();
   };
 
-  // Load data from Supabase or test data
-  const loadEmotionsData = React.useCallback(async () => {
-    if (!user?.id) return;
+  // Load linked data from the same conversations
+  const loadLinkedData = React.useCallback(async () => {
+    if (!user?.id || !need) return;
 
     try {
       if (USE_TEST_DATA) {
         setEmotionsData(generateTestEmotionData(5));
-      } else {
-        const emotions = await loadUserEmotions(user.id, 8);
-        const bubbles = emotions.map(transformEmotionToChartData);
-        setEmotionsData(bubbles);
-      }
-    } catch (error) {
-      console.error('Error loading emotions data:', error);
-      // Fallback to test data
-      setEmotionsData(generateTestEmotionData(5));
-    }
-  }, [user?.id, transformEmotionToChartData]);
-
-  const loadPartsData = React.useCallback(async () => {
-    if (!user?.id) return;
-
-    try {
-      if (USE_TEST_DATA) {
         setPartsData(generateTestPartsData(5));
       } else {
-        const parts = await loadUserParts(user.id, 8);
-        const bubbles = parts.map(transformPartToChartData);
-        setPartsData(bubbles);
+        // Load emotions and parts from the same conversations where this need was detected
+        console.log('Loading linked data for need:', need.name, 'from conversations:', need.conversationIds);
+        const linkedData = await loadLinkedDataForNeed(need, user.id);
+
+        if (linkedData.emotions.length > 0) {
+          setEmotionsData(linkedData.emotions);
+          console.log('Loaded linked emotions:', linkedData.emotions.length);
+        } else {
+          // Fallback to user's general emotions if no linked data
+          const emotions = await loadUserEmotions(user.id);
+          const bubbles = emotions.map(transformEmotionToChartData);
+          setEmotionsData(bubbles);
+        }
+
+        if (linkedData.parts.length > 0) {
+          setPartsData(linkedData.parts);
+          console.log('Loaded linked parts:', linkedData.parts.length);
+        } else {
+          // Fallback to user's general parts if no linked data
+          const parts = await loadUserParts(user.id);
+          const bubbles = parts.map(transformPartToChartData);
+          setPartsData(bubbles);
+        }
+
+        // Load complexes that contain this need
+        const relatedComplexes = await findComplexesWithNeed(
+          need.name,
+          need.conversationIds,
+          user.id
+        );
+        setComplexes(relatedComplexes);
+        console.log('Loaded complexes:', relatedComplexes.length);
       }
     } catch (error) {
-      console.error('Error loading parts data:', error);
+      console.error('Error loading linked data:', error);
       // Fallback to test data
+      setEmotionsData(generateTestEmotionData(5));
       setPartsData(generateTestPartsData(5));
     }
-  }, [user?.id, transformPartToChartData]);
+  }, [user?.id, need, transformEmotionToChartData, transformPartToChartData]);
 
   // Initialize chart loading on component mount
   React.useEffect(() => {
     if (need && user?.id) {
+      // Load linked data from the same conversations
+      loadLinkedData();
+
       // Start loading charts after a brief delay
       setTimeout(() => {
         setShouldLoadDetailCharts(true);
         setShouldRenderCharts(true);
-        loadEmotionsData();
-        loadPartsData();
       }, 100);
     }
-  }, [need, user?.id, loadEmotionsData, loadPartsData]);
+  }, [need, user?.id, loadLinkedData]);
 
   // Handle bubble press events
   const handleEmotionPress = (emotion: EmotionBubbleData) => {
@@ -212,7 +237,7 @@ export default function NeedsDetailScreen() {
               ]}
             />
             <Text style={[styles.modalTitle, { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000', marginLeft: 2, flex: 0, marginRight: 0 }]}>
-              {need.name}
+              {toTitleCase(need.name)}
             </Text>
           </View>
 
@@ -459,7 +484,7 @@ export default function NeedsDetailScreen() {
                     styles.countBadgeText,
                     { color: '#FFFFFF' }
                   ]}>
-                    {need.conversationIds.length}
+                    {complexes.length}
                   </Text>
                 </View>
 
@@ -482,13 +507,14 @@ export default function NeedsDetailScreen() {
                 {/* Conversation excerpts */}
                 <View style={{ marginTop: 0 }}>
                   <View style={styles.conversationList}>
-                    {[
-                      { excerpt: "Discussed feeling anxious about upcoming job interview and strategies for managing nervousness.", title: "Job Interview Anxiety", date: "9/15/25" },
-                      { excerpt: "Explored childhood memories of feeling left out and how they affect current relationships.", title: "Childhood Rejection", date: "9/12/25" },
-                      { excerpt: "Talked through frustration with partner's communication style during recent argument.", title: "Partner Communication", date: "9/10/25" },
-                      { excerpt: "Reflected on perfectionist tendencies and fear of disappointing family members.", title: "Perfectionism Issues", date: "9/8/25" },
-                      { excerpt: "Processed grief over father's death and difficulty accepting support from friends.", title: "Grief Processing", date: "9/5/25" }
-                    ].map((item, index) => {
+                    {(complexes.length > 0 ? complexes.slice(0, 5).map(c => ({
+                      title: c.title,
+                      excerpt: c.description,
+                      date: new Date(c.created_at).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' }),
+                      id: c.id
+                    })) : [
+                      { title: "No complexes found", excerpt: "No complexes contain this need yet. Create a complex from a conversation to see it here.", date: "N/A", id: "placeholder" }
+                    ]).map((item, index) => {
                       // Create gradient effect for cards
                       const lightness = isDark
                         ? 0.85 - (0.1 * index) // Dark mode: gradient from lighter to darker
@@ -524,15 +550,17 @@ export default function NeedsDetailScreen() {
                             <Pressable
                               onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                                router.push({
-                                  pathname: '/complex-detail',
-                                  params: {
-                                    id: index.toString(),
-                                    title: item.title,
-                                    date: item.date,
-                                    description: item.excerpt
-                                  }
-                                });
+                                if (item.id !== 'placeholder') {
+                                  router.push({
+                                    pathname: '/complex-detail',
+                                    params: {
+                                      id: item.id,
+                                      title: item.title,
+                                      date: item.date,
+                                      description: item.excerpt
+                                    }
+                                  });
+                                }
                               }}
                               style={styles.complexCardPressable}
                             >

@@ -109,13 +109,41 @@ export default function SaveConversationScreen() {
     messages
   } : null;
 
-  const [conversationData, setConversationData] = useState<DraftConversationData | null>(directData);
+  const [conversationData, setConversationData] = useState<DraftConversationData | null>(null);
 
   // Load draft data from AsyncStorage only if not provided directly
   useEffect(() => {
     const loadDraftData = async () => {
-      // If we already have direct data, use that
+      // If we have direct data, still need to load detected data and merge
       if (directData) {
+        try {
+          const detectedKey = `detected_${sessionId}`;
+          const detectedData = await AsyncStorage.getItem(detectedKey);
+
+          if (detectedData) {
+            const detected = JSON.parse(detectedData);
+            const dataWithDetected = {
+              ...directData,
+              detectedData: {
+                emotions: detected.emotions || [],
+                parts: detected.parts || [],
+                needs: detected.needs || []
+              }
+            };
+            console.log('✅ Loaded detected data for direct params:', {
+              emotions: detected.emotions?.length || 0,
+              parts: detected.parts?.length || 0,
+              needs: detected.needs?.length || 0
+            });
+            setConversationData(dataWithDetected);
+          } else {
+            console.warn('⚠️ No detected data found for session:', sessionId);
+            setConversationData(directData);
+          }
+        } catch (error) {
+          console.error('Failed to load detected data for direct params:', error);
+          setConversationData(directData);
+        }
         return;
       }
 
@@ -126,9 +154,34 @@ export default function SaveConversationScreen() {
 
       try {
         const draftKey = `draft_conversation_${sessionId}`;
-        const draftData = await AsyncStorage.getItem(draftKey);
+        const detectedKey = `detected_${sessionId}`;
+
+        // Load both draft conversation data and detected data
+        const [draftData, detectedData] = await Promise.all([
+          AsyncStorage.getItem(draftKey),
+          AsyncStorage.getItem(detectedKey)
+        ]);
+
         if (draftData) {
           const parsed = JSON.parse(draftData) as DraftConversationData;
+
+          // If we have detected data, merge it in
+          if (detectedData) {
+            const detected = JSON.parse(detectedData);
+            parsed.detectedData = {
+              emotions: detected.emotions || [],
+              parts: detected.parts || [],
+              needs: detected.needs || []
+            };
+            console.log('✅ Merged detected data into conversation:', {
+              emotions: detected.emotions?.length || 0,
+              parts: detected.parts?.length || 0,
+              needs: detected.needs?.length || 0
+            });
+          } else {
+            console.warn('⚠️ No detected data found for session:', sessionId);
+          }
+
           setConversationData(parsed);
         }
       } catch (error) {

@@ -10,6 +10,13 @@ import { GradientBackground } from '@/components/ui/GradientBackground';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { useAuth } from '@/contexts/AuthContext';
+import { loadComplexes, ComplexData } from '@/lib/services/complexManagementService';
+
+// Declare global cache types
+declare global {
+  var preloadedComplexes: ComplexData[] | null;
+  var preloadedComplexesTimestamp: number | null;
+}
 
 // Lazy load heavy components to prevent loading during page transitions
 const LearningCarousel = React.lazy(() => import('@/components/LearningCarousel').then(module => ({ default: module.LearningCarousel })));
@@ -44,6 +51,24 @@ export default function HomeScreen() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Preload complexes data when user becomes available
+  useEffect(() => {
+    if (user) {
+      // Start preloading complexes immediately when user is available
+      console.log('🚀 Preloading complexes data in background...');
+      loadComplexes(user.id)
+        .then(complexes => {
+          console.log(`✅ Preloaded ${complexes.length} complexes`);
+          // Store in a simple cache that the complexes page can check
+          global.preloadedComplexes = complexes;
+          global.preloadedComplexesTimestamp = Date.now();
+        })
+        .catch(error => {
+          console.warn('Failed to preload complexes:', error);
+        });
+    }
+  }, [user]);
 
   // Function to hyphenate text automatically
   const getHyphenatedText = (text: string) => {

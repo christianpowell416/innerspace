@@ -264,6 +264,7 @@ export const createVoiceSession = (
   let wordStreamingTimer: NodeJS.Timeout | null = null;
   let streamingResponseId: string | null = null;
   let displayedText = '';
+  let pendingTextChunk = ''; // Accumulate partial text chunks before splitting into words
   let isUserStoppingRecording = false; // Flag to prevent monitoring from interfering with user stops
 
   // Helper function to clear word streaming
@@ -275,29 +276,65 @@ export const createVoiceSession = (
     wordBuffer = [];
     currentWordIndex = 0;
     displayedText = '';
+    pendingTextChunk = '';
     streamingResponseId = null;
   };
 
   // Helper function to add text to word buffer and start streaming
-  const addToWordBuffer = (text: string, responseId: string) => {
+  const addToWordBuffer = (text: string, responseId: string, isComplete: boolean = false) => {
+    console.log('📝 addToWordBuffer - text:', text, 'isComplete:', isComplete, 'pendingTextChunk:', pendingTextChunk, 'responseId:', responseId);
 
-    // Check if this looks like JSON response format and skip JSON structure
-    if (text.includes('"role":') || text.includes('"content":') || text.includes('"assistant"') ||
-        text.includes('"response":') || text === '{"' || text === '"' || text === ':' ||
-        text === ':"' || text === '",' || text === '}' || text.match(/^[{"}:,\s]*$/)) {
+    // Only skip if it's clearly JSON structure, not regular punctuation
+    // Check for JSON-like patterns but not single punctuation marks with spaces
+    if (!isComplete && text.length > 1 && (
+        text.includes('"role":') || text.includes('"content":') || text.includes('"assistant"') ||
+        text.includes('"response":') || text === '{"' || text === ':"' || text === '",' || text === '}')) {
       // Don't add JSON structure words to buffer - wait for content extraction
+      console.log('📝 Skipping JSON structure');
       return;
     }
 
-    // Split text into words, preserving spaces and punctuation
-    const words = text.split(/(\s+)/).filter(word => word.length > 0);
+    // Accumulate the text chunk (only if there's text to add)
+    if (text) {
+      pendingTextChunk += text;
+    }
 
-    // Add new words to buffer
-    wordBuffer.push(...words);
+    // Only split into words at natural boundaries (spaces) or when the response is complete
+    // This prevents splitting contractions like "I'm" when they arrive as separate chunks
+    if ((isComplete && pendingTextChunk) || pendingTextChunk.includes(' ')) {
+      // Find the last complete word boundary
+      const lastSpaceIndex = pendingTextChunk.lastIndexOf(' ');
+
+      let textToProcess = '';
+      if (isComplete) {
+        // Process all pending text when complete
+        textToProcess = pendingTextChunk;
+        pendingTextChunk = '';
+      } else if (lastSpaceIndex !== -1) {
+        // Process text up to the last space
+        textToProcess = pendingTextChunk.substring(0, lastSpaceIndex + 1);
+        pendingTextChunk = pendingTextChunk.substring(lastSpaceIndex + 1);
+      }
+
+      if (textToProcess) {
+        // Split text into words, preserving spaces
+        const words = textToProcess.split(/(\s+)/).filter(word => word.length > 0);
+        console.log('📝 Processing text into words:', textToProcess, '-> words:', words);
+
+        // Add new words to buffer
+        wordBuffer.push(...words);
+        console.log('📝 Word buffer after adding:', wordBuffer);
+      }
+    } else if (pendingTextChunk.length > 50) {
+      // If we have accumulated a lot of text without spaces (unlikely but possible),
+      // process it anyway to avoid blocking the display
+      const words = pendingTextChunk.split(/(\s+)/).filter(word => word.length > 0);
+      wordBuffer.push(...words);
+      pendingTextChunk = '';
+    }
 
     // Set or update the streaming response ID
     streamingResponseId = responseId;
-
 
     // Start word streaming if not already running
     if (!wordStreamingTimer) {
@@ -307,11 +344,13 @@ export const createVoiceSession = (
 
   // Helper function to stream next word from buffer
   const streamNextWord = () => {
+    console.log('🔄 streamNextWord - wordBuffer length:', wordBuffer.length, 'currentWordIndex:', currentWordIndex, 'streamingResponseId:', streamingResponseId, 'currentResponseId:', currentResponseId);
     if (currentWordIndex < wordBuffer.length && streamingResponseId && currentResponseId) {
       const word = wordBuffer[currentWordIndex];
       displayedText += word;
       currentWordIndex++;
 
+      console.log('📤 Streaming word to UI:', word, 'displayedText so far:', displayedText);
 
       // Send updated text to UI - only if we have a valid response ID
       if (currentResponseId) {
@@ -1286,6 +1325,7 @@ export const createVoiceSession = (
           break;
           
         case 'response.created':
+          console.log('🌟 response.created event - message:', message);
           // Reset for new response
           clearWordStreaming(); // Clear any previous word streaming
           currentTranscript = '';
@@ -1293,6 +1333,7 @@ export const createVoiceSession = (
           streamingAudioBuffer = []; // Reset audio buffer for new response
           currentResponseId = message.response?.id || Date.now().toString();
           lastProcessedResponse = null;
+          console.log('🌟 Set currentResponseId to:', currentResponseId, 'lastInputWasText:', lastInputWasText);
 
 
           // Notify UI of new response start
@@ -1311,6 +1352,7 @@ export const createVoiceSession = (
           break;
           
         case 'response.text.delta':
+          console.log('📬 response.text.delta event - lastInputWasText:', lastInputWasText, 'delta:', message.delta, 'currentResponseId:', currentResponseId);
           if (lastInputWasText && message.delta && currentResponseId) {
             currentTranscript += message.delta;
             // Use word-by-word streaming instead of direct callback
@@ -1320,6 +1362,11 @@ export const createVoiceSession = (
 
         case 'response.text.done':
           if (lastInputWasText && message.text) {
+
+            // Flush any pending text chunks before processing final text
+            if (pendingTextChunk && currentResponseId) {
+              addToWordBuffer('', currentResponseId, true);
+            }
 
             // Parse the JSON response to extract content
             let finalText = message.text;
@@ -1345,6 +1392,7 @@ export const createVoiceSession = (
                 wordBuffer = words;
                 currentWordIndex = 0;
                 displayedText = '';
+                pendingTextChunk = ''; // Clear any pending chunks when resetting
                 streamingResponseId = currentResponseId;
 
 
@@ -1380,6 +1428,11 @@ export const createVoiceSession = (
         case 'response.audio_transcript.done':
           if (!currentResponseId) {
             break;
+          }
+
+          // Flush any pending text chunks before completing
+          if (pendingTextChunk && currentResponseId) {
+            addToWordBuffer('', currentResponseId, true);
           }
 
           const finalTranscript = message.transcript || currentTranscript;
@@ -1501,6 +1554,11 @@ export const createVoiceSession = (
         case 'response.done':
           // console.log('🔍 DEBUG: Response completed, ID:', message.response?.id);
           hasActiveResponse = false;
+
+          // Flush any pending text chunks before completing
+          if (pendingTextChunk && currentResponseId) {
+            addToWordBuffer('', currentResponseId, true);
+          }
 
           // Check if word streaming is active
           const isWordStreamingActive = wordStreamingTimer !== null || (wordBuffer.length > 0 && currentWordIndex < wordBuffer.length);

@@ -337,7 +337,7 @@ export function MiniBubbleChart({ data, config, onBubblePress, loading = false }
       <View style={[styles.chartContainer, { width: containerWidth, height: containerHeight, overflow: 'hidden' }]}>
         {bubbles && bubbles.length > 0 && bubbles.map((bubble) => {
           const radius = bubble?.radius || 5;
-          const bubbleName = bubble?.name || '';
+          const bubbleName = (bubble?.name || '').toLowerCase();
           const fontSize = getFontSize(radius);
           const textLines = wrapText(bubbleName, radius);
 

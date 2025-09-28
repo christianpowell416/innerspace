@@ -441,7 +441,7 @@ export function FullBubbleChart({ data, config, onBubblePress, loading = false }
                   >
                   {/* Bubble label */}
                   {(() => {
-                    const bubbleName = bubble.name || '';
+                    const bubbleName = (bubble.name || '').toLowerCase();
                     const fontSize = getFontSize(bubble.radius, bubbleName);
                     const textLines = wrapTextForBubble(bubbleName, bubble.radius, fontSize);
                     const lineHeight = fontSize * 1.2;

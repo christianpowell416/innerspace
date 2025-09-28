@@ -326,7 +326,7 @@ export async function searchComplexes(userId: string, searchQuery: string) {
 /**
  * Get the most recently used complexes
  */
-export async function getRecentComplexes(userId: string, limit = 5) {
+export async function getRecentComplexes(userId: string) {
   try {
     console.log('📖 Getting recent complexes for user:', userId);
 
@@ -339,7 +339,7 @@ export async function getRecentComplexes(userId: string, limit = 5) {
       `)
       .eq('user_id', userId)
       .order('conversations.created_at', { ascending: false })
-      .limit(limit);
+;
 
     if (error) {
       console.error('❌ Error loading recent complexes:', error);

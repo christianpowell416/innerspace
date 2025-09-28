@@ -25,6 +25,8 @@ class EmotionPartsDetector {
 
   constructor() {
     this.apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
+    console.log('🤖 [DETECTOR] Constructor - API key length:', this.apiKey ? this.apiKey.length : 0);
+    console.log('🤖 [DETECTOR] Constructor - API key prefix:', this.apiKey ? this.apiKey.substring(0, 7) : 'none');
   }
 
   /**
@@ -148,26 +150,37 @@ RESPONSE FORMAT: JSON only, no explanations
    * Analyze text using AI for intelligent emotion/parts/needs detection
    */
   async analyzeText(text: string): Promise<DetectedLists> {
+    console.log('🤖 [DETECTOR] Starting analysis for text:', text);
+
     if (!text || typeof text !== 'string') {
+      console.log('🤖 [DETECTOR] Invalid text input, returning current lists');
       return this.getCurrentLists();
     }
 
     if (!this.apiKey) {
+      console.warn('🤖 [DETECTOR] No API key found, returning current lists');
       return this.getCurrentLists();
     }
+
+    console.log('🤖 [DETECTOR] API key found, making request...');
 
 
     try {
       const response = await this.makeAPIRequest(text);
+      console.log('🤖 [DETECTOR] API response status:', response.status);
 
       if (!response.ok) {
+        console.warn('🤖 [DETECTOR] API request failed with status:', response.status);
         return this.getCurrentLists();
       }
 
       const result = await response.json();
+      console.log('🤖 [DETECTOR] API result:', result);
       const aiResponse = result.choices[0]?.message?.content;
+      console.log('🤖 [DETECTOR] AI response content:', aiResponse);
 
       if (!aiResponse) {
+        console.warn('🤖 [DETECTOR] No AI response content found');
         return this.getCurrentLists();
       }
 
@@ -224,13 +237,19 @@ RESPONSE FORMAT: JSON only, no explanations
       }
 
     } catch (error) {
+      console.error('🤖 [DETECTOR] Error during analysis:', error);
       if (error instanceof Error) {
         if (error.name === 'AbortError' || error.message.includes('aborted')) {
+          console.warn('🤖 [DETECTOR] Request was aborted/timed out');
         } else if (error.message.includes('Network request failed')) {
+          console.warn('🤖 [DETECTOR] Network request failed');
         } else if (error.message.includes('Failed to fetch')) {
+          console.warn('🤖 [DETECTOR] Fetch failed');
         } else {
+          console.error('🤖 [DETECTOR] Unknown error:', error.message);
         }
       } else {
+        console.error('🤖 [DETECTOR] Non-Error exception:', error);
       }
 
       // Continue gracefully without AI analysis

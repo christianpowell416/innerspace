@@ -19,6 +19,12 @@ import { Alert } from 'react-native';
 import { getConversationById, ConversationData } from '@/lib/services/conversationService';
 import { loadComplexes, ComplexData } from '@/lib/services/complexManagementService';
 
+// Declare global cache types
+declare global {
+  var preloadedComplexes: ComplexData[] | null;
+  var preloadedComplexesTimestamp: number | null;
+}
+
 const CARD_BORDER_RADIUS = 24;
 
 export default function ChatScreen() {
@@ -45,19 +51,56 @@ export default function ChatScreen() {
   const lastScrollTime = useRef(Date.now());
   const velocityDecayTimer = useRef<number | null>(null);
 
-  // Load complexes from database
+  // Load complexes from database with preloading optimization
   useEffect(() => {
     const loadUserComplexes = async () => {
       if (user) {
         try {
           setLoading(true);
-          const userComplexes = await loadComplexes(user.id);
-          // Add default colors if not present
-          const complexesWithColors = userComplexes.map((complex, index) => ({
+
+          // Check if we have preloaded data from the home screen
+          const preloadedData = global.preloadedComplexes;
+          const preloadedTimestamp = global.preloadedComplexesTimestamp;
+          const isPreloadedDataFresh = preloadedTimestamp && (Date.now() - preloadedTimestamp < 30000); // 30 seconds
+
+          let userComplexes;
+          if (preloadedData && isPreloadedDataFresh) {
+            console.log('⚡ Using preloaded complexes data');
+            userComplexes = preloadedData;
+            // Clear the cache after using it
+            global.preloadedComplexes = null;
+            global.preloadedComplexesTimestamp = null;
+          } else {
+            console.log('📶 Loading fresh complexes data');
+            userComplexes = await loadComplexes(user.id);
+          }
+
+          // Add default colors if not present and filter out complexes with invalid IDs
+          console.log('🔍 Raw complex data:', userComplexes.map(c => ({ id: c.id, name: c.name, type: typeof c.id })));
+
+          // Filter out complexes with clearly invalid IDs (null, undefined, empty string, or short numbers)
+          const validComplexes = userComplexes.filter(complex => {
+            const id = complex.id;
+            const isValid = id &&
+              typeof id === 'string' &&
+              id.length > 10; // UUID should be much longer than short numbers like "2243"
+
+            if (!isValid) {
+              console.warn('🚨 Filtering out complex with invalid ID:', id, complex.name);
+            }
+            return isValid;
+          });
+
+          const complexesWithColors = validComplexes.map((complex, index) => ({
             ...complex,
             color: complex.color || ['#FF6B6B', '#4ECDC4', '#FFD700', '#DDA0DD', '#98D8C8', '#FFA07A', '#87CEEB', '#98FB98'][index % 8]
           }));
           setComplexes(complexesWithColors);
+          console.log('🔍 Loaded complexes with IDs:', complexesWithColors.map(c => ({ id: c.id, name: c.name, type: typeof c.id })));
+
+          if (validComplexes.length !== userComplexes.length) {
+            console.log(`📋 Filtered ${userComplexes.length - validComplexes.length} complexes with invalid IDs`);
+          }
         } catch (error) {
           console.error('Error loading complexes:', error);
           Alert.alert('Error', 'Failed to load complexes');

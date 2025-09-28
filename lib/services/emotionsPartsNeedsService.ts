@@ -106,16 +106,16 @@ export interface NeedAssessment {
 /**
  * Load all emotions for a user
  */
-export async function loadUserEmotions(userId: string, limit = 100) {
+export async function loadUserEmotions(userId: string) {
   try {
-    console.log('📊 Loading user emotions:', { userId, limit });
+    console.log('📊 Loading user emotions:', { userId });
 
     const { data, error } = await supabase
       .from('user_emotions')
       .select('*')
       .eq('user_id', userId)
       .order('last_experienced', { ascending: false })
-      .limit(limit);
+;
 
     if (error) {
       console.error('❌ Error loading user emotions:', error);
@@ -221,16 +221,16 @@ export async function logEmotionExperience(emotionLog: EmotionLog) {
 /**
  * Load all parts for a user
  */
-export async function loadUserParts(userId: string, limit = 100) {
+export async function loadUserParts(userId: string) {
   try {
-    console.log('🧩 Loading user parts:', { userId, limit });
+    console.log('🧩 Loading user parts:', { userId });
 
     const { data, error } = await supabase
       .from('user_parts')
       .select('*')
       .eq('user_id', userId)
       .order('last_active', { ascending: false })
-      .limit(limit);
+;
 
     if (error) {
       console.error('❌ Error loading user parts:', error);
@@ -336,16 +336,16 @@ export async function logPartSession(partSession: PartSession) {
 /**
  * Load all needs for a user
  */
-export async function loadUserNeeds(userId: string, limit = 100) {
+export async function loadUserNeeds(userId: string) {
   try {
-    console.log('🎯 Loading user needs:', { userId, limit });
+    console.log('🎯 Loading user needs:', { userId });
 
     const { data, error } = await supabase
       .from('user_needs')
       .select('*')
       .eq('user_id', userId)
       .order('priority', { ascending: false })
-      .limit(limit);
+;
 
     if (error) {
       console.error('❌ Error loading user needs:', error);
