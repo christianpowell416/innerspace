@@ -1363,7 +1363,6 @@ export const createVoiceSession = (
           break;
           
         case 'response.text.delta':
-          console.log('📬 response.text.delta event - lastInputWasText:', lastInputWasText, 'delta:', message.delta, 'currentResponseId:', currentResponseId);
           if (lastInputWasText && message.delta && currentResponseId) {
             currentTranscript += message.delta;
             // Use word-by-word streaming instead of direct callback

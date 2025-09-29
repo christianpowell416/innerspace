@@ -14,6 +14,8 @@ export interface DetectedItem {
   name: string;
   confidence: number;
   context?: string;
+  color?: string;      // Color based on Hawkins consciousness scale
+  intensity?: number;  // 1-10 scale from user
 }
 
 export interface Database {

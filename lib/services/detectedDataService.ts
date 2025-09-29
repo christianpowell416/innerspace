@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import { DetectedItem, Database } from '@/lib/database.types';
+import { isValidOuterRingEmotion, normalizeEmotion } from '@/lib/constants/validEmotions';
 
 // Type definitions for detected data operations
 export interface DetectedDataResult {
@@ -35,12 +36,35 @@ export async function saveDetectedEmotions(
   emotions: DetectedItem[]
 ) {
   try {
-    console.log('💾 Saving detected emotions:', { conversationId, userId, emotionCount: emotions.length });
+    // Filter emotions to only include valid outer ring emotions
+    const validEmotions = emotions.filter(emotion => {
+      const normalized = normalizeEmotion(emotion.name);
+      if (normalized && isValidOuterRingEmotion(normalized)) {
+        // Update the name to the normalized version
+        emotion.name = normalized;
+        return true;
+      }
+      console.log(`⚠️ Filtering out invalid emotion before saving: "${emotion.name}"`);
+      return false;
+    });
+
+    console.log('💾 Saving detected emotions:', {
+      conversationId,
+      userId,
+      originalCount: emotions.length,
+      validCount: validEmotions.length
+    });
+
+    // Only save if there are valid emotions
+    if (validEmotions.length === 0) {
+      console.log('⚠️ No valid outer ring emotions to save');
+      return null;
+    }
 
     const emotionData: Database['public']['Tables']['detected_emotions']['Insert'] = {
       conversation_id: conversationId,
       user_id: userId,
-      emotions,
+      emotions: validEmotions,
       created_at: new Date().toISOString(),
     };
 

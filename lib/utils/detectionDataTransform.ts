@@ -19,6 +19,7 @@ import {
   getNeedCategory
 } from '../types/partsNeedsChart';
 import { DetectedItem } from '../database.types';
+import { getEmotionColor as getConsciousnessColor } from '../constants/validEmotions';
 
 /**
  * Convert text to title case (first letter of each word uppercase)
@@ -63,14 +64,23 @@ class DetectionSessionTracker {
 
   private updateTracker(
     map: Map<string, DetectionTracker>,
-    item: string
+    item: string | DetectedItem
   ): DetectionTracker {
+    // Handle DetectedItem objects or string format
+    const itemName = typeof item === 'string' ? item : item?.name;
+
     // Handle undefined or null items
-    if (!item) {
+    if (!itemName) {
       console.warn('DetectionSessionTracker: Received undefined or null item');
-      item = 'unknown';
+      return {
+        count: 0,
+        firstDetected: new Date(),
+        lastDetected: new Date(),
+        conversationId: this.currentConversationId
+      };
     }
-    const normalizedItem = item.toLowerCase().trim();
+
+    const normalizedItem = itemName.toLowerCase().trim();
     const existing = map.get(normalizedItem);
     const now = new Date();
 
@@ -90,15 +100,15 @@ class DetectionSessionTracker {
     }
   }
 
-  trackEmotion(emotion: string): DetectionTracker {
+  trackEmotion(emotion: string | DetectedItem): DetectionTracker {
     return this.updateTracker(this.emotionTracking, emotion);
   }
 
-  trackPart(part: string): DetectionTracker {
+  trackPart(part: string | DetectedItem): DetectionTracker {
     return this.updateTracker(this.partTracking, part);
   }
 
-  trackNeed(need: string): DetectionTracker {
+  trackNeed(need: string | DetectedItem): DetectionTracker {
     return this.updateTracker(this.needTracking, need);
   }
 }
@@ -145,8 +155,13 @@ export const transformDetectedEmotions = (
     .filter(emotionItem => emotionItem && emotionItem.name)
     .map((emotionItem, index) => {
     const emotion = emotionItem.name;
-    const tracker = sessionTracker.trackEmotion(emotion);
-    const intensity = calculateIntensity(tracker.count);
+    const tracker = sessionTracker.trackEmotion(emotionItem);  // Pass the full item
+
+    // Use the intensity from the DetectedItem if available, otherwise calculate it
+    const intensity = emotionItem.intensity !== undefined
+      ? emotionItem.intensity
+      : calculateIntensity(tracker.count);
+
     const radius = calculateRadius(tracker.count, intensity);
 
     return {
@@ -154,7 +169,8 @@ export const transformDetectedEmotions = (
       emotion: toTitleCase(emotion), // Title case for headings
       frequency: tracker.count,
       intensity,
-      color: getEmotionColor(emotion),
+      // Use the color from DetectedItem if available, otherwise use consciousness-based color
+      color: emotionItem.color || getConsciousnessColor(emotion) || getEmotionColor(emotion),
       radius,
       category: getEmotionCategory(emotion),
       lastSeen: tracker.lastDetected,
@@ -184,7 +200,7 @@ export const transformDetectedParts = (
     .filter(partItem => partItem && partItem.name)
     .map((partItem, index) => {
     const part = partItem.name;
-    const tracker = sessionTracker.trackPart(part);
+    const tracker = sessionTracker.trackPart(partItem);  // Pass the full item
     const intensity = calculateIntensity(tracker.count);
     const radius = calculateRadius(tracker.count, intensity);
 
@@ -223,7 +239,7 @@ export const transformDetectedNeeds = (
     .filter(needItem => needItem && needItem.name)
     .map((needItem, index) => {
     const need = needItem.name;
-    const tracker = sessionTracker.trackNeed(need);
+    const tracker = sessionTracker.trackNeed(needItem);  // Pass the full item
     const intensity = calculateIntensity(tracker.count);
     const radius = calculateRadius(tracker.count, intensity);
 

@@ -2,15 +2,18 @@
  * AI-Powered Emotion, Parts, and Needs Detection Service
  *
  * Uses OpenAI to intelligently analyze user messages and detect:
- * - Emotions (expressed feelings and emotional states)
+ * - Emotions (expressed feelings and emotional states - ONLY from outer ring of emotion wheel)
  * - IFS Parts (internal family systems language and parts work)
  * - Needs (expressed desires, wants, and unmet needs)
  */
 
+import { isValidOuterRingEmotion, normalizeEmotion, getEmotionColor } from '@/lib/constants/validEmotions';
+import { DetectedItem } from '@/lib/database.types';
+
 export interface DetectedLists {
-  emotions: string[];
-  parts: string[];
-  needs: string[];
+  emotions: DetectedItem[];
+  parts: DetectedItem[];
+  needs: DetectedItem[];
 }
 
 export interface DetectionCallbacks {
@@ -18,9 +21,9 @@ export interface DetectionCallbacks {
 }
 
 class EmotionPartsDetector {
-  private detectedEmotions: Set<string> = new Set();
-  private detectedParts: Set<string> = new Set();
-  private detectedNeeds: Set<string> = new Set();
+  private detectedEmotions: Map<string, DetectedItem> = new Map();
+  private detectedParts: Map<string, DetectedItem> = new Map();
+  private detectedNeeds: Map<string, DetectedItem> = new Map();
   private apiKey: string;
 
   constructor() {
@@ -90,6 +93,7 @@ class EmotionPartsDetector {
 
 TASK: Analyze the user's message and extract:
 1. EMOTIONS: Any feelings, emotional states, or emotional expressions
+   - Also note if they mention intensity (1-10 scale) for any emotion
 2. PARTS: Any internal parts language, IFS concepts, or inner aspects mentioned
 3. NEEDS: Any expressed needs, wants, desires, or unmet needs
 
@@ -101,6 +105,11 @@ GUIDELINES:
 - Be contextually intelligent - understand nuance and implications
 - Don't invent or assume - only detect what's genuinely present
 - Capture the essence in clean, simple terms
+
+EMOTION RULES (TEMPORARILY RELAXED):
+- Accept all emotions including core emotions like: Angry, Disgusted, Sad, Happy, Surprised, Bad, Fearful
+- Also accept specific emotions: Frustrated, Hurt, Jealous, Lonely, Joyful, Anxious, Overwhelmed
+- Extract whatever emotion is expressed without filtering
 
 EMOTION & NEED CONVERSION RULES:
 - Adjectives to nouns: "anxious" → "Anxiety", "overwhelmed" → "Overwhelm", "tired" → "Fatigue"
@@ -117,31 +126,40 @@ PARTS REFINEMENT RULES:
 
 EXAMPLES:
 User: "I'm feeling really overwhelmed lately"
-→ {"emotions": ["Overwhelm"], "parts": [], "needs": []}
+→ {"emotions": [{"name": "Overwhelmed", "intensity": null}], "parts": [], "needs": []}
 
-User: "I'm super anxious about everything"
-→ {"emotions": ["Anxiety"], "parts": [], "needs": []}
+User: "I'm super anxious, maybe like an 8 out of 10"
+→ {"emotions": [{"name": "Anxious", "intensity": 8}], "parts": [], "needs": []}
 
 User: "Part of me desperately wants to hide"
 → {"emotions": [], "parts": ["Wants to hide"], "needs": []}
 
 User: "Part of me is scared of rejection"
-→ {"emotions": [], "parts": ["Fears rejection"], "needs": []}
+→ {"emotions": [{"name": "Scared", "intensity": null}], "parts": ["Fears rejection"], "needs": []}
 
-User: "Part of me wants to protect others from being hurt"
-→ {"emotions": [], "parts": ["Protects others"], "needs": []}
+User: "I feel joy when I see my kids"
+→ {"emotions": [{"name": "Joy", "intensity": null}], "parts": [], "needs": []}
 
-User: "I'm extremely tired and need some peace"
-→ {"emotions": ["Fatigue"], "parts": [], "needs": ["Peace"]}
+User: "I'm extremely tired, like a 9 out of 10, and need some peace"
+→ {"emotions": [{"name": "Exhausted", "intensity": 9}], "parts": [], "needs": ["Peace"]}
 
 User: "Something deep inside me feels completely broken"
-→ {"emotions": ["Brokenness"], "parts": [], "needs": []}
+→ {"emotions": [{"name": "Hopeless", "intensity": null}], "parts": [], "needs": []}
 
 User: "I really need to feel very safe right now"
 → {"emotions": [], "parts": [], "needs": ["Safety"]}
 
 RESPONSE FORMAT: JSON only, no explanations
-{"emotions": ["word1", "word2"], "parts": ["phrase1"], "needs": ["need1", "need2"]}`;
+{
+  "emotions": [
+    {"name": "emotion1", "intensity": null},
+    {"name": "emotion2", "intensity": 7}
+  ],
+  "parts": ["phrase1"],
+  "needs": ["need1", "need2"]
+}
+
+Note: intensity is optional - only include if user mentions it (1-10 scale)`;
   }
 
   /**
@@ -193,11 +211,34 @@ RESPONSE FORMAT: JSON only, no explanations
       let foundNeeds = 0;
 
       if (detected.emotions && Array.isArray(detected.emotions)) {
-        detected.emotions.forEach((emotion: string) => {
-          if (emotion && !this.detectedEmotions.has(emotion)) {
-            console.log(`😊 [EMOTION] AI detected: "${emotion}"`);
-            this.detectedEmotions.add(emotion);
-            foundEmotions++;
+        detected.emotions.forEach((emotionData: any) => {
+          // Handle both old format (string) and new format (object)
+          const emotionName = typeof emotionData === 'string' ? emotionData : emotionData?.name;
+          const intensity = typeof emotionData === 'object' ? emotionData?.intensity : undefined;
+
+          if (emotionName) {
+            // Validate and normalize the emotion
+            const normalized = normalizeEmotion(emotionName);
+
+            if (normalized && !this.detectedEmotions.has(normalized)) {
+              // TEMPORARILY DISABLED: Only add if it's a valid outer ring emotion
+              // if (isValidOuterRingEmotion(normalized)) {
+                const detectedItem: DetectedItem = {
+                  name: normalized,
+                  confidence: 0.8, // Default confidence
+                  color: getEmotionColor(normalized),
+                  intensity: intensity !== null ? intensity : undefined
+                };
+
+                console.log(`😊 [EMOTION] AI detected emotion: "${normalized}" (intensity: ${intensity || 'not specified'})`);
+                this.detectedEmotions.set(normalized, detectedItem);
+                foundEmotions++;
+              // } else {
+              //   console.log(`⚠️ [EMOTION] Rejected non-outer-ring emotion: "${emotionName}"`);
+              // }
+            } else if (!normalized) {
+              console.log(`❌ [EMOTION] Rejected invalid emotion: "${emotionName}"`);
+            }
           }
         });
       }
@@ -205,8 +246,12 @@ RESPONSE FORMAT: JSON only, no explanations
       if (detected.parts && Array.isArray(detected.parts)) {
         detected.parts.forEach((part: string) => {
           if (part && !this.detectedParts.has(part)) {
+            const detectedItem: DetectedItem = {
+              name: part,
+              confidence: 0.8,
+            };
             console.log(`🧩 [PARTS] AI detected: "${part}"`);
-            this.detectedParts.add(part);
+            this.detectedParts.set(part, detectedItem);
             foundParts++;
           }
         });
@@ -215,8 +260,12 @@ RESPONSE FORMAT: JSON only, no explanations
       if (detected.needs && Array.isArray(detected.needs)) {
         detected.needs.forEach((need: string) => {
           if (need && !this.detectedNeeds.has(need)) {
+            const detectedItem: DetectedItem = {
+              name: need,
+              confidence: 0.8,
+            };
             console.log(`💚 [NEEDS] AI detected: "${need}"`);
-            this.detectedNeeds.add(need);
+            this.detectedNeeds.set(need, detectedItem);
             foundNeeds++;
           }
         });
@@ -253,9 +302,9 @@ RESPONSE FORMAT: JSON only, no explanations
    */
   getCurrentLists(): DetectedLists {
     return {
-      emotions: Array.from(this.detectedEmotions).sort(),
-      parts: Array.from(this.detectedParts).sort(),
-      needs: Array.from(this.detectedNeeds).sort()
+      emotions: Array.from(this.detectedEmotions.values()).sort((a, b) => a.name.localeCompare(b.name)),
+      parts: Array.from(this.detectedParts.values()).sort((a, b) => a.name.localeCompare(b.name)),
+      needs: Array.from(this.detectedNeeds.values()).sort((a, b) => a.name.localeCompare(b.name))
     };
   }
 
@@ -288,16 +337,38 @@ RESPONSE FORMAT: JSON only, no explanations
   /**
    * Manually add detected items
    */
-  addEmotion(emotion: string): void {
-    this.detectedEmotions.add(emotion);
+  addEmotion(emotion: string, intensity?: number): void {
+    // Validate before adding
+    const normalized = normalizeEmotion(emotion);
+    // TEMPORARILY DISABLED: if (normalized && isValidOuterRingEmotion(normalized)) {
+    if (normalized) {
+      const detectedItem: DetectedItem = {
+        name: normalized,
+        confidence: 0.9, // Higher confidence for manual adds
+        color: getEmotionColor(normalized),
+        intensity: intensity
+      };
+      this.detectedEmotions.set(normalized, detectedItem);
+      console.log(`✅ [EMOTION] Manually added emotion: "${normalized}" (intensity: ${intensity || 'not specified'})`);
+    } else {
+      console.log(`❌ [EMOTION] Rejected manual emotion (invalid): "${emotion}"`);
+    }
   }
 
   addPart(part: string): void {
-    this.detectedParts.add(part);
+    const detectedItem: DetectedItem = {
+      name: part,
+      confidence: 0.9,
+    };
+    this.detectedParts.set(part, detectedItem);
   }
 
   addNeed(need: string): void {
-    this.detectedNeeds.add(need);
+    const detectedItem: DetectedItem = {
+      name: need,
+      confidence: 0.9,
+    };
+    this.detectedNeeds.set(need, detectedItem);
   }
 
   /**

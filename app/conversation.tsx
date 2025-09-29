@@ -130,55 +130,61 @@ export default function ConversationScreen() {
     }> = [];
 
     // Check for new emotions
-    newDetectedItems.emotions.forEach(emotion => {
-      const detectionKey = `emotion:${emotion.toLowerCase()}`;
+    newDetectedItems.emotions.forEach(emotionItem => {
+      const emotionName = emotionItem.name;
+      const detectionKey = `emotion:${emotionName.toLowerCase()}`;
       // Only show if not already shown AND not in previous detected items
-      if (!shownDetectionMessagesRef.current.has(detectionKey) && !previousDetectedItems.emotions.includes(emotion)) {
+      const isInPrevious = previousDetectedItems.emotions.some(prevItem => prevItem.name === emotionName);
+      if (!shownDetectionMessagesRef.current.has(detectionKey) && !isInPrevious) {
         shownDetectionMessagesRef.current.add(detectionKey);
         detectionMessages.push({
           id: generateMessageId(),
-          text: `new emotion logged: ${emotion.toLowerCase()}`,
+          text: `new emotion logged: ${emotionName.toLowerCase()}`,
           type: 'detection_log',
           timestamp: Date.now(),
           sessionId: conversationSessionId.current,
           detectionType: 'emotion',
-          detectionName: emotion
+          detectionName: emotionName
         });
       }
     });
 
     // Check for new parts
-    newDetectedItems.parts.forEach(part => {
-      const detectionKey = `part:${part.toLowerCase()}`;
+    newDetectedItems.parts.forEach(partItem => {
+      const partName = partItem.name;
+      const detectionKey = `part:${partName.toLowerCase()}`;
       // Only show if not already shown AND not in previous detected items
-      if (!shownDetectionMessagesRef.current.has(detectionKey) && !previousDetectedItems.parts.includes(part)) {
+      const isInPrevious = previousDetectedItems.parts.some(prevItem => prevItem.name === partName);
+      if (!shownDetectionMessagesRef.current.has(detectionKey) && !isInPrevious) {
         shownDetectionMessagesRef.current.add(detectionKey);
         detectionMessages.push({
           id: generateMessageId(),
-          text: `new part logged: ${part.toLowerCase()}`,
+          text: `new part logged: ${partName.toLowerCase()}`,
           type: 'detection_log',
           timestamp: Date.now(),
           sessionId: conversationSessionId.current,
           detectionType: 'part',
-          detectionName: part
+          detectionName: partName
         });
       }
     });
 
     // Check for new needs
-    newDetectedItems.needs.forEach(need => {
-      const detectionKey = `need:${need.toLowerCase()}`;
+    newDetectedItems.needs.forEach(needItem => {
+      const needName = needItem.name;
+      const detectionKey = `need:${needName.toLowerCase()}`;
       // Only show if not already shown AND not in previous detected items
-      if (!shownDetectionMessagesRef.current.has(detectionKey) && !previousDetectedItems.needs.includes(need)) {
+      const isInPrevious = previousDetectedItems.needs.some(prevItem => prevItem.name === needName);
+      if (!shownDetectionMessagesRef.current.has(detectionKey) && !isInPrevious) {
         shownDetectionMessagesRef.current.add(detectionKey);
         detectionMessages.push({
           id: generateMessageId(),
-          text: `new need logged: ${need.toLowerCase()}`,
+          text: `new need logged: ${needName.toLowerCase()}`,
           type: 'detection_log',
           timestamp: Date.now(),
           sessionId: conversationSessionId.current,
           detectionType: 'need',
-          detectionName: need
+          detectionName: needName
         });
       }
     });
@@ -526,19 +532,11 @@ export default function ConversationScreen() {
 
                   const conversationId = Date.now().toString() || undefined;
 
-                  // Convert string arrays to DetectedItem arrays with proper structure
-                  const emotionItems = detectedLists.emotions.map(emotion => ({
-                    name: emotion,
-                    confidence: 0.8
-                  }));
-                  const partItems = detectedLists.parts.map(part => ({
-                    name: part,
-                    confidence: 0.8
-                  }));
-                  const needItems = detectedLists.needs.map(need => ({
-                    name: need,
-                    confidence: 0.8
-                  }));
+                  // DetectedLists already contains DetectedItem objects, not strings
+                  // So we can use them directly
+                  const emotionItems = detectedLists.emotions;
+                  const partItems = detectedLists.parts;
+                  const needItems = detectedLists.needs;
 
                   const emotionsData = transformDetectedEmotions(emotionItems, conversationId);
                   const partsData = transformDetectedParts(partItems, conversationId);
@@ -560,9 +558,9 @@ export default function ConversationScreen() {
                 // Save detected data in background
                 if (user) {
                   backgroundSaver.saveDetectedData({
-                    emotions: detectedLists.emotions.map(e => ({ name: e, confidence: 0.8 })),
-                    parts: detectedLists.parts.map(p => ({ name: p, confidence: 0.8 })),
-                    needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
+                    emotions: detectedLists.emotions,
+                    parts: detectedLists.parts,
+                    needs: detectedLists.needs,
                   });
                 }
               } catch (error) {
@@ -977,19 +975,11 @@ export default function ConversationScreen() {
 
           const conversationId = Date.now().toString() || undefined;
 
-          // Convert string arrays to DetectedItem arrays with proper structure
-          const emotionItems = detectedLists.emotions.map(emotion => ({
-            name: emotion,
-            confidence: 0.8
-          }));
-          const partItems = detectedLists.parts.map(part => ({
-            name: part,
-            confidence: 0.8
-          }));
-          const needItems = detectedLists.needs.map(need => ({
-            name: need,
-            confidence: 0.8
-          }));
+          // DetectedLists already contains DetectedItem objects, not strings
+          // So we can use them directly
+          const emotionItems = detectedLists.emotions;
+          const partItems = detectedLists.parts;
+          const needItems = detectedLists.needs;
 
           setDetectedEmotionsData(transformDetectedEmotions(emotionItems, conversationId));
           setDetectedPartsData(transformDetectedParts(partItems, conversationId));
@@ -1007,9 +997,9 @@ export default function ConversationScreen() {
         // Save detected data in background
         if (user) {
           backgroundSaver.saveDetectedData({
-            emotions: detectedLists.emotions.map(e => ({ name: e, confidence: 0.8 })),
-            parts: detectedLists.parts.map(p => ({ name: p, confidence: 0.8 })),
-            needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
+            emotions: detectedLists.emotions,
+            parts: detectedLists.parts,
+            needs: detectedLists.needs,
           });
         }
       } catch (error) {
@@ -1079,19 +1069,11 @@ export default function ConversationScreen() {
 
         const conversationId = Date.now().toString() || undefined;
 
-        // Convert string arrays to DetectedItem arrays with proper structure
-        const emotionItems = detectedLists.emotions.map(emotion => ({
-          name: emotion,
-          confidence: 0.8
-        }));
-        const partItems = detectedLists.parts.map(part => ({
-          name: part,
-          confidence: 0.8
-        }));
-        const needItems = detectedLists.needs.map(need => ({
-          name: need,
-          confidence: 0.8
-        }));
+        // DetectedLists already contains DetectedItem objects, not strings
+        // So we can use them directly
+        const emotionItems = detectedLists.emotions;
+        const partItems = detectedLists.parts;
+        const needItems = detectedLists.needs;
 
         setDetectedEmotionsData(transformDetectedEmotions(emotionItems, conversationId));
         setDetectedPartsData(transformDetectedParts(partItems, conversationId));
@@ -1109,9 +1091,9 @@ export default function ConversationScreen() {
       // Save detected data in background
       if (user) {
         backgroundSaver.saveDetectedData({
-          emotions: detectedLists.emotions.map(e => ({ name: e, confidence: 0.8 })),
-          parts: detectedLists.parts.map(p => ({ name: p, confidence: 0.8 })),
-          needs: detectedLists.needs.map(n => ({ name: n, confidence: 0.8 })),
+          emotions: detectedLists.emotions,
+          parts: detectedLists.parts,
+          needs: detectedLists.needs,
         });
       }
     } catch (error) {
